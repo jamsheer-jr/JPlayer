@@ -103,6 +103,7 @@ class HomeBuildAllocationTest {
         is HomeRow.NewEpisodes -> row.episodes.map { it.item.id }
         is HomeRow.Chat -> row.entries.map { it.key }
         is HomeRow.Recent -> row.entries.map { it.key }
+        is HomeRow.Catalog -> row.entries.map { it.key }
     }
 
     /** New instances of the same videos, nothing cached on them, as Telegram's mapper hands them over. */
