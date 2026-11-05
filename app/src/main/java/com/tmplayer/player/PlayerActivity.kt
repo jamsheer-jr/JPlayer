@@ -1,8 +1,13 @@
 package com.tmplayer.player
 
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
+import android.graphics.drawable.Icon
 import android.os.Handler
 import android.os.Looper
 import android.content.Intent
@@ -1454,6 +1459,18 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         allowDrawingUnderTheCutout()
         setSystemBarsHidden(true)
+
+        // The picture in picture window's own play and pause button (J Player, 2026-11-06): its
+        // press comes back here as a broadcast, since a RemoteAction can carry nothing else.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val filter = IntentFilter(ACTION_PIP_TOGGLE)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(pipToggleReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(pipToggleReceiver, filter)
+            }
+        }
 
         settings = SettingsStore(this)
         watchedStore = WatchedStore(this)
@@ -6232,14 +6249,43 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * the viewer goes home while something plays, never over a paused video or a status sheet.
      */
     private fun updatePictureInPictureParams() {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
         if (!hasPictureInPicture()) return
         runCatching { setPictureInPictureParams(pictureInPictureParams()) }
+    }
+
+    /** The picture in picture window's play and pause button, pressed: it toggles playback. */
+    private val pipToggleReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_PIP_TOGGLE) togglePlayback()
+        }
     }
 
     @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
     private fun pictureInPictureParams(): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
+        // The window's own play and pause (J Player, 2026-11-06): until now the corner window
+        // offered neither, the media session that was meant to feed the system's buttons living
+        // in the background audio service and not bound to this activity. The one action names
+        // what a press does next, and the params are rebuilt on every play and pause change
+        // (onIsPlayingChanged), so the glyph in the window is never the stale one.
+        val playing = player?.isPlaying == true
+        val toggleIntent = PendingIntent.getBroadcast(
+            this,
+            PIP_TOGGLE_REQUEST,
+            Intent(ACTION_PIP_TOGGLE).setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        builder.setActions(
+            listOf(
+                RemoteAction(
+                    Icon.createWithResource(this, if (playing) R.drawable.ic_pip_pause else R.drawable.ic_pip_play),
+                    if (playing) "Pause" else "Play",
+                    if (playing) "Pause" else "Play",
+                    toggleIntent,
+                ),
+            ),
+        )
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             // Never on a television: Home there means leaving the film (Decision E10), and the
             // corner window is only for a viewer who asked for it from the row or More.
@@ -6282,8 +6328,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         inPictureInPicture = isInPictureInPictureMode
         wakeEndWatch()
         if (!isInPictureInPictureMode) pictureInPictureEndedAt = SystemClock.elapsedRealtime()
-        // At thumbnail size there is room for the picture and nothing else. The system draws its
-        // own play and pause over the window, fed by the media session.
+        // At thumbnail size there is room for the picture and nothing else. The window's play
+        // and pause is the explicit RemoteAction in the params (see pictureInPictureParams).
         if (isInPictureInPictureMode) {
             morePanel?.closeNow()
             controls?.hideNow()
@@ -8716,6 +8762,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     override fun onDestroy() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            runCatching { unregisterReceiver(pipToggleReceiver) }
+        }
         com.tmplayer.data.SelfInstaller.removeBeforeInstall(saveBeforeInstall)
         loopHandler.removeCallbacks(watchTick)
         // Every runnable on this handler, the undo chip's expiry among them: a delayed one holds
@@ -8948,6 +8997,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     companion object {
+        /** The broadcast the picture in picture window's play and pause button sends. */
+        private const val ACTION_PIP_TOGGLE = "com.jplayer.app.PIP_TOGGLE"
+
+        /** The request code of that button's pending intent: one button, one code. */
+        private const val PIP_TOGGLE_REQUEST = 71
+
         private const val EXTRA_FILE_ID = "file_id"
 
         /** `SystemClock.elapsedRealtime()` when Play was pressed, for the start timing log. */
