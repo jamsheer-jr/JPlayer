@@ -48,10 +48,10 @@ class SubtitleStyleTest {
         )
         assertEquals(style, back)
         // A store from before the steps had the switch alone: on reads as the nearest step.
-        assertEquals(SubtitleBox.Dark, SubtitleStyle.from("Medium", true, null, null, null, null, null, null).boxLevel)
-        assertEquals(SubtitleBox.Off, SubtitleStyle.from("Medium", false, null, null, null, null, null, null).boxLevel)
+        assertEquals(SubtitleBox.Dark, SubtitleStyle.from("Medium", true, null, null, null, null, null, null, null).boxLevel)
+        assertEquals(SubtitleBox.Off, SubtitleStyle.from("Medium", false, null, null, null, null, null, null, null).boxLevel)
         // Unknown names fall back one by one, the rest kept.
-        val odd = SubtitleStyle.from("Large", null, "Murky", null, "Purple", "Glow", "Comic", null)
+        val odd = SubtitleStyle.from("Large", null, "Murky", null, "Purple", "Glow", "Comic", null, null)
         assertEquals(SubtitleStyle(size = SubtitleSize.Large), odd)
     }
 

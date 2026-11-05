@@ -2586,6 +2586,7 @@
     "subtitle_mode_foreign_detail": "Your language is the subtitle language you picked, or the app's",
     "subtitle_mode_off": "Off unless you choose them",
     "subtitle_mode_off_detail": "Only forced lines, such as signs, come on by themselves",
+    "subtitle_drag": "Drag the lines up or down",
     "subtitle_position": "Subtitle position",
     "subtitle_position_hint": "Raised clears the controls; High clears text burnt into the picture",
     "subtitle_preview": "This is how subtitles will look.",

@@ -120,13 +120,11 @@ object About {
         if (Regex("""\d+\.\d+\.\d+""").matches(version)) "$SOURCE/releases/tag/v$version" else "$SOURCE/releases"
 
     /**
-     * Every link About offers, in order. The third-party notices are not among them: those are read
-     * inside the app, so each screen puts that row first under "Licence" itself. With
-     * [SupportReminder.enabled] off (the future Play build), the support group is left out. The
-     * online extras group is the credit OpenSubtitles' terms ask for, shown in every build that
-     * carries the feature ([OnlineSubtitles.available]). The
-     * posters and details group is the attribution TMDB, TVmaze and AniList ask for, in every build
-     * that has the feature ([OnlineMetadata.current]), whether or not the viewer turned it on.
+     * The About page's groups. J Player keeps the app's own part to the notices alone (the
+     * owner's call): no links out, no source or support pages, and nothing about whoever made
+     * it. The two service groups are the credits OpenSubtitles, SubDL and the metadata sources
+     * ask for in their own terms, shown in every build that carries the feature
+     * ([OnlineSubtitles.available], [OnlineMetadata.current]).
      */
     fun groups(
         version: String,
@@ -135,35 +133,7 @@ object About {
         metadata: Boolean = OnlineMetadata.current != null,
         supporter: Boolean = false,
     ): List<Group> = listOfNotNull(
-        Group(
-            L.aboutLicence,
-            listOf(
-                Link(L.aboutSourceCode, L.aboutSourceCodeDetail, SOURCE),
-                Link(
-                    L.aboutCorrespondingSource,
-                    L.aboutCorrespondingSourceDetail,
-                    releaseUrl(version),
-                ),
-            ),
-        ),
-        Group(
-            L.aboutDataAndLaw,
-            listOf(
-                Link(L.aboutPrivacy, L.aboutPrivacyDetail, PRIVACY),
-                Link(L.aboutLawfulUse, L.aboutLawfulUseDetail, LEGAL),
-            ),
-        ),
-        Group(
-            L.aboutContact,
-            listOf(
-                Link(L.aboutEmail, EMAIL, "mailto:$EMAIL"),
-                Link(L.aboutTelegramChannel, L.aboutTelegramChannelDetail, "https://t.me/tmplayerapp"),
-                Link(L.aboutTelegramGroup, L.aboutTelegramGroupDetail, "https://t.me/tmplayer_chat"),
-                Link("GitHub Discussions", L.aboutDiscussionsDetail, "$SOURCE/discussions"),
-                // Moved here (and to Settings' language picker) from the tour's first page.
-                Link(L.onboardingHelpTranslate, L.onboardingHelpTranslateBody, com.tmplayer.ui.onboarding.Onboarding.TRANSLATE_URL),
-            ),
-        ),
+        Group(L.aboutLicence, emptyList()),
         if (online) {
             Group(
                 L.onlineAboutGroup,
@@ -187,16 +157,6 @@ object About {
                 ),
                 note = L.metadataAboutNotice,
                 tmdbLogo = true,
-            )
-        } else {
-            null
-        },
-        if (support) {
-            Group(
-                if (supporter) SUPPORT_THANKS_TITLE else SUPPORT_TITLE,
-                supportLinks("about"),
-                note = if (supporter) SUPPORT_THANKS_NOTE else SUPPORT_NOTE,
-                support = true,
             )
         } else {
             null

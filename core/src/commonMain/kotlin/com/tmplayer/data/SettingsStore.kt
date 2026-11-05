@@ -268,6 +268,7 @@ private val SUBTITLE_COLOUR = stringPreferencesKey("subtitle_colour")
 private val SUBTITLE_EDGE = stringPreferencesKey("subtitle_edge")
 private val SUBTITLE_FACE = stringPreferencesKey("subtitle_face")
 private val SUBTITLE_BOLD = booleanPreferencesKey("subtitle_bold")
+private val SUBTITLE_LIFT = floatPreferencesKey("subtitle_lift")
 
 // Android's video decoder choice. See [VideoDecoder].
 private val VIDEO_DECODER = stringPreferencesKey("video_decoder")
@@ -1637,6 +1638,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             it[SUBTITLE_EDGE] = style.edge.name
             it[SUBTITLE_FACE] = style.face.name
             it[SUBTITLE_BOLD] = style.bold
+            it[SUBTITLE_LIFT] = style.lift
         }
     }
 
@@ -1649,6 +1651,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         edge = prefs[SUBTITLE_EDGE],
         face = prefs[SUBTITLE_FACE],
         bold = prefs[SUBTITLE_BOLD],
+        lift = prefs[SUBTITLE_LIFT],
     )
 
     // ---- video decoder (Android) --------------------------------------------------------------

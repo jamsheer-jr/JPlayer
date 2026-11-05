@@ -415,8 +415,8 @@
 
             <!--
               Scrolls only when it must. A television fits the whole row. A phone moves its
-              transport into the centre cluster and keeps four buttons here, which fit a 360dp
-              screen held upright with room to spare, and adds two more only when the row is
+              transport under the bar and keeps two buttons here (speed and rotate), which
+              fit a 360dp screen held upright with room to spare, and adds two more only when the row is
               wide enough (PlayerControls.fitRow); the scroll is only a safety net.
             -->
             <HorizontalScrollView
@@ -442,7 +442,11 @@
                     android:paddingEnd="4dp"
                     android:paddingBottom="4dp">
 
-                    <ImageButton
+                                        <!-- Subtitles and audio sit on the phone's top bar (J Player, MX style),
+                         so a phone never shows these two; the television keeps its row whole.
+                         PlayerControls leaves both gone on a phone. -->
+
+<ImageButton
                         android:id="@+id/control_subtitles"
                         android:layout_width="48dp"
                         android:layout_height="48dp"
@@ -453,7 +457,8 @@
                         android:padding="12dp"
                         android:scaleType="fitCenter"
                         android:src="@drawable/ic_subtitles"
-                        android:tint="@color/player_control_icon" />
+                        android:tint="@color/player_control_icon"
+                        android:visibility="gone" />
 
                     <ImageButton
                         android:id="@+id/control_audio"
@@ -466,7 +471,8 @@
                         android:padding="12dp"
                         android:scaleType="fitCenter"
                         android:src="@drawable/ic_audio_language"
-                        android:tint="@color/player_control_icon" />
+                        android:tint="@color/player_control_icon"
+                        android:visibility="gone" />
 
                     <ImageButton
                         android:id="@+id/control_speed"
@@ -610,6 +616,63 @@
                 android:paddingBottom="6dp"
                 android:textColor="#B8FFFFFF"
                 android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Phone only (PlayerControls shows it there): the transport on its own row under
+             the bar, MX Player style: the episode steps either side of play or pause, where
+             the thumb rests. The steps stay invisible without a neighbouring episode, so
+             the play button keeps the middle either way. -->
+        <LinearLayout
+            android:id="@+id/controls_transport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <ImageButton
+                android:id="@+id/transport_previous"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/bg_center_button"
+                android:contentDescription="Previous episode"
+                android:padding="13dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_player_previous"
+                android:tint="@color/player_control_icon"
+                android:visibility="invisible" />
+
+            <FrameLayout
+                android:id="@+id/transport_play_pause"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_marginStart="24dp"
+                android:layout_marginEnd="24dp"
+                android:background="@drawable/bg_center_button"
+                android:clickable="true"
+                android:contentDescription="Pause"
+                android:focusable="true">
+
+                <com.tmplayer.player.PlayPauseIcon
+                    android:id="@+id/transport_play_icon"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no" />
+            </FrameLayout>
+
+            <ImageButton
+                android:id="@+id/transport_next"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/bg_center_button"
+                android:contentDescription="Next episode"
+                android:padding="13dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_player_next"
+                android:tint="@color/player_control_icon"
+                android:visibility="invisible" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

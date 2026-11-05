@@ -1,5 +1,7 @@
 package com.tmplayer.player
 
+import kotlin.math.roundToInt
+
 import com.tmplayer.i18n.L
 
 /**
@@ -123,12 +125,24 @@ data class SubtitleStyle(
     val edge: SubtitleEdge = SubtitleEdge.Outline,
     val face: SubtitleFace = SubtitleFace.Default,
     val bold: Boolean = false,
+    /**
+     * How far the viewer dragged the lines up from the position's own share, as a share of the
+     * picture height (J Player: the subtitle panel's position drag). Zero keeps the position's
+     * own height; it adds to every position, so the drag and the position setting compose.
+     */
+    val lift: Float = 0f,
 ) {
     /** Whether there is a box at all. */
     val box: Boolean get() = boxLevel != SubtitleBox.Off
 
     /** Nothing changed from the look subtitles have out of the box, so "Back to the default look" has nothing to do. */
     val isDefault: Boolean get() = this == SubtitleStyle()
+
+    /** Where the lines stand: the position's share plus the dragged lift, capped clear of the top. */
+    val bottomFraction: Float get() = (position.bottomFraction + lift).coerceIn(0f, MAX_BOTTOM_FRACTION)
+
+    /** The position in mpv's units with the lift taken off: mpv counts down from the bottom. */
+    val mpvSubPos: Int get() = (position.mpvSubPos - (lift * 100).roundToInt()).coerceIn(0, 100)
 
     /** The next size up, wrapping back to the smallest: what a single remote button can drive. */
     fun nextSize(): SubtitleStyle = copy(size = SubtitleSize.entries.cycle(size))
@@ -171,7 +185,7 @@ data class SubtitleStyle(
      */
     fun mpvProperties(font: String): List<Pair<String, String>> = buildList {
         add("sub-font-size" to this@SubtitleStyle.size.mpvFontSize.toString())
-        add("sub-pos" to position.mpvSubPos.toString())
+        add("sub-pos" to mpvSubPos.toString())
         add("sub-color" to colour.hex)
         add("sub-font" to font)
         add("sub-bold" to if (bold) "yes" else "no")
@@ -202,6 +216,12 @@ data class SubtitleStyle(
     }
 
     companion object {
+        /** The most the position drag can add, as a share of the picture height. */
+        const val MAX_LIFT = 0.42f
+
+        /** The lines never stand higher than this share of the picture, however the two combine. */
+        const val MAX_BOTTOM_FRACTION = 0.62f
+
         /** What both players drew before the setting, in mpv's units of a 720 line frame. */
         const val MPV_OUTLINE = "2.5"
         const val MPV_SHADOW_OFFSET = "2"
@@ -211,7 +231,7 @@ data class SubtitleStyle(
         fun mpvColour(argb: Int): String = "#" + (argb.toLong() and 0xFFFFFFFFL).toString(16).uppercase().padStart(8, '0')
 
         /** Reads stored names back, falling back to the default for anything unknown or missing. */
-        fun from(size: String?, box: Boolean?, position: String?) = from(size, box, null, position, null, null, null, null)
+        fun from(size: String?, box: Boolean?, position: String?) = from(size, box, null, position, null, null, null, null, null)
 
         /**
          * Reads stored names back. [boxLevel] is the darkness step; a store from before the steps
@@ -226,6 +246,7 @@ data class SubtitleStyle(
             edge: String?,
             face: String?,
             bold: Boolean?,
+            lift: Float?,
         ) = SubtitleStyle(
             size = SubtitleSize.entries.firstOrNull { it.name == size } ?: SubtitleSize.Medium,
             boxLevel = SubtitleBox.entries.firstOrNull { it.name == boxLevel }
@@ -235,6 +256,7 @@ data class SubtitleStyle(
             edge = SubtitleEdge.entries.firstOrNull { it.name == edge } ?: SubtitleEdge.Outline,
             face = SubtitleFace.entries.firstOrNull { it.name == face } ?: SubtitleFace.Default,
             bold = bold ?: false,
+            lift = lift?.takeIf { it.isFinite() }?.coerceIn(0f, MAX_LIFT) ?: 0f,
         )
 
         private fun <T> List<T>.cycle(current: T): T = this[(indexOf(current) + 1) % size]

@@ -30,6 +30,8 @@ import androidx.compose.material3.Icon as M3Icon
 import androidx.compose.material3.MaterialTheme as M3Theme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
@@ -633,6 +635,16 @@ class TrackPickerFragment : Fragment() {
             Segments(SubtitlePosition.entries.map { it.label }, SubtitlePosition.entries.indexOf(style.position)) {
                 change(host.subtitleStyleNow().copy(position = SubtitlePosition.entries[it]))
             }
+            // The drag (J Player): a slider over the lift the position stands on, so the lines
+            // can be pulled to any height between the steps, and it stays where it is left.
+            SegmentsLabel(L.tracksSubtitleDrag)
+            Slider(
+                value = style.lift,
+                onValueChange = { change(host.subtitleStyleNow().copy(lift = it)) },
+                valueRange = 0f..SubtitleStyle.MAX_LIFT,
+                colors = SliderDefaults.colors(thumbColor = Tone.accent, activeTrackColor = Tone.accent),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 12.dp),
+            )
             val boldTick = com.tmplayer.ui.components.rememberToggleTick()
             SegmentsLabel(L.subtitlesColour)
             ColourSwatches(style.colour) { change(host.subtitleStyleNow().copy(colour = it)) }

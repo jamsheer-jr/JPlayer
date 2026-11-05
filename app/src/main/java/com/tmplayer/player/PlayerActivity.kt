@@ -5487,7 +5487,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * on every picture shape and every video (user, 2026-10-18).
      */
     private fun subtitleBottomFraction(): Float {
-        val share = subtitleStyle.position.bottomFraction
+        val share = subtitleStyle.bottomFraction
         val height = subtitleView.layoutParams?.height ?: 0
         if (height <= 0) return share
         val clearance = resources.getDimensionPixelSize(R.dimen.player_subtitle_bottom)

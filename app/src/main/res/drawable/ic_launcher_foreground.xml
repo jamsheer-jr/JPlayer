@@ -5,30 +5,21 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <!--
-      Every shape below is kept inside a circle of radius 31 around the centre of the 108 unit
-      canvas. A circular or pill launcher mask only guarantees the middle 66 units, and the
-      Android 12 splash screen is tighter still at roughly the middle 65, so anything further out
-      than that comes back to the user with a corner sliced off. The old mark drew the whole
-      player tile edge to edge and lost its corners in both places; the tile is now the background
-      layer's job, and the foreground carries only the screen, the play triangle and the progress
-      bar that the mark has always been about.
+      The J Player mark: a bold J with the player's own progress bar under it, the knob part
+      way along. Every shape stays inside a circle of radius 31 around the centre of the 108
+      unit canvas, as a circular or pill launcher mask only guarantees the middle 66 units,
+      and the Android 12 splash screen is tighter still.
     -->
     <path
-        android:fillColor="#3A3A46"
-        android:pathData="M36,33 H72 A5,5 0 0 1 77,38 V60 A5,5 0 0 1 72,65 H36 A5,5 0 0 1 31,60 V38 A5,5 0 0 1 36,33 Z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,30 H70 V36 L64,36 V58 A12,12 0 0 1 40,58 V50 L46,50 V58 A6,6 0 0 0 58,58 V36 H44 Z" />
     <path
-        android:fillColor="#0E0E12"
-        android:pathData="M36,34.5 H72 A3.5,3.5 0 0 1 75.5,38 V60 A3.5,3.5 0 0 1 72,63.5 H36 A3.5,3.5 0 0 1 32.5,60 V38 A3.5,3.5 0 0 1 36,34.5 Z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M45.5,66 H55.5 A2.25,2.25 0 0 1 55.5,70.5 H45.5 A2.25,2.25 0 0 1 45.5,66 Z" />
     <path
-        android:fillColor="#EDEDF2"
-        android:pathData="M48,40.5 L65,49 L48,57.5 Z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M63.5,66 H68.5 A2.25,2.25 0 0 1 68.5,70.5 H63.5 A2.25,2.25 0 0 1 63.5,66 Z" />
     <path
-        android:fillColor="#2AABEE"
-        android:pathData="M36.5,70 H55.5 A2.5,2.5 0 0 1 55.5,75 H36.5 A2.5,2.5 0 0 1 36.5,70 Z" />
-    <path
-        android:fillColor="#3A3A46"
-        android:pathData="M66.5,70 H71.5 A2.5,2.5 0 0 1 71.5,75 H66.5 A2.5,2.5 0 0 1 66.5,70 Z" />
-    <path
-        android:fillColor="#EDEDF2"
-        android:pathData="M56.5,72.5 A5.5,5.5 0 1 1 67.5,72.5 A5.5,5.5 0 1 1 56.5,72.5 Z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M56.5,68.25 A4.25,4.25 0 1 1 65,68.25 A4.25,4.25 0 1 1 56.5,68.25 Z" />
 </vector>

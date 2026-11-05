@@ -106,6 +106,11 @@ class PlayerControls(
     private val centerNext: ImageButton = root.findViewById(R.id.center_next)
     private val centerPreviousCaption: TextView = root.findViewById(R.id.center_previous_caption)
     private val centerNextCaption: TextView = root.findViewById(R.id.center_next_caption)
+    private val transport: View = root.findViewById(R.id.controls_transport)
+    private val transportPrevious: ImageButton = root.findViewById(R.id.transport_previous)
+    private val transportNext: ImageButton = root.findViewById(R.id.transport_next)
+    private val transportPlay: View = root.findViewById(R.id.transport_play_pause)
+    private val transportIcon: PlayPauseIcon = root.findViewById(R.id.transport_play_icon)
     private val centerPlay: View = root.findViewById(R.id.center_play_pause)
     private val centerIcon: PlayPauseIcon = root.findViewById(R.id.center_play_icon)
     private val centerBuffering: View = root.findViewById(R.id.center_buffering)
@@ -573,14 +578,18 @@ class PlayerControls(
     }
 
     /**
-     * The phone's layout: the transport moves to the middle, the name to the top, and the bottom row
-     * is left with subtitles, audio, speed and rotate, plus picture shape and the lock when wide.
+     * The phone's layout: the name goes to the top, the transport sits on its own row under the
+     * bar (MX style), and the centre keeps only the play disc, as the pause cue. The bottom row
+     * is left with speed and rotate, plus picture shape and the lock when wide: subtitles and
+     * audio live on the top bar.
      */
     private fun setUpPhone(root: View) {
         listOf(tint, topBar, center, times).forEach { it.visibility = View.VISIBLE }
         listOf(timeText, title, subtitle).forEach { it.visibility = View.GONE }
 
         wire(centerPlay) { onTogglePlay(); renderPlayPause(animate = true) }
+        transport.visibility = View.VISIBLE
+        wire(transportPlay) { onTogglePlay(); renderPlayPause(animate = true) }
         wire(root.findViewById(R.id.control_back)) { onBack() }
         val more = root.findViewById<View>(R.id.control_more)
         wire(more) { onMore(more) }
@@ -723,6 +732,9 @@ class PlayerControls(
             R.id.control_rotate to L.playerScreenOrientation,
             R.id.control_lock to L.playerLockScreen,
             R.id.control_tv_more to L.commonMore,
+            R.id.transport_previous to L.playerPreviousEpisode,
+            R.id.transport_play_pause to L.commonPause,
+            R.id.transport_next to L.playerNextEpisode,
             R.id.control_episodes to L.episodesTitle,
             R.id.control_copy to L.playerCopies,
         )
@@ -809,6 +821,13 @@ class PlayerControls(
         describe(centerNext, nextLabel)
         centerNext.setOnClickListener { nextEpisode?.let(onPlayEpisode) }
         caption(centerNextCaption, nextCaption.takeIf { nextEpisode != null })
+        // The transport row under the bar steps the same episodes.
+        transportPrevious.visibility = if (previousEpisode != null) View.VISIBLE else View.INVISIBLE
+        describe(transportPrevious, previousLabel)
+        transportPrevious.setOnClickListener { previousEpisode?.let(onPlayEpisode) }
+        transportNext.visibility = if (nextEpisode != null) View.VISIBLE else View.INVISIBLE
+        describe(transportNext, nextLabel)
+        transportNext.setOnClickListener { nextEpisode?.let(onPlayEpisode) }
     }
 
     /**
@@ -1079,6 +1098,13 @@ class PlayerControls(
         centerIcon.setShowsPlay(!playing, animate = animate && centerDrawn && visible)
         centerDrawn = true
         describe(centerPlay, if (playing) L.commonPause else L.commonPlay)
+        if (!isTv) {
+            transportIcon.setShowsPlay(!playing, animate = false)
+            describe(transportPlay, if (playing) L.commonPause else L.commonPlay)
+            // While a video plays, the centre shows nothing: the transport under the bar is
+            // the control. Paused, or waiting on the network, the disc is the cue.
+            center.visibility = if (playing && !buffering) View.GONE else View.VISIBLE
+        }
         val state = if (playing) L.playerPlaying else L.playerPaused
         if (ViewCompat.getStateDescription(centerPlay) != state) ViewCompat.setStateDescription(centerPlay, state)
     }

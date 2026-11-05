@@ -1,6 +1,6 @@
 package com.tmplayer.ui.about
 
-import com.tmplayer.data.SupportReminder
+import com.tmplayer.i18n.L
 import com.tmplayer.ui.about.About.Block
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -61,24 +61,11 @@ class AboutTest {
     }
 
     @Test
-    fun `the support group follows the one switch`() {
-        assertEquals(About.SUPPORT_TITLE, About.groups("1.22.1").last().title)
-        assertEquals(listOf(About.supportUrl("about")), About.groups("1.22.1").last().links.map { it.url })
-        assertEquals("https://tmplayer.org/support/?utm_source=about&utm_medium=app", About.supportUrl("about"))
-        assertTrue(About.groups("1.22.1", support = false).none { it.support })
-        try {
-            SupportReminder.enabled = false
-            assertTrue(About.groups("1.22.1").none { it.support })
-        } finally {
-            SupportReminder.enabled = true
-        }
-    }
-
-    @Test
-    fun `a supporter is thanked in the heading`() {
-        val group = About.groups("1.22.1", supporter = true).last()
-        assertTrue(group.support)
-        assertEquals(About.SUPPORT_THANKS_TITLE, group.title)
-        assertEquals(About.SUPPORT_THANKS_NOTE, group.note)
+    fun `about carries no links of its own, only the service credits`() {
+        val groups = About.groups("1.22.1")
+        assertEquals(L.aboutLicence, groups.first().title)
+        assertTrue(groups.first().links.isEmpty())
+        assertTrue(groups.none { it.support })
+        assertTrue(groups.flatMap { it.links }.none { it.url.contains("tmplayer") || it.url.contains("github") })
     }
 }
