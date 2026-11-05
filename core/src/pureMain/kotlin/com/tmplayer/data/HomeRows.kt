@@ -102,6 +102,10 @@ sealed interface HomeRow {
     ) : HomeRow {
         override val key: String get() = "recent"
 
+        /** Its See all page reads on through [chatIds], past the row's [HomeRows.LIMIT]. */
+        override val hasMore: Boolean get() = loaded && chatIds.isNotEmpty() && entries.isNotEmpty()
+    }
+
     /**
      * One of the shelves under the chat rows (J Player, 2026-11-06): the films together, the
      * series together, or one language's titles together, grouped from the same videos the
@@ -119,10 +123,6 @@ sealed interface HomeRow {
     ) : HomeRow {
         override val key: String get() = "catalog-$kind"
         override val total: Int get() = entries.size
-    }
-
-        /** Its See all page reads on through [chatIds], past the row's [HomeRows.LIMIT]. */
-        override val hasMore: Boolean get() = loaded && chatIds.isNotEmpty() && entries.isNotEmpty()
     }
 }
 
