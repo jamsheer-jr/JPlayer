@@ -41,10 +41,11 @@ class SubtitleStyleTest {
             edge = SubtitleEdge.Shadow,
             face = SubtitleFace.Monospace,
             bold = true,
+            lift = 0.1f,
         )
         val back = SubtitleStyle.from(
             style.size.name, style.box, style.boxLevel.name, style.position.name,
-            style.colour.name, style.edge.name, style.face.name, style.bold,
+            style.colour.name, style.edge.name, style.face.name, style.bold, style.lift,
         )
         assertEquals(style, back)
         // A store from before the steps had the switch alone: on reads as the nearest step.
