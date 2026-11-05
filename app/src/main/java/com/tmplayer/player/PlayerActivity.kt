@@ -998,6 +998,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 watchPicture = DeviceDecode.pictureOf(format)
                 watchFormat = format
                 watchSoftware = DecoderSwitch.softwareVideoChosen(exo)
+                controls?.setDecoderBadge(if (watchSoftware) "SW" else "HW")
             }
         }
         val playing = exo.isPlaying && !castUp()
@@ -1808,6 +1809,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         loopHandler.removeCallbacks(watchTick)
         watchPicture = null
         watchSoftware = false
+        controls?.setDecoderBadge(null)
         stutterOffered = false
         copyHandPicked = false
         heavyLabel = null

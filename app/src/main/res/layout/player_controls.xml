@@ -169,6 +169,23 @@
             android:src="@drawable/ic_audio_language"
             android:tint="@color/player_control_icon" />
 
+        <!-- The decoder badge (J Player, 2026-11-06): HW while the device's own decoder
+             plays the picture, SW while software does, named by PlayerControls once the
+             decoder is known. -->
+        <TextView
+            android:id="@+id/control_decoder"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_control_pill"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="@color/player_control_icon"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
         <ImageButton
             android:id="@+id/control_more"
             android:layout_width="48dp"

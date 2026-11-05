@@ -88,6 +88,7 @@ class PlayerControls(
     private val subtitle: TextView = root.findViewById(R.id.controls_subtitle)
     private val timeBar: DefaultTimeBar = root.findViewById(R.id.controls_timebar)
     private val clock: TextView = root.findViewById(R.id.controls_clock)
+    private val decoderBadge: TextView = root.findViewById(R.id.control_decoder)
     private val rotate: ImageButton = root.findViewById(R.id.control_rotate)
     private val shapeButton: ImageButton = root.findViewById(R.id.control_shape)
 
@@ -655,6 +656,17 @@ class PlayerControls(
         }
         shapeButton.visibility = if (shapeOffered) View.VISIBLE else View.GONE
         lockButton.visibility = View.VISIBLE
+    }
+
+    /**
+     * Names the decoder on the top bar: "HW" for the device's own decoder, "SW" for software,
+     * or null to take the badge away (no picture, or the decoder not known yet). There is no
+     * HW+ here: nothing in the player distinguishes a second kind of hardware decoding, and a
+     * badge that guesses would lie.
+     */
+    fun setDecoderBadge(label: String?) {
+        decoderBadge.text = label.orEmpty()
+        decoderBadge.visibility = if (label.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
     /** Offers or takes away the picture shape button, for a video that is sound alone. */
