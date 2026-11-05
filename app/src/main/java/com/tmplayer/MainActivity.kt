@@ -142,8 +142,6 @@ import com.tmplayer.ui.components.rememberToast
 import com.tmplayer.ui.onboarding.Setup
 import com.tmplayer.ui.onboarding.SetupAndTour
 import com.tmplayer.ui.update.UpdateDialog
-import com.tmplayer.ui.update.LinkQrDialog
-import com.tmplayer.ui.update.openLink
 import com.tmplayer.ui.settings.AboutScreen
 import com.tmplayer.ui.settings.SettingsPage
 import com.tmplayer.ui.settings.SettingsScreen
