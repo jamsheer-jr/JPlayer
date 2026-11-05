@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ForwardingRenderer
@@ -72,8 +73,13 @@ class TranslatingTextOutput(
     @Volatile
     private var showing: List<Cue> = emptyList()
 
+    /** The group the lines on screen arrived in, when they arrived as one; its timing is kept. */
+    @Volatile
+    private var showingGroup: CueGroup? = null
+
     override fun onCues(cues: List<Cue>) {
         showing = cues
+        showingGroup = null
         val language = target()
         if (language == null) {
             delegate.onCues(cues)
@@ -81,6 +87,18 @@ class TranslatingTextOutput(
         }
         delegate.onCues(translated(cues, language))
         askFor(cues, language)
+    }
+
+    override fun onCues(group: CueGroup) {
+        showing = group.cues
+        showingGroup = group
+        val language = target()
+        if (language == null) {
+            delegate.onCues(group)
+            return
+        }
+        delegate.onCues(CueGroup(translated(group.cues, language), group.presentationTimeUs))
+        askFor(group.cues, language)
     }
 
     /** [cues] with every line the cache already holds carried into [language]. */
@@ -114,7 +132,14 @@ class TranslatingTextOutput(
                 }
             }
             if (landed && target() == language) {
-                poster.post { delegate.onCues(translated(showing, language)) }
+                poster.post {
+                    val group = showingGroup
+                    if (group != null) {
+                        delegate.onCues(CueGroup(translated(showing, language), group.presentationTimeUs))
+                    } else {
+                        delegate.onCues(translated(showing, language))
+                    }
+                }
             }
         }
     }
