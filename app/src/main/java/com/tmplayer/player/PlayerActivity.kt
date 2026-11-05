@@ -3542,7 +3542,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 val built = ArrayList<Renderer>()
                 // The output is wrapped, not the renderers: a track built into the file has
                 // its words translated on their way to the screen. See [TranslatingTextOutput].
-                val liveOutput = TranslatingTextOutput(output, Handler(outputLooper), App.backgroundScope) { liveSubtitleTarget() }
+                val liveOutput = TranslatingTextOutput(output, Handler(outputLooper), App.backgroundScope, { liveSubtitleTarget() }, java.io.File(context.cacheDir, "live_subtitle_translations.tsv"))
                 super.buildTextRenderers(context, liveOutput, outputLooper, extensionRendererMode, built)
                 built.mapTo(out) { DelayedTextRenderer(it) { subtitleDelayUs } }
             }

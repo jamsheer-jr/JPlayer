@@ -61,10 +61,14 @@ class TranslatingTextOutput(
     private val poster: Handler,
     private val scope: CoroutineScope,
     private val target: () -> String?,
+    cacheFile: java.io.File? = null,
 ) : TextOutput {
 
-    /** Words already carried over, by the line as it was sent: session lived, a film at most. */
-    private val cache = ConcurrentHashMap<String, String>()
+    init {
+        // The cache outlives this output: it is shared by every player built afterwards and,
+        // with a file, by the next launch too. See [LiveTranslationCache].
+        if (cacheFile != null) LiveTranslationCache.install(cacheFile, scope)
+    }
 
     /** Lines a request is out for, so a line on screen is not asked for twice. */
     private val asked = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
@@ -104,7 +108,7 @@ class TranslatingTextOutput(
     /** [cues] with every line the cache already holds carried into [language]. */
     private fun translated(cues: List<Cue>, language: String): List<Cue> = cues.map { cue ->
         val words = wordsOf(cue) ?: return@map cue
-        cache[key(language, words)]?.let { cue.buildUpon().setText(it).build() } ?: cue
+        LiveTranslationCache.get(key(language, words))?.let { cue.buildUpon().setText(it).build() } ?: cue
     }
 
     /**
@@ -117,8 +121,14 @@ class TranslatingTextOutput(
     }
 
     private fun askFor(cues: List<Cue>, language: String) {
+        // The whole group goes up in one call, so the engine sees the run of dialogue whole.
+        // Media3 hands a text output only the lines current at each moment: there is no seam
+        // here that names a line before its time, so lines cannot be fetched ahead of their
+        // display from this place. The persistent cache is the answer to the second showing:
+        // a line met again, on a seek back or a later watching, is translated from its first
+        // moment and never asked for twice.
         val missing = cues.mapNotNull(::wordsOf).distinct()
-            .filter { cache[key(language, it)] == null && asked.add(key(language, it)) }
+            .filter { LiveTranslationCache.get(key(language, it)) == null && asked.add(key(language, it)) }
         if (missing.isEmpty()) return
         scope.launch {
             val answers = runCatching { SubtitleTranslator().translateLines(missing, language) }.getOrNull()
@@ -127,7 +137,7 @@ class TranslatingTextOutput(
                 asked.remove(key(language, words))
                 val answer = answers?.getOrNull(index)
                 if (answer != null) {
-                    cache[key(language, words)] = answer
+                    LiveTranslationCache.put(key(language, words), answer)
                     landed = true
                 }
             }
@@ -145,6 +155,87 @@ class TranslatingTextOutput(
     }
 
     private fun key(language: String, words: String) = "$language\u0001$words"
+}
+
+/**
+ * The live translations, kept past the player that asked for them (J Player, 2026-11-06).
+ *
+ * In memory the map is shared by every [TranslatingTextOutput] the app builds, so leaving a
+ * video and coming back to it in the same session asks for nothing twice. With a file (the
+ * app's cache folder, installed by the player) each answer is also appended there, one line
+ * per entry, and read back on the next launch: a rewatch days later is translated from its
+ * first moment too. The key is the language and the line as sent, the same key the output
+ * has always used, so the same words in another film still hit: subtitle lines repeat far
+ * more than films do. Every file step is guarded: a cache that cannot be read or written
+ * costs the translations, never the playback. The file is capped: past [MAX_ENTRIES] entries
+ * nothing more is appended (the memory keeps the newest answers), so the cache folder stays
+ * small however much is watched.
+ */
+object LiveTranslationCache {
+
+    private val memory = ConcurrentHashMap<String, String>()
+
+    @Volatile
+    private var file: java.io.File? = null
+
+    @Volatile
+    private var loaded = false
+
+    /** Points the cache at [file] and reads what a previous launch left there, off the caller's thread. */
+    fun install(file: java.io.File, scope: CoroutineScope) {
+        if (this.file == file && loaded) return
+        this.file = file
+        scope.launch {
+            runCatching {
+                if (file.isFile) {
+                    file.forEachLine { line ->
+                        val parts = line.split('\t')
+                        if (parts.size == 3) memory[unescape(parts[0])] = unescape(parts[2])
+                        if (memory.size >= MAX_ENTRIES) return@forEachLine
+                    }
+                }
+            }
+            loaded = true
+        }
+    }
+
+    fun get(key: String): String? = memory[key]
+
+    fun put(key: String, answer: String) {
+        memory[key] = answer
+        val target = file ?: return
+        if (memory.size > MAX_ENTRIES) return
+        runCatching {
+            target.appendText(escape(key) + "\t-\t" + escape(answer) + "\n")
+        }
+    }
+
+    private fun escape(text: String): String =
+        text.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+
+    private fun unescape(text: String): String {
+        val out = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == '\\' && i + 1 < text.length) {
+                when (text[i + 1]) {
+                    't' -> out.append('\t')
+                    'n' -> out.append('\n')
+                    'r' -> out.append('\r')
+                    '\\' -> out.append('\\')
+                    else -> out.append(text[i + 1])
+                }
+                i += 2
+            } else {
+                out.append(c)
+                i++
+            }
+        }
+        return out.toString()
+    }
+
+    private const val MAX_ENTRIES = 6000
 }
 
 /**
