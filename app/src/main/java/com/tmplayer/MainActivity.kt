@@ -749,7 +749,6 @@ private fun Root() {
         val updated = runCatching { com.tmplayer.data.AfterUpdate.onLaunch(context) }.getOrNull() ?: return@LaunchedEffect
         toast(com.tmplayer.i18n.L.updateUpdatedTo(version = updated))
     }
-    var changelogQr by remember { mutableStateOf(false) }
 
     // The Buy Me a Coffee window: after real use, at most every two weeks, and only at a good
     // moment (a video watched to the end, a download finished) while this list or Downloads is up,
@@ -2350,16 +2349,11 @@ private fun Root() {
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
             )
         }
+        // No onChangelog: the sheet's "Full changelog" button opened the upstream site, and
+        // J Player's sheet carries the bundled highlights and nothing that links out.
         if (whatsNew.showing && !showUpdate) {
-            WhatsNewDialog(
-                onClose = { whatsNew.showing = false },
-                onChangelog = {
-                    whatsNew.showing = false
-                    if (!openLink(context, WhatsNew.CHANGELOG)) changelogQr = true
-                },
-            )
+            WhatsNewDialog(onClose = { whatsNew.showing = false })
         }
-        if (changelogQr) LinkQrDialog(WhatsNew.CHANGELOG, s.settingsQrChangelogPage, onClose = { changelogQr = false })
 
         if (newVideoOffer) {
             TvConfirm(

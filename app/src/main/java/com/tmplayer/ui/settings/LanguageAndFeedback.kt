@@ -133,12 +133,13 @@ fun LanguageNoticeCard(language: String, onKeep: () -> Unit, onChange: () -> Uni
 }
 
 /**
- * "What's new": the bundled highlights of [WhatsNew.VERSION], on the first run of that version and
- * from Settings. "Full changelog" opens the site's changelog, or its QR code on a TV.
+ * "What's new": the bundled highlights of [WhatsNew.VERSION], on the first run of that version.
+ * J Player passes no [onChangelog]: its sheet has no "Full changelog" button, since that button
+ * opened the upstream project's site.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WhatsNewDialog(onClose: () -> Unit, onChangelog: () -> Unit) {
+fun WhatsNewDialog(onClose: () -> Unit, onChangelog: (() -> Unit)? = null) {
     val s = LocalStrings.current
     val touch = isTouch()
     val close = remember { FocusRequester() }
@@ -169,7 +170,7 @@ fun WhatsNewDialog(onClose: () -> Unit, onChangelog: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TmSecondaryButton(onClick = onChangelog) { Label(s.whatsnewFullChangelog) }
+                    if (onChangelog != null) TmSecondaryButton(onClick = onChangelog) { Label(s.whatsnewFullChangelog) }
                     TmButton(onClick = onClose, modifier = Modifier.focusRequester(close)) { Label(s.commonClose) }
                 }
             }
