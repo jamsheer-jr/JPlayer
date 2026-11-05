@@ -28,6 +28,7 @@ import com.tmplayer.online.OnlineStatus
 import com.tmplayer.online.OnlineSubtitles
 import com.tmplayer.online.OnlineWords
 import com.tmplayer.ui.auth.PaneField
+import com.tmplayer.ui.components.ChoiceList
 import com.tmplayer.ui.components.TvConfirm
 import com.tmplayer.ui.components.rememberToast
 import com.tmplayer.ui.i18n.LocalStrings
@@ -305,7 +306,7 @@ fun OnlineSubtitlesDialog(dialog: OnlineDialog, onClose: () -> Unit) {
                 onDismiss = onClose,
                 onClose = onClose,
             ) {
-                com.tmplayer.ui.components.ChoiceList {
+                ChoiceList {
                     com.tmplayer.ui.components.ChoiceLine(
                         title = s.commonOff,
                         selected = current.isBlank(),
