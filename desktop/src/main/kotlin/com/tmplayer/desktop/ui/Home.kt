@@ -510,6 +510,9 @@ private fun RowPage(
                     )
                     is HomeRow.Chat -> shelfSections(state, sizes, fedEntries ?: (row.entries + SeriesShelf.arrange(row.more)), { row.title }, onOpenSeries)
                     is HomeRow.Recent -> shelfSections(state, sizes, fedEntries ?: row.entries, { titles[it].orEmpty() }, onOpenSeries)
+                    // See all is off for a shelf (see RowHeading above), so this never runs:
+                    // it only keeps the when exhaustive, drawn the way a Recent row is.
+                    is HomeRow.Catalog -> shelfSections(state, sizes, fedEntries ?: row.entries, { titles[it].orEmpty() }, onOpenSeries)
                 }
             }
             val list = com.tmplayer.ui.components.rememberAheadListState()
@@ -743,7 +746,7 @@ private fun HomeRow.title(s: com.tmplayer.i18n.Messages, titles: Map<Long, Strin
 /** How many videos a row holds, as its "See all" says it; null when it cannot tell. */
 private fun HomeRow.countLabel(s: com.tmplayer.i18n.Messages): String? {
     val count = when (this) {
-        is HomeRow.Continue, is HomeRow.WatchLater, is HomeRow.Chat -> total
+        is HomeRow.Continue, is HomeRow.WatchLater, is HomeRow.Chat, is HomeRow.Catalog -> total
         is HomeRow.NewEpisodes -> episodes.size
         is HomeRow.Recent -> entries.size
     }

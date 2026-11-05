@@ -149,6 +149,7 @@ class HomeRowsTest {
                 is HomeRow.Chat -> row.entries.size
                 is HomeRow.NewEpisodes -> row.episodes.size
                 is HomeRow.Recent -> row.entries.size
+                is HomeRow.Catalog -> row.entries.size
             }
             assertEquals(row.key, HomeRows.LIMIT, size)
         }
