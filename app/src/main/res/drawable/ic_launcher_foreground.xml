@@ -5,21 +5,24 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <!--
-      The J Player mark: a bold J with the player's own progress bar under it, the knob part
-      way along. Every shape stays inside a circle of radius 31 around the centre of the 108
-      unit canvas, as a circular or pill launcher mask only guarantees the middle 66 units,
-      and the Android 12 splash screen is tighter still.
+      The J Player mark: a neon cyan play triangle in outline, with a smaller play formed
+      inside it, centred on the navy tile the background layer paints. Bold strokes, so the
+      glyph still reads at launcher sizes. Every shape stays inside the middle of the canvas,
+      as a circular or pill launcher mask only guarantees the centre, and the Android 12
+      splash screen is tighter still.
     -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M44,30 H70 V36 L64,36 V58 A12,12 0 0 1 40,58 V50 L46,50 V58 A6,6 0 0 0 58,58 V36 H44 Z" />
+        android:fillColor="#00000000"
+        android:pathData="M37,31 L79,54 L37,77 Z"
+        android:strokeColor="#22E6FF"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M45.5,66 H55.5 A2.25,2.25 0 0 1 55.5,70.5 H45.5 A2.25,2.25 0 0 1 45.5,66 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M63.5,66 H68.5 A2.25,2.25 0 0 1 68.5,70.5 H63.5 A2.25,2.25 0 0 1 63.5,66 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M56.5,68.25 A4.25,4.25 0 1 1 65,68.25 A4.25,4.25 0 1 1 56.5,68.25 Z" />
+        android:fillColor="#00000000"
+        android:pathData="M48,42.5 L67,54 L48,65.5 Z"
+        android:strokeColor="#22E6FF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

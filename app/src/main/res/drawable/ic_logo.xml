@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Player mark, from art/player.svg (SVG Repo), recoloured to the app palette.
-
-  Structure is unchanged from the source: a tile, a darker screen filling the upper two thirds,
-  a progress bar across the bottom with its playhead, and the play triangle centred in the
-  screen. Only the fills differ: the original's purple and pink become the surface, accent and
-  text colours used everywhere else in the app.
+  The J Player mark, drawn as vectors: the dark navy tile, and on it the neon cyan play
+  glyph (an outer play triangle in outline, a smaller play inside it). Used by AppMark on
+  the settings and about surfaces. Full bleed: the tile carries its own rounded corners.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="192dp"
@@ -13,18 +10,20 @@
     android:viewportWidth="1024"
     android:viewportHeight="1024">
     <path
-        android:fillColor="#1E1E28"
+        android:fillColor="#050C1C"
         android:pathData="M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 42.666667 0 0 1-42.666667 42.666667z" />
     <path
-        android:fillColor="#0E0E12"
-        android:pathData="M184 64h656a120 120 0 0 1 120 120v442.666667a120 120 0 0 1-120 120H184a120 120 0 0 1-120-120V184a120 120 0 0 1 120-120z" />
+        android:fillColor="#00000000"
+        android:pathData="M350,290 L740,512 L350,734 Z"
+        android:strokeColor="#22E6FF"
+        android:strokeWidth="52"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
     <path
-        android:fillColor="#3A3A46"
-        android:pathData="M896 896H597.333333a21.333333 21.333333 0 1 1 0-42.666667h298.666667a21.333333 21.333333 0 1 1 0 42.666667z" />
-    <path
-        android:fillColor="#2AABEE"
-        android:pathData="M661.333333 896H128a21.333333 21.333333 0 1 1 0-42.666667h533.333333a21.333333 21.333333 0 1 1 0 42.666667z" />
-    <path
-        android:fillColor="#EDEDF2"
-        android:pathData="M640 960c-47.04 0-85.333333-38.293333-85.333333-85.333333s38.293333-85.333333 85.333333-85.333334 85.333333 38.293333 85.333333 85.333334-38.293333 85.333333-85.333333 85.333333zM426.666667 554.666667a21.269333 21.269333 0 0 1-21.333334-21.333334V277.333333a21.333333 21.333333 0 0 1 33.173334-17.749333l192 128a21.333333 21.333333 0 0 1 0 35.498667l-192 128A21.333333 21.333333 0 0 1 426.666667 554.666667z" />
+        android:fillColor="#00000000"
+        android:pathData="M462,398 L648,512 L462,626 Z"
+        android:strokeColor="#22E6FF"
+        android:strokeWidth="34"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The system splash (Android 12 and later): the mark's dark navy behind the app icon, so
+      the splash and the start-up loader (which paints the same navy) read as one sequence.
+      Only the splash is navy; the app's own windows keep their themed backgrounds.
+    -->
+    <style name="Theme.TMPlayer" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowSplashScreenBackground">#050C1C</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#050C1C</item>
+    </style>
+</resources>

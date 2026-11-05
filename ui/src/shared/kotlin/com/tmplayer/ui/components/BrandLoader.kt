@@ -50,25 +50,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.runtime.CompositionLocalProvider
 import com.tmplayer.data.DeviceForm
-import com.tmplayer.ui.theme.LocalDarkTheme
-import com.tmplayer.ui.theme.LocalPureBlack
 import com.tmplayer.ui.theme.Motion
-import com.tmplayer.ui.theme.TmSchemes
-import com.tmplayer.ui.theme.Tone
 import kotlinx.coroutines.delay
 import kotlin.math.tan
 
 /**
- * The wait while TMPlayer connects, the same on every platform and kept quiet (user, 2026-10-22:
- * "a splash screen if needed and nothing else, or just a simple rotating loader"): the window's
- * own ground, which the system's splash hands over to with no flash, then after [SPINNER_MS] one
- * small white spinner in the middle, and nothing else. It used to grow words under it after a few
- * seconds, which pushed the spinner up and read as a second loader taking over from the first
- * (user, 2026-10-23: "just show one loader, super subtle, white"). [label] is what a screen reader
- * says for it. A warm start is over before anything shows.
- *
- * The ground is the app's own near-black or near-white, never the wallpaper's tint, because it is
- * the colour the window was painted before the first frame (`window_background`).
+ * The wait while J Player connects, the same on every platform and kept quiet (user, 2026-10-22:
+ * "a splash screen if needed and nothing else, or just a simple rotating loader"): the mark's
+ * navy ground, which the system's splash hands over to with no flash, the brand lockup arriving
+ * on it once (see [OpeningLockup]), then after [SPINNER_MS] one small white spinner under the
+ * lockup, and nothing else. [label] is what a screen reader says for it. A warm start is over
+ * before anything shows.
  *
  * [sweepAt] is kept for tests that draw a frame at once: any value shows the spinner without
  * waiting. [below] is room under the spinner for the help once the wait has gone on too long; it
@@ -100,35 +92,68 @@ fun BrandLoader(
             .padding(horizontal = size.side),
         contentAlignment = Alignment.Center,
     ) {
-        if (!spinner) return@BoxWithConstraints
-        val spinnerModifier = Modifier.size(size.spinner).semantics { contentDescription = label }
-        val ink = Tone.text.copy(alpha = SPINNER_ALPHA)
-        if (sweepAt != null) {
-            // A test's still frame: an endless spin never lets a test's clock settle.
-            androidx.compose.material3.CircularProgressIndicator(
-                progress = { sweepAt.coerceIn(0f, 1f) },
-                color = ink,
-                trackColor = Color.Transparent,
-                strokeWidth = size.stroke,
-                modifier = spinnerModifier,
-            )
-        } else {
-            androidx.compose.material3.CircularProgressIndicator(
-                color = ink,
-                trackColor = Color.Transparent,
-                strokeWidth = size.stroke,
-                modifier = spinnerModifier,
-            )
-        }
+        // The opening lockup (J Player, 2026-11-06): the neon glyph and the name, centred,
+        // arriving once as the app opens, over the spinner's place. The spinner keeps its own
+        // box under it, reserved from the first frame, so nothing moves when it shows.
         Column(
-            Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = maxHeight / 2 + size.spinner / 2 + size.gap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            OpeningLockup()
+            androidx.compose.foundation.layout.Spacer(Modifier.size(size.gap))
+            Box(Modifier.size(size.spinner), contentAlignment = Alignment.Center) {
+                if (spinner) {
+                    val spinnerModifier = Modifier.size(size.spinner).semantics { contentDescription = label }
+                    val ink = Color.White.copy(alpha = SPINNER_ALPHA)
+                    if (sweepAt != null) {
+                        // A test's still frame: an endless spin never lets a test's clock settle.
+                        androidx.compose.material3.CircularProgressIndicator(
+                            progress = { sweepAt.coerceIn(0f, 1f) },
+                            color = ink,
+                            trackColor = Color.Transparent,
+                            strokeWidth = size.stroke,
+                            modifier = spinnerModifier,
+                        )
+                    } else {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            color = ink,
+                            trackColor = Color.Transparent,
+                            strokeWidth = size.stroke,
+                            modifier = spinnerModifier,
+                        )
+                    }
+                }
+            }
             below()
         }
     }
+}
+
+/**
+ * The brand lockup as the app opens: the glyph and the name fade and settle in over about a
+ * second, once, while the real loading goes on underneath (nothing here delays anything: the
+ * loader leaves when the loading does, animation or not). With less motion asked for, the
+ * lockup is simply there, still. The name is white on the loader's navy ground, as in the
+ * lockup artwork; the glyph is [LogoMark], whose own glow is part of the drawing.
+ */
+@Composable
+private fun OpeningLockup() {
+    val reduced = rememberLessMotion()
+    val entry = remember { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(reduced) {
+        if (!reduced) entry.animateTo(1f, tween(OPEN_MS, easing = Motion.Standard))
+    }
+    BrandLockup(
+        size = BrandSize.Large,
+        layout = BrandLayout.Row,
+        color = Color.White,
+        modifier = Modifier.graphicsLayer {
+            alpha = entry.value
+            val scale = 0.94f + 0.06f * entry.value
+            scaleX = scale
+            scaleY = scale
+        },
+        mark = { side -> LogoMark(side) },
+    )
 }
 
 /**
@@ -161,9 +186,14 @@ fun BrandLoaderHandOff(
     )
 }
 
-/** The loader's ground: the window's own colour for this theme, whatever the wallpaper says. */
+/**
+ * The loader's ground: the mark's own dark navy, in every theme (J Player, 2026-11-06). The
+ * system's splash paints the same navy (the v31 splash theme), so splash and loader read as
+ * one sequence: navy, then the neon glyph arriving on navy, then the app. The lockup and the
+ * spinner are drawn for this ground (white name, white spinner).
+ */
 @Composable
-private fun loaderGround(): Color = TmSchemes.of(LocalDarkTheme.current, LocalPureBlack.current).background
+private fun loaderGround(): Color = Color(0xFF050C1C)
 
 /** The loader's figures for each kind of device: the spinner a little larger on a television, seen from across the room. */
 private class LoaderSizes(
@@ -186,6 +216,9 @@ private class LoaderSizes(
 }
 
 private const val EXIT_MS = 420
+
+/** How long the opening lockup takes to arrive: about a second, and never a wait added to loading. */
+private const val OPEN_MS = 900
 
 /** White, but quiet: the spinner is the only thing on the screen and should not shout. */
 private const val SPINNER_ALPHA = 0.6f

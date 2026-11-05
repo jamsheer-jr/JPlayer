@@ -27,9 +27,10 @@ import androidx.compose.ui.unit.sp
 import com.tmplayer.ui.theme.Tone
 
 /**
- * The player mark as a vector, in its own colours: the same five paths as Android's
- * `res/drawable/ic_logo.xml`, for the places that have no Android resources (the desktop's window
- * icon and its sign in pane). Drawn with `Image`, never `Icon`, which would tint it flat.
+ * The player mark as a vector, in its own colours: the same shapes as Android's
+ * `res/drawable/ic_logo.xml` (the navy tile, the neon play glyph stroked on it), for the places
+ * that have no Android resources (the desktop's window icon and its sign in pane). Drawn with
+ * `Image`, never `Icon`, which would tint it flat.
  */
 object AppLogo {
 
@@ -41,11 +42,9 @@ object AppLogo {
             viewportWidth = 1024f,
             viewportHeight = 1024f,
         ).apply {
-            layer(0xFF1E1E28, TILE)
-            layer(0xFF0E0E12, SCREEN)
-            layer(0xFF3A3A46, TRACK)
-            layer(0xFF2AABEE, PROGRESS)
-            layer(0xFFEDEDF2, PLAYHEAD_AND_TRIANGLE)
+            layer(0xFF050C1C, TILE)
+            glyph(OUTER, 52f)
+            glyph(INNER, 34f)
         }.build()
     }
 
@@ -53,23 +52,23 @@ object AppLogo {
         addPath(PathParser().parsePathString(data).toNodes(), fill = SolidColor(Color(argb)))
     }
 
+    /** One triangle of the neon glyph: no fill, a round joined cyan stroke. */
+    private fun ImageVector.Builder.glyph(data: String, width: Float) {
+        addPath(
+            PathParser().parsePathString(data).toNodes(),
+            stroke = SolidColor(Color(0xFF22E6FF)),
+            strokeLineWidth = width,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+        )
+    }
+
     private const val TILE =
         "M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 " +
             "42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 " +
             "42.666667 0 0 1-42.666667 42.666667z"
-    private const val SCREEN = "M184 64h656a120 120 0 0 1 120 120v442.666667a120 120 0 0 1-120 120H184a120 120 0 0 1-120-120V184a120 120 0 0 1 120-120z"
-    private const val TRACK =
-        "M896 896H597.333333a21.333333 21.333333 0 1 1 0-42.666667h298.666667a21.333333 21.333333 0 1 1 " +
-            "0 42.666667z"
-    private const val PROGRESS =
-        "M661.333333 896H128a21.333333 21.333333 0 1 1 0-42.666667h533.333333a21.333333 21.333333 0 1 1 " +
-            "0 42.666667z"
-    private const val PLAYHEAD_AND_TRIANGLE =
-        "M640 960c-47.04 0-85.333333-38.293333-85.333333-85.333333s38.293333-85.333333 85.333333-85.333334 " +
-            "85.333333 38.293333 85.333333 85.333334-38.293333 85.333333-85.333333 85.333333zM426.666667 " +
-            "554.666667a21.269333 21.269333 0 0 1-21.333334-21.333334V277.333333a21.333333 21.333333 0 0 1 " +
-            "33.173334-17.749333l192 128a21.333333 21.333333 0 0 1 0 35.498667l-192 128A21.333333 21.333333 " +
-            "0 0 1 426.666667 554.666667z"
+    private const val OUTER = "M350 290 L740 512 L350 734 Z"
+    private const val INNER = "M462 398 L648 512 L462 626 Z"
 }
 
 /**
@@ -113,7 +112,7 @@ class BrandSize(val mark: Dp, val name: TextUnit, val gap: Dp) {
 enum class BrandLayout { Auto, Row, Stacked }
 
 /**
- * The mark and the name "TMPlayer" together, so whoever is looking knows which app this is
+ * The mark and the name "J Player" together, so whoever is looking knows which app this is
  * (user, 2026-10-22): side by side when the row fits in the width given, otherwise the name
  * centred under the mark. [BrandBadge] ("Beta" in the browser) follows the name, under it when
  * even that line has no room. The name is never cut short.
