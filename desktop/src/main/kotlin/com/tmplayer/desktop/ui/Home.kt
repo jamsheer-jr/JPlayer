@@ -173,7 +173,7 @@ fun HomePage(state: ShellState, chats: ChatListViewModel) {
             when (row) {
                 is HomeRow.Chat -> model.request(row.chatId)
                 is HomeRow.Recent -> model.requestRecent()
-                is HomeRow.Continue, is HomeRow.WatchLater, is HomeRow.NewEpisodes -> Unit
+                is HomeRow.Continue, is HomeRow.WatchLater, is HomeRow.NewEpisodes, is HomeRow.Catalog -> Unit
             }
         },
         onArtWanted = model::requestArt,
@@ -399,7 +399,7 @@ internal fun HomeRowsView(
                                 count = row.countLabel(s),
                                 side = side,
                                 // Every loaded row opens as a page of its own.
-                                onSeeAll = if (loaded && !(row is HomeRow.Recent && row.noneChosen)) ({ openRow = row.key }) else null,
+                                onSeeAll = if (loaded && row !is HomeRow.Catalog && !(row is HomeRow.Recent && row.noneChosen)) ({ openRow = row.key }) else null,
                             )
                             if (!loaded) {
                                 PlaceholderStrip(side, sizes.card)
@@ -423,6 +423,7 @@ internal fun HomeRowsView(
                                     }
                                 }
                                 is HomeRow.Chat -> ShelfStrips(state, side, sizes, row.entries, { row.title }) { openSeries = it }
+                                is HomeRow.Catalog -> ShelfStrips(state, side, sizes, row.entries, { titles[it].orEmpty() }) { openSeries = it }
                                 is HomeRow.Recent -> if (row.noneChosen) {
                                     com.tmplayer.ui.browse.HomeNoneChosenCard(start = side, end = side)
                                 } else {

@@ -47,11 +47,44 @@ class HomeRowsTest {
         is HomeRow.Chat -> row.entries.flatMap(::idsOf)
         is HomeRow.NewEpisodes -> row.episodes.map { it.item.messageId }
         is HomeRow.Recent -> row.entries.flatMap(::idsOf)
+        is HomeRow.Catalog -> row.entries.flatMap(::idsOf)
     }
 
     private fun idsOf(entry: ShelfEntry): List<Long> = when (entry) {
         is ShelfEntry.File -> listOf(entry.item.messageId)
         is ShelfEntry.Show -> entry.series.episodes.map { it.item.messageId }
+    }
+
+    @Test
+    fun `catalog shelves group the films and one language at the foot`() {
+        val films = listOf(
+            video(1, "Alpha Malayalam 2024.mp4"),
+            video(1, "Beta Malayalam 2024.mp4"),
+            video(1, "Gamma Malayalam 2024.mp4"),
+            video(1, "Delta 2024.mp4"),
+            video(1, "Epsilon 2024.mp4"),
+            video(1, "Zeta 2024.mp4"),
+        )
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val catalog = rows.filterIsInstance<HomeRow.Catalog>()
+        assertEquals(listOf("catalog-movies", "catalog-lang-ml"), catalog.map { it.key })
+        assertEquals(6, catalog[0].entries.size)
+        assertEquals(3, catalog[1].entries.size)
+        assertEquals("Malayalam", catalog[1].label)
+        // Off in the layout, no shelves: the rows are the ones they have always been.
+        val plain = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+        )
+        assertTrue(plain.none { it is HomeRow.Catalog })
     }
 
     @Test

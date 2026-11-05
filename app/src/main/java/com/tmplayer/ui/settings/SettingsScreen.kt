@@ -1376,6 +1376,15 @@ fun SettingsScreen(
                         onToggle = { scope.launch { settings.setHomeStarredRows(!homeLayout.starredRows) } },
                     )
                 }
+                item(key = "home_catalog") {
+                    ToggleRow(
+                        title = s.settingsHomeCatalog,
+                        subtitle = if (homeLayout.catalogRows) s.settingsHomeCatalogOn else s.settingsHomeCatalogOff,
+                        icon = TmIcons.Grid,
+                        checked = homeLayout.catalogRows,
+                        onToggle = { scope.launch { settings.setHomeCatalog(!homeLayout.catalogRows) } },
+                    )
+                }
                 settingsNote { SettingsNoteText(s.settingsHomeFollowsAddedChosen) }
             }
 

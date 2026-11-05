@@ -536,6 +536,10 @@ fun home(
                 *base, "kind" to "chat", "chatId" to row.chatId.toDouble(), "title" to row.title, "loaded" to row.loaded, "starredOnly" to true,
                 "resumes" to emptyArray<String>(), "tiles" to row.entries.map(::tile).toTypedArray(),
             )
+            is HomeRow.Catalog -> plain<WebHomeRow>(
+                *base, "kind" to "catalog", "chatId" to null, "title" to row.label, "loaded" to true, "starredOnly" to false,
+                "resumes" to emptyArray<String>(), "tiles" to row.entries.map(::tile).toTypedArray(),
+            )
             // Not built where Home fills itself.
             is HomeRow.WatchLater, is HomeRow.NewEpisodes -> null
         }

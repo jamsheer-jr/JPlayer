@@ -621,12 +621,13 @@ internal fun HomePane(
                         is HomeRow.Chat -> { { onOpenChat(row.chatId) } }
                         is HomeRow.Recent -> { { seeAllKey = row.key } }
                         is HomeRow.NewEpisodes -> null
+                        is HomeRow.Catalog -> null
                     }?.takeIf { row.hasMore }
                     // On a television "See all" is the row's last tile, where Right past the last
                     // video lands, as a television's rows end (user, 2026-10-28); a phone keeps it
                     // on the heading. On the heading it took a press of its own, Up or Right, and
                     // Up stopping there made going up two presses a row.
-                    val seeAllEnd = if (touch || seeAll == null) null else SeeAllEnd(seeAll, poster = row is HomeRow.Recent || row is HomeRow.Chat)
+                    val seeAllEnd = if (touch || seeAll == null) null else SeeAllEnd(seeAll, poster = row is HomeRow.Recent || row is HomeRow.Chat || row is HomeRow.Catalog)
                     // This row's tiles, for the remote to be put back into: back from its See all
                     // page, or from the player.
                     val tilesFocus = remember { FocusRequester() }
@@ -655,7 +656,7 @@ internal fun HomePane(
                             seeAll = seeAll.takeIf { touch },
                         )
                         if (!loaded) {
-                            PlaceholderRow(start, poster = row is HomeRow.Recent || row is HomeRow.Chat)
+                            PlaceholderRow(start, poster = row is HomeRow.Recent || row is HomeRow.Chat || row is HomeRow.Catalog)
                             return@Column
                         }
                         when (row) {
@@ -732,6 +733,7 @@ internal fun HomePane(
                                 }
                             }
                             is HomeRow.Chat -> ShelfRows(row.entries, watch, touch, isFirst, first, { row.title }, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
+                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
                             is HomeRow.Recent -> if (row.noneChosen) {
                                 com.tmplayer.ui.browse.HomeNoneChosenCard(
                                     start = start,

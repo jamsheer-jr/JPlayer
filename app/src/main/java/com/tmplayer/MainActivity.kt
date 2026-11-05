@@ -1993,7 +1993,7 @@ private fun Root() {
                         when (row) {
                             is HomeRow.Chat -> homeViewModel.request(row.chatId)
                             is HomeRow.Recent -> homeViewModel.requestRecent()
-                            is HomeRow.Continue, is HomeRow.WatchLater, is HomeRow.NewEpisodes -> Unit
+                            is HomeRow.Continue, is HomeRow.WatchLater, is HomeRow.NewEpisodes, is HomeRow.Catalog -> Unit
                         }
                     },
                     onHomeArtWanted = homeViewModel::requestArt,

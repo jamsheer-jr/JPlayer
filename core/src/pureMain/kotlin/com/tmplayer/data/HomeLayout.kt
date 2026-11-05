@@ -21,6 +21,13 @@ data class HomeLayout(
     val continueWatching: Boolean = true,
     val recentlyAdded: Boolean = true,
     val starredRows: Boolean = true,
+    /**
+     * The Movies, Series and language shelves under the chat rows (J Player, 2026-11-06).
+     * False in the bare layout, so a caller that builds rows without the store's say (a test,
+     * the web build) gets the rows it has always got; the store's [of] turns it on unless the
+     * viewer turned it off.
+     */
+    val catalogRows: Boolean = false,
 ) {
     /** Whether Recently added's videos are wanted at all: for its row or for the carousel. */
     val needsRecent: Boolean get() = carousel || recentlyAdded
@@ -43,11 +50,13 @@ data class HomeLayout(
             continueWatching: Boolean?,
             recentlyAdded: Boolean?,
             starredRows: Boolean?,
+            catalogRows: Boolean? = null,
         ): HomeLayout = HomeLayout(
             carousel = carousel ?: true,
             continueWatching = continueWatching ?: true,
             recentlyAdded = recentlyAdded ?: true,
             starredRows = starredRows ?: true,
+            catalogRows = catalogRows ?: true,
         )
 
         /**

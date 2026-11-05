@@ -102,6 +102,25 @@ sealed interface HomeRow {
     ) : HomeRow {
         override val key: String get() = "recent"
 
+    /**
+     * One of the shelves under the chat rows (J Player, 2026-11-06): the films together, the
+     * series together, or one language's titles together, grouped from the same videos the
+     * chat rows draw. [kind] is "movies", "series" or "lang-" and the language code; [label]
+     * names a language shelf (a language's own name for itself in English, a proper noun the
+     * data carries, the way a chat's name is data), and is empty for Movies and Series, whose
+     * headings the screens take from the catalog. Genre and rating shelves are not built: the
+     * rows are grouped from what Home already holds, and neither a genre nor a rating is part
+     * of a [MediaItem] (they live in the online lookups, fetched per title for its own page).
+     */
+    data class Catalog(
+        val kind: String,
+        val label: String,
+        val entries: List<ShelfEntry>,
+    ) : HomeRow {
+        override val key: String get() = "catalog-$kind"
+        override val total: Int get() = entries.size
+    }
+
         /** Its See all page reads on through [chatIds], past the row's [HomeRows.LIMIT]. */
         override val hasMore: Boolean get() = loaded && chatIds.isNotEmpty() && entries.isNotEmpty()
     }
@@ -327,6 +346,64 @@ object HomeRows {
                 )
             }
         }
+        // The shelves at the foot (J Player, 2026-11-06), from every video Home's chats hold,
+        // the recent search's included: a second way through them, under the chat rows.
+        if (layout.catalogRows) {
+            val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
+                .distinctBy { it.id }
+            catalogShelves(pool, shownCopies, inContinue).forEach { add(it) }
+        }
+    }
+
+    /** Tiles a shelf needs before it is a shelf at all: fewer reads as a gap in the chat rows. */
+    const val CATALOG_MIN = 3
+
+    /** Language shelves at most, the fullest first: Home stays a screen, not a catalogue. */
+    const val CATALOG_LANGUAGES = 4
+
+    /** A language code's name, for its shelf's heading. */
+    fun languageName(code: String): String? = LANGUAGE_NAMES[code]
+
+    private val LANGUAGE_NAMES = mapOf(
+        "ml" to "Malayalam", "ta" to "Tamil", "te" to "Telugu", "hi" to "Hindi",
+        "en" to "English", "kn" to "Kannada", "mr" to "Marathi", "bn" to "Bengali",
+        "pa" to "Punjabi", "ko" to "Korean", "ja" to "Japanese", "zh" to "Chinese",
+        "es" to "Spanish", "fr" to "French", "ru" to "Russian", "de" to "German",
+        "it" to "Italian", "tr" to "Turkish", "ar" to "Arabic",
+    )
+
+    /** The language an entry's name announces, from its file (a show: its cover, else an episode). */
+    private fun languageOf(entry: ShelfEntry): String? = when (entry) {
+        is ShelfEntry.File -> VideoCopies.languagesOf(entry.item).firstOrNull()
+        is ShelfEntry.Show -> VideoCopies.languagesOf(entry.series.cover).firstOrNull()
+            ?: entry.series.episodes.firstOrNull()?.copies?.firstOrNull()?.let { VideoCopies.languagesOf(it).firstOrNull() }
+    }
+
+    /**
+     * The shelves for [build]'s foot: Movies, Series, then a shelf per language, from [pool]
+     * arranged the way a row arranges it. A title may stand in a shelf and in its chat's row:
+     * the shelves are a second way through the same videos, the way a streaming home groups
+     * them, and they leave out only what Continue watching holds. A shelf with fewer than
+     * [CATALOG_MIN] tiles is left out.
+     */
+    private fun catalogShelves(pool: List<MediaItem>, continuing: Set<String>, inProgress: Set<String>): List<HomeRow.Catalog> {
+        if (pool.isEmpty()) return emptyList()
+        val all = arranged(pool, HashSet(inProgress), continuing, inProgress)
+        if (all.isEmpty()) return emptyList()
+        return buildList {
+            val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null }
+            if (movies.size >= CATALOG_MIN) add(HomeRow.Catalog("movies", "", movies.take(LIMIT)))
+            val series = all.filterIsInstance<ShelfEntry.Show>()
+            if (series.size >= CATALOG_MIN) add(HomeRow.Catalog("series", "", series.take(LIMIT)))
+            val byLanguage = all.groupBy { languageOf(it) }
+            byLanguage.entries
+                .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }
+                .sortedWith(compareByDescending<Map.Entry<String?, List<ShelfEntry>>> { it.value.size }.thenBy { LANGUAGE_NAMES[it.key] })
+                .take(CATALOG_LANGUAGES)
+                .forEach { (code, entries) ->
+                    add(HomeRow.Catalog("lang-$code", LANGUAGE_NAMES.getValue(code!!), entries.take(LIMIT)))
+                }
+        }
     }
 
     /**
@@ -529,6 +606,7 @@ object HomeRows {
             is HomeRow.WatchLater -> row.copy(records = row.records.filter { pictured(it.chatId, it.messageId) })
             is HomeRow.NewEpisodes -> row.copy(episodes = row.episodes.filter { HomeFeatured.hasArt(it.item) })
             is HomeRow.Chat -> if (!row.loaded) return row else row.copy(entries = row.entries.filter(HomeFeatured::hasArt))
+            is HomeRow.Catalog -> row.copy(entries = row.entries.filter(HomeFeatured::hasArt))
             // The line saying no chosen chat is there stands as it is.
             is HomeRow.Recent -> if (!row.loaded || row.noneChosen) return row else row.copy(entries = row.entries.filter(HomeFeatured::hasArt))
         }
@@ -538,6 +616,7 @@ object HomeRows {
             is HomeRow.NewEpisodes -> kept.episodes.isEmpty()
             is HomeRow.Chat -> kept.entries.isEmpty()
             is HomeRow.Recent -> kept.entries.isEmpty()
+            is HomeRow.Catalog -> kept.entries.isEmpty()
         }
         return if (empty) null else kept
     }

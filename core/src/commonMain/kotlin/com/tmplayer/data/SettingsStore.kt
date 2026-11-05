@@ -83,6 +83,7 @@ private val HOME_CAROUSEL = booleanPreferencesKey("home_carousel")
 private val HOME_CONTINUE = booleanPreferencesKey("home_continue")
 private val HOME_RECENT = booleanPreferencesKey("home_recent")
 private val HOME_STARRED_ROWS = booleanPreferencesKey("home_starred_rows")
+private val HOME_CATALOG = booleanPreferencesKey("home_catalog")
 private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
 private val LAST_CHAT = longPreferencesKey("last_chat")
 private val MIN_SIZE = longPreferencesKey("min_size_bytes")
@@ -1208,6 +1209,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             continueWatching = it[HOME_CONTINUE],
             recentlyAdded = it[HOME_RECENT],
             starredRows = it[HOME_STARRED_ROWS],
+            catalogRows = it[HOME_CATALOG],
         )
     }
 
@@ -1221,6 +1223,10 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHomeStarredRows(value: Boolean) {
         prefs.edit { it[HOME_STARRED_ROWS] = value }
+    }
+
+    suspend fun setHomeCatalog(value: Boolean) {
+        prefs.edit { it[HOME_CATALOG] = value }
     }
 
     // ---- the support window ----------------------------------------------------------------
