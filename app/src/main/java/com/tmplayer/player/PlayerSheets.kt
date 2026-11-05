@@ -39,6 +39,7 @@ import com.tmplayer.data.MediaItem
 import com.tmplayer.data.VideoCopies
 import com.tmplayer.ui.browse.copyDetail
 import com.tmplayer.ui.browse.copyHeading
+import com.tmplayer.ui.browse.copySound
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
@@ -870,7 +871,8 @@ internal fun SleepSheet(
 /**
  * The copies of the video playing, as the pickers' panel lists a choice of one: each by its
  * quality and codec, with its size, length, date and (where the copies span chats) its chat under
- * that, the one playing ticked and focused. Choosing another plays it from the same moment.
+ * that, then the sound its name states and the file's own name, the one playing ticked and
+ * focused. Choosing another plays it from the same moment.
  */
 @Composable
 internal fun CopiesSheet(
@@ -896,7 +898,14 @@ internal fun CopiesSheet(
                 val ticked = here && playingQuality == 0
                 ChoiceLine(
                     title = if (here && qualities.isNotEmpty()) "${copyHeading(copy)}  ·  ${s.detailUploadQuality}" else copyHeading(copy),
-                    detail = copyDetail(copy, s, chatOf(copy).takeIf { spans }, among = copies),
+                    // Under the size line, the sound the name states (its languages and
+                    // format, as the detail page's chooser says), then the file's own name,
+                    // each on its own line under the first.
+                    detail = listOfNotNull(
+                        copyDetail(copy, s, chatOf(copy).takeIf { spans }, among = copies).ifEmpty { null },
+                        copySound(copy),
+                        copy.fileName.ifBlank { null },
+                    ).joinToString("\n"),
                     selected = ticked,
                     modifier = if (ticked) Modifier.focusRequester(focus) else Modifier,
                 ) {
