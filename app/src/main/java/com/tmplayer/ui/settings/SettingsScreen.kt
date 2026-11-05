@@ -145,7 +145,6 @@ import com.tmplayer.data.WatchCache
 import com.tmplayer.data.WatchNextPublisher
 import com.tmplayer.data.TvChannelsPublisher
 import com.tmplayer.data.WatchedStore
-import com.tmplayer.data.WhatsNew
 import com.tmplayer.data.canInstall
 import com.tmplayer.data.release
 import com.tmplayer.data.updateScheduler
@@ -181,9 +180,7 @@ import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
 import com.tmplayer.ui.theme.focusRing
 import com.tmplayer.ui.theme.rememberUiScale
-import com.tmplayer.ui.update.LinkQrDialog
 import com.tmplayer.ui.update.UpdateDialog
-import com.tmplayer.ui.update.openLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -384,24 +381,19 @@ fun SettingsScreen(
     val updateTestVersions by settings.updateTestVersions.collectAsStateWithLifecycle(initialValue = false)
     val updateAutoInstall by settings.updateAutoInstall.collectAsStateWithLifecycle(initialValue = false)
     var showUpdate by remember { mutableStateOf(false) }
-    // A link a TV cannot open, shown as a QR code instead: the address and what it is.
-    var qrLink by remember { mutableStateOf<Pair<String, String>?>(null) }
     var supporting by remember { mutableStateOf(false) }
     val supportCounters by settings.supportCounters.collectAsState(initial = SupportReminder.Counters())
-    // The language picker, the "What's new" sheet and "Report a problem", each over the list.
+    // The language picker and the other sheets, each over the list.
     var pickingLanguage by remember { mutableStateOf(false) }
     var stylingSubtitles by remember { mutableStateOf(false) }
     var showingLearnt by remember { mutableStateOf(false) }
     var trackPicker by remember { mutableStateOf<TrackLanguagePicker?>(null) }
     var pickingDecoder by remember { mutableStateOf(false) }
     var editingSizes by remember { mutableStateOf(false) }
-    var whatsNew by remember { mutableStateOf(false) }
-    var reporting by remember { mutableStateOf(false) }
     var onlineDialog by remember { mutableStateOf<OnlineDialog?>(null) }
     var editingTmdbKey by remember { mutableStateOf(false) }
     var editingOmdbKey by remember { mutableStateOf(false) }
     val language by settings.language.collectAsStateWithLifecycle(initialValue = "")
-    val openPage = { url: String, what: String -> if (!openLink(context, url)) qrLink = url to what }
     // What TMPlayer is holding, split into downloads, cache and everything else. Worked out by
     // [StorageSplit], which is also what the Downloads screen reads, so the two panels cannot
     // quote different numbers for the same disk.
@@ -1798,31 +1790,10 @@ fun SettingsScreen(
                         onClick = { scope.launch { settings.openTour() } },
                     )
                 }
-                item {
-                    ActionRow(
-                        title = s.settingsWhatsNew,
-                        subtitle = s.settingsWhatsNewDetail(WhatsNew.VERSION),
-                        icon = TmIcons.StarOutline,
-                        onClick = { whatsNew = true },
-                    )
-                }
-                item {
-                    ActionRow(
-                        title = s.settingsChangelog,
-                        subtitle = s.settingsChangelogDetail,
-                        icon = TmIcons.List,
-                        onClick = { openPage(WhatsNew.CHANGELOG, s.settingsQrChangelogPage) },
-                    )
-                }
-                item {
-                    ActionRow(
-                        title = s.settingsReportProblem,
-                        subtitle = s.settingsReportProblemDetail,
-                        icon = TmIcons.Bug,
-                        onClick = { reporting = true },
-                    )
-                }
-                // The logs to attach to that report (CP59), scrubbed of names and ids before they are written.
+                // J Player shows no What's new, Changelog or Report a problem rows here: the
+                // first two carried the upstream project's release notes and site, and the
+                // report row mailed and filed issues with the upstream project.
+                // The logs to attach to a report (CP59), scrubbed of names and ids before they are written.
                 item {
                     ActionRow(
                         title = s.logsSave,
@@ -1843,14 +1814,7 @@ fun SettingsScreen(
                         )
                     }
                 }
-                item {
-                    ActionRow(
-                        title = s.aboutPrivacy,
-                        subtitle = s.settingsPrivacyDetail(device),
-                        icon = TmIcons.Lock,
-                        onClick = { openPage(About.PRIVACY, s.settingsQrPrivacyPage) },
-                    )
-                }
+                // No Privacy row: it opened the upstream project's privacy page.
                 // The one setting that sends anything anywhere except Telegram and GitHub, and it is off
                 // until it is asked for. A build with no DSN compiled in has nowhere to send a report, so
                 // rather than offer a switch that does nothing, it is not drawn at all.
@@ -1873,15 +1837,7 @@ fun SettingsScreen(
                         )
                     }
                 }
-                item {
-                    ActionRow(
-                        title = s.aboutLawfulUse,
-                        subtitle = s.aboutLawfulUseDetail,
-                        icon = TmIcons.Gavel,
-                        onClick = { openPage(About.LEGAL, s.settingsQrLawfulUsePage) },
-                    )
-                }
-
+                // No Lawful use row either: it opened the upstream project's legal page.
                 if (SupportReminder.enabled) {
                     item {
                         ActionRow(
@@ -2178,7 +2134,6 @@ fun SettingsScreen(
         list()
     }
 
-    qrLink?.let { (url, what) -> LinkQrDialog(url = url, what = what, onClose = { qrLink = null }) }
     if (supporting) SupportDialog(from = "settings", onClose = { supporting = false })
     if (pickingLanguage) LanguageDialog(settings, onClose = { pickingLanguage = false })
     if (showingLearnt) {
@@ -2238,16 +2193,6 @@ fun SettingsScreen(
             onClose = { editingSizes = false },
         )
     }
-    if (whatsNew) {
-        WhatsNewDialog(
-            onClose = { whatsNew = false },
-            onChangelog = {
-                whatsNew = false
-                openPage(WhatsNew.CHANGELOG, s.settingsQrChangelogPage)
-            },
-        )
-    }
-    if (reporting) FeedbackDialog(onClose = { reporting = false })
     onlineDialog?.let { OnlineSubtitlesDialog(it, onClose = { onlineDialog = null }) }
     if (editingTmdbKey) MetadataKeyDialog(onClose = { editingTmdbKey = false })
     if (editingOmdbKey) OmdbKeyDialog(onClose = { editingOmdbKey = false })

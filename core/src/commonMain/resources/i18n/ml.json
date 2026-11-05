@@ -2231,7 +2231,7 @@
     "unofficial": "അനൗദ്യോഗിക ആപ്പ്"
   },
   "settings": {
-    "about": "TMPlayer-നെക്കുറിച്ച്",
+    "about": "J Player-നെക്കുറിച്ച്",
     "about_detail": "പതിപ്പ് {version}, ലൈസൻസ്, അറിയിപ്പുകൾ, ബന്ധപ്പെടൽ, പിന്തുണ",
     "accent": "ആക്സന്റ് നിറം",
     "accent_detail": "ബട്ടണുകൾ, ഹൈലൈറ്റുകൾ, പ്രോഗ്രസ് എന്നിവയുടെ നിറം",
@@ -2457,8 +2457,8 @@
     "open_last_chat_unnamed": "നിങ്ങൾ അവസാനം കണ്ട ചാറ്റ് തുറക്കും",
     "open_last_detail": "ചാറ്റ് പട്ടികയ്ക്ക് പകരം നിർത്തിയിടത്ത് നിന്ന് തുടങ്ങുക",
     "page_about": "വിവരങ്ങളും സഹായവും",
-    "page_about_backup_summary": "TMPlayer {version}, അപ്ഡേറ്റുകൾ, സഹായം, ബാക്കപ്പ്, സ്വകാര്യത",
-    "page_about_summary": "TMPlayer {version}, അപ്ഡേറ്റുകൾ, സഹായം, സ്വകാര്യത",
+    "page_about_backup_summary": "J Player {version}, അപ്ഡേറ്റുകൾ, സഹായം, ബാക്കപ്പ്, സ്വകാര്യത",
+    "page_about_summary": "J Player {version}, അപ്ഡേറ്റുകൾ, സഹായം, സ്വകാര്യത",
     "page_account": "അക്കൗണ്ടും സുരക്ഷയും",
     "page_account_summary": "ആപ്പ് ലോക്ക്, ബന്ധിപ്പിച്ച ഉപകരണങ്ങൾ, സൈൻ ഔട്ട്",
     "page_appearance": "രൂപഭാവവും ഭാഷയും",

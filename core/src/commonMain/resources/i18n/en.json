@@ -2246,7 +2246,7 @@
     "unofficial": "Unofficial app"
   },
   "settings": {
-    "about": "About TMPlayer",
+    "about": "About J Player",
     "about_detail": "Version {version}, licence, notices, contact and support",
     "accent": "Accent colour",
     "accent_detail": "The colour of buttons, highlights and progress",
@@ -2472,8 +2472,8 @@
     "open_last_chat_unnamed": "Opens the chat you watched last",
     "open_last_detail": "Start where you left off rather than on the chat list",
     "page_about": "About and help",
-    "page_about_backup_summary": "TMPlayer {version}, updates, help, backup and privacy",
-    "page_about_summary": "TMPlayer {version}, updates, help and privacy",
+    "page_about_backup_summary": "J Player {version}, updates, help, backup and privacy",
+    "page_about_summary": "J Player {version}, updates, help and privacy",
     "page_account": "Account and security",
     "page_account_summary": "App lock, connected devices and sign out",
     "page_appearance": "Appearance and language",
