@@ -5,7 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.text.Cue
-import androidx.media3.common.text.TextOutput
+import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ForwardingRenderer
 import androidx.media3.exoplayer.Renderer
