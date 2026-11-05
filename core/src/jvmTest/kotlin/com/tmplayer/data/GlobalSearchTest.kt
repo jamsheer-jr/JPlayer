@@ -320,6 +320,26 @@ class GlobalSearchTest {
     }
 
     @Test
+    fun `480p and 360p are filters of their own, told apart inside SD`() {
+        assertEquals(SearchQuality.Sd480, q("480p").quality)
+        assertEquals(SearchQuality.Sd360, q("night train 360p").quality)
+        val groups = GlobalSearch.merge(
+            emptyList(),
+            listOf(
+                video(1, 1, "Night.Train.2019.720p.mkv"),
+                video(2, 2, "Night.Train.2019.480p.mkv"),
+                video(3, 3, "Night.Train.2019.360p.mkv"),
+            ),
+            q("2019"),
+        )
+        assertEquals(listOf(2L), GlobalSearch.filter(groups, SearchFilters(quality = SearchQuality.Sd480)).flatMap { it.copies }.map { it.messageId })
+        assertEquals(listOf(3L), GlobalSearch.filter(groups, SearchFilters(quality = SearchQuality.Sd360)).flatMap { it.copies }.map { it.messageId })
+        assertTrue(GlobalSearch.qualityRank("480P") > GlobalSearch.qualityRank("360P"))
+        assertTrue(GlobalSearch.qualityRank("720P") > GlobalSearch.qualityRank("480P"))
+        assertTrue(GlobalSearch.qualityRank("360P") > GlobalSearch.qualityRank("SD"))
+    }
+
+    @Test
     fun `says which filter hides everything`() {
         val groups = GlobalSearch.merge(emptyList(), listOf(video(1, 1, "Night.Train.2019.720p.mkv")), q("night train"))
         assertEquals(

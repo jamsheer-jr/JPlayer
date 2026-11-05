@@ -38,6 +38,8 @@ enum class SearchQuality(val tag: String?) {
     UHD("4K"),
     FullHd("1080p"),
     Hd("720p"),
+    Sd480("480p"),
+    Sd360("360p"),
 }
 
 /** The order of the results. Only [BestMatch] is Telegram's question; the rest reorder what came back. */
@@ -97,6 +99,8 @@ data class SearchQuery(
             "4k", "2160p", "uhd" -> SearchQuality.UHD
             "1080p", "1080i" -> SearchQuality.FullHd
             "720p" -> SearchQuality.Hd
+            "480p" -> SearchQuality.Sd480
+            "360p" -> SearchQuality.Sd360
             else -> null
         }
     }
@@ -511,11 +515,41 @@ object GlobalSearch {
             ?: MediaFacts.resolutionOf(item.width, item.height)
 
     fun qualityRank(quality: String): Int = when (quality.uppercase()) {
-        "4K" -> 4
-        "1080P" -> 3
-        "720P" -> 2
+        "4K" -> 6
+        "1080P" -> 5
+        "720P" -> 4
+        "480P" -> 3
+        "360P" -> 2
         "SD" -> 1
         else -> 0
+    }
+
+    /**
+     * The small picture sizes told apart, which [qualityOf] folds into one "SD": "480p" or
+     * "360p" from the name, or from the stated size when the name says neither (a short side of
+     * 380 or under reads as 360p, up to 560 as 480p). Null when the copy is not SD at all, or is
+     * SD with nothing saying which of the two it is.
+     */
+    fun sdQualityOf(item: MediaItem): String? {
+        val name = (if (item.fileName.isBlank()) item.title else item.fileName).lowercase()
+        when {
+            name.contains("480p") -> return "480p"
+            name.contains("360p") -> return "360p"
+        }
+        if (qualityOf(item) != "SD") return null
+        if (item.width <= 0 || item.height <= 0) return null
+        return when (minOf(item.width, item.height)) {
+            in 1..380 -> "360p"
+            in 381..560 -> "480p"
+            else -> null
+        }
+    }
+
+    /** Whether [item] passes the [quality] filter: the two small sizes read [sdQualityOf]. */
+    private fun matchesQuality(item: MediaItem, quality: SearchQuality): Boolean = when (quality) {
+        SearchQuality.Any -> true
+        SearchQuality.Sd480, SearchQuality.Sd360 -> sdQualityOf(item) == quality.tag
+        else -> qualityOf(item) == quality.tag
     }
 
     /**
@@ -528,7 +562,7 @@ object GlobalSearch {
         if (quality == SearchQuality.Any && !filters.hideSmall) return groups
         return groups.mapNotNull { group ->
             val kept = group.copies.filter { copy ->
-                (quality.tag == null || qualityOf(copy) == quality.tag) &&
+                matchesQuality(copy, quality) &&
                     (!filters.hideSmall || SizeFilter.matches(copy.sizeBytes, SizeFilter.DEFAULT_MIN, SizeFilter.DEFAULT_MAX))
             }
             when {
