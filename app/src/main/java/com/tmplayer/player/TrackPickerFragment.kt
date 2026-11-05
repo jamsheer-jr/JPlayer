@@ -79,12 +79,10 @@ import com.tmplayer.online.SubtitleNotice
 import com.tmplayer.online.SubtitleTarget
 import com.tmplayer.online.SubtitleTranslator
 import com.tmplayer.ui.components.ChoiceLine
-import com.tmplayer.ui.components.ChoiceColumns
 import com.tmplayer.ui.components.ChoiceList
 import com.tmplayer.ui.components.ChoiceSection
 import com.tmplayer.ui.components.ChoiceSheet
 import com.tmplayer.ui.components.FocusOnOpen
-import com.tmplayer.ui.components.LocalChoiceWide
 import com.tmplayer.ui.components.isTouch
 import com.tmplayer.ui.icons.TmIcons
 import com.tmplayer.ui.theme.Corner
@@ -556,14 +554,11 @@ class TrackPickerFragment : Fragment() {
         } else {
             null
         }
-        // A landscape phone sets the tracks (and Search online) beside the timing and the look,
-        // each half scrolling on its own, rather than one long list three lines of it at a time.
-        if (LocalChoiceWide.current && choose.isNotEmpty() && adjust.isNotEmpty()) {
-            ChoiceColumns(
-                start = { LineRows(choose, firstFocus, focusKey) },
-                end = { if (touchAdjust != null) touchAdjust() else LineRows(adjust, firstFocus, focusKey) },
-            )
-        } else if (touchAdjust != null) {
+        // One column on every screen (J Player, 2026-11-06): the tracks and Search online first,
+        // then the timing and the look under them. The panel used to split a landscape phone into
+        // two half columns, which read as clutter; a single scrolling column keeps every control
+        // and is simpler to walk, by finger and by remote alike.
+        if (touchAdjust != null) {
             ChoiceList {
                 LineRows(choose, firstFocus, focusKey)
                 touchAdjust()
