@@ -35,8 +35,8 @@ import java.util.Locale
  *   and AI translations are left out unless the viewer has switched them on.
  * - **Never in the way.** A refused key turns the provider off with a sentence saying so
  *   ([SubtitleNotice.Unavailable]) until an update brings a new key; a 429 backs off and tries
- *   once more; whatever is cached keeps working; an optional SubDL key of the viewer's own is the
- *   fallback.
+ *   once more; whatever is cached keeps working; an optional SubDL key, the viewer's own or the
+ *   build's, is the fallback.
  * - **Polite.** Five requests a second at most and one sign in a second ([RateLimiter]); one
  *   search per video at a time; everything kept in [cache] for up to six months.
  */
@@ -50,6 +50,11 @@ class OnlineSubtitles(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
     /** The build's key for TMPlayer's subtitle gateway; blank and MSone is not offered at all. */
     msoneKey: String = "",
+    /**
+     * A SubDL key of the build's own, the fallback for a viewer who has not entered one of
+     * their own under Settings. Blank and only a viewer's own key works, as before.
+     */
+    private val buildSubdlKey: String = "",
 ) {
     private val userAgent = "TMPlayer v$appVersion"
     private val api = OpenSubtitlesApi(
@@ -61,6 +66,7 @@ class OnlineSubtitles(
     )
     private val subdl = SubdlApi(http, RateLimiter(200, now, sleep), userAgent)
     private val msone = MsoneApi(http, RateLimiter(500, now, sleep), userAgent, msoneKey)
+    private val translator = SubtitleTranslator(http)
 
     /** Whether this build can reach MSone at all: it has the gateway's key. */
     val msoneInBuild: Boolean = msoneKey.isNotBlank()
@@ -78,8 +84,12 @@ class OnlineSubtitles(
     private val keyPrint: String = MessageDigest.getInstance("SHA-256")
         .digest(apiKey.toByteArray()).take(6).joinToString("") { "%02x".format(it) }
 
-    /** Whether this build carries an app key at all. Without one the feature is not drawn. */
-    val inBuild: Boolean get() = apiKey.isNotBlank()
+    /**
+     * Whether this build carries any provider key at all: OpenSubtitles, a build SubDL key or
+     * the MSone gateway. Without one the feature is not drawn. A build may carry SubDL only
+     * (J Player does): the feature shows, and OpenSubtitles is simply never asked.
+     */
+    val inBuild: Boolean get() = apiKey.isNotBlank() || buildSubdlKey.isNotBlank() || msoneInBuild
 
     val account: StateFlow<OnlineAccount> get() = store.account
 
@@ -134,6 +144,26 @@ class OnlineSubtitles(
     }
 
     fun setIncludeMachine(value: Boolean) = store.update { it.copy(includeMachine = value) }
+
+    /** Keeps the language subtitles are translated into as they arrive; blank turns it off. */
+    fun setTranslateTo(code: String) = store.update { it.copy(translateTo = code.trim().lowercase(Locale.ROOT)) }
+
+    /**
+     * The language [hit] is to be translated into, or null: translation off, or the subtitle is
+     * already in that language (translating English into English only spends time).
+     */
+    private fun translateTarget(hit: SubtitleHit): String? {
+        val target = store.now.translateTo
+        if (target.isBlank()) return null
+        return target.takeUnless { SubtitleTranslator.sameLanguage(it, iso1(hit.language) ?: hit.language) }
+    }
+
+    /** The cache id of [hit]'s translated file: the hit's own id and the language, kept apart. */
+    private fun translatedKey(hit: SubtitleHit, target: String): String = "${hit.id}|$target"
+
+    /** The track name of a translated download: its new language, and where it came from. */
+    private fun translatedLabel(hit: SubtitleHit, target: String): String =
+        L.onlineTrackLabel(languageName(target), hit.provider.label)
 
     /**
      * Keeps [key] as the viewer's SubDL key. The word `msone` is not a key: it hides MSone's search
@@ -207,7 +237,7 @@ class OnlineSubtitles(
         fun settles(found: List<SubtitleHit>): Boolean = relevant(found, parsed).isNotEmpty()
         if (keyRefused(a)) {
             problem = SubtitleNotice.Unavailable
-        } else {
+        } else if (apiKey.isNotBlank()) {
             for ((key, query) in queries) {
                 val cached = cache.search(key)
                 if (cached != null) {
@@ -244,10 +274,12 @@ class OnlineSubtitles(
         }
         hits = hits.filter { machine || !it.machine }
 
-        // SubDL, when the viewer has a key and OpenSubtitles came back empty handed or cannot
-        // hand over a file today.
+        // SubDL, when there is a key for it and OpenSubtitles came back empty handed or cannot
+        // hand over a file today. The key is the viewer's own when they have entered one, and
+        // the build's own key otherwise.
         var subdlProblem: SubtitleNotice? = null
-        val fallback = a.subdlKey.isNotBlank() && !a.subdlRefused && name.isNotBlank() &&
+        val subdlKey = a.subdlKey.ifBlank { buildSubdlKey }
+        val fallback = subdlKey.isNotBlank() && !a.subdlRefused && name.isNotBlank() &&
             (hits.isEmpty() || problem != null || a.quotaUsed(now()) || a.anonQuotaUsed(now()))
         if (fallback) {
             val key = "subdl|${name.lowercase(Locale.ROOT)}|${parsed.season}|${parsed.episode}$tail"
@@ -256,7 +288,7 @@ class OnlineSubtitles(
                 hits = hits + cached
                 fromCache = fromCache || hits.isNotEmpty()
             } else {
-                when (val reply = withBackoff { subdl.search(a.subdlKey, name, parsed.season, parsed.episode, languages) }) {
+                when (val reply = withBackoff { subdl.search(subdlKey, name, parsed.season, parsed.episode, languages) }) {
                     is Reply.Ok -> {
                         cache.putSearch(key, reply.value)
                         hits = hits + reply.value
@@ -310,7 +342,25 @@ class OnlineSubtitles(
      * spends nothing; otherwise this is the call that uses one of the day's downloads.
      */
     suspend fun download(hit: SubtitleHit, target: SubtitleTarget? = null): DownloadResult {
-        cache.file(hit.provider, hit.id)?.let { return DownloadResult.Done(it, label(hit), fromCache = true) }
+        val wanted = translateTarget(hit)
+        if (wanted == null) {
+            cache.file(hit.provider, hit.id)?.let { return DownloadResult.Done(it, label(hit), fromCache = true) }
+        } else {
+            cache.file(hit.provider, translatedKey(hit, wanted))?.let {
+                return DownloadResult.Done(it, translatedLabel(hit, wanted), fromCache = true)
+            }
+            // The subtitle itself is already here: translating it now spends no download.
+            cache.file(hit.provider, hit.id)?.let { cached ->
+                val translated = runCatching {
+                    SubtitleText.Text(SubtitleText.extensionOf(cached.name), cached.readText())
+                }.getOrNull()?.let { translator.translate(it, wanted) }
+                val file = translated?.let {
+                    runCatching { cache.putFile(hit.provider, translatedKey(hit, wanted), it) }.getOrNull()
+                }
+                if (file != null) return DownloadResult.Done(file, translatedLabel(hit, wanted), fromCache = true)
+                return DownloadResult.Done(cached, label(hit), fromCache = true)
+            }
+        }
         return when (hit.provider) {
             SubtitleProvider.OpenSubtitles -> downloadOpenSubtitles(hit)
             SubtitleProvider.Subdl -> downloadSubdl(hit, target)
@@ -325,11 +375,15 @@ class OnlineSubtitles(
      * The lists grey out what this names, and say why above them.
      */
     fun blockedFor(hit: SubtitleHit, a: OnlineAccount = store.now): SubtitleNotice? {
+        // Kept here in either shape, the subtitle as it came or its translation: both download
+        // for nothing, so neither is blocked by a quota or a refused key.
+        val kept = cache.file(hit.provider, hit.id) != null ||
+            translateTarget(hit)?.let { cache.file(hit.provider, translatedKey(hit, it)) != null } == true
         if (hit.provider == SubtitleProvider.Msone) {
             return SubtitleNotice.MsoneOff(a.msoneState, a.msone.message)
-                .takeIf { a.msoneState != MsoneState.On && cache.file(hit.provider, hit.id) == null }
+                .takeIf { a.msoneState != MsoneState.On && !kept }
         }
-        if (hit.provider != SubtitleProvider.OpenSubtitles || cache.file(hit.provider, hit.id) != null) return null
+        if (hit.provider != SubtitleProvider.OpenSubtitles || kept) return null
         if (keyRefused(a)) return SubtitleNotice.Unavailable
         return downloadBlock(a)
     }
@@ -419,13 +473,27 @@ class OnlineSubtitles(
         }
     }
 
-    private fun save(hit: SubtitleHit, text: SubtitleText.Text?, key: String = hit.id): DownloadResult {
+    private suspend fun save(hit: SubtitleHit, text: SubtitleText.Text?, key: String = hit.id): DownloadResult {
         if (text == null) return DownloadResult.Failed(SubtitleNotice.Unreadable)
+        // Translation sits here, on the way into the cache, so the translated file is what is
+        // kept and what every platform reads, under a key of its own: the original stays cached
+        // under the hit's key for the day translation is off or the language changes. A failed
+        // translation keeps the original rather than costing the viewer the subtitle.
+        val wanted = translateTarget(hit)
+        val translated = if (wanted != null) translator.translate(text, wanted) else null
+        if (translated != null) {
+            // The original is kept under its own key as well, best effort, so turning
+            // translation off does not spend another of the day's downloads fetching it again.
+            runCatching { cache.putFile(hit.provider, key, text) }
+        }
+        val keptText = translated ?: text
+        val keptKey = if (translated != null && wanted != null) translatedKey(hit, wanted) else key
         // A full disk or a folder gone is a failed download (HX10), not an exception for the picker.
-        val file = runCatching { cache.putFile(hit.provider, key, text) }
+        val file = runCatching { cache.putFile(hit.provider, keptKey, keptText) }
             .onFailure { com.tmplayer.platform.Logger.w("OnlineSubtitles", "subtitle not saved: ${it.message}") }
             .getOrNull() ?: return DownloadResult.Failed(SubtitleNotice.Unreadable)
-        return DownloadResult.Done(file, label(hit), fromCache = false)
+        val name = if (translated != null && wanted != null) translatedLabel(hit, wanted) else label(hit)
+        return DownloadResult.Done(file, name, fromCache = false)
     }
 
     // ---- MSone -----------------------------------------------------------------------------

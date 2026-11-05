@@ -5505,6 +5505,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     override val pickSubtitleFile: (() -> Unit)?
         get() = if (FormFactor.isTv(this)) null else ({ subtitleFiles.pick() })
 
+    override val loadSubtitleUrl: (() -> Unit)
+        get() = { showSheet { it.showSubtitleUrl { link -> subtitleFiles.loadFromUrl(link) } } }
+
     fun showTrackPicker(trackType: Int) {
         TrackPickerFragment.show(supportFragmentManager, R.id.overlay_container, trackType)
     }
@@ -6345,6 +6348,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             PhoneMenuEntry.SaveFrame -> saveFrame()
             PhoneMenuEntry.OpenInAnotherApp -> openInAnotherApp()
             PhoneMenuEntry.LoadSubtitleFile -> subtitleFiles.pick()
+            PhoneMenuEntry.LoadSubtitleUrl -> showSheet { it.showSubtitleUrl { link -> subtitleFiles.loadFromUrl(link) } }
             PhoneMenuEntry.SaveToDownloads -> saveToDownloads()
             PhoneMenuEntry.MarkWatched -> toggleWatched()
             PhoneMenuEntry.ResetZoom -> resetZoom()

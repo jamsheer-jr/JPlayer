@@ -4,5 +4,5 @@
       The promo build installs beside the real one, and on a launcher two identical names is a
       coin toss over which icon is the app and which is the one that only takes screenshots.
     -->
-    <string name="app_name">TMPlayer Promo</string>
+    <string name="app_name">J Player Promo</string>
 </resources>

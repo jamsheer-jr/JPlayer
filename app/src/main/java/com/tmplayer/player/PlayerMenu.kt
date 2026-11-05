@@ -108,6 +108,7 @@ enum class PhoneMenuEntry {
     Bookmarks,
     OpenInAnotherApp,
     LoadSubtitleFile,
+    LoadSubtitleUrl,
     SaveToDownloads,
     MarkWatched,
     /** Last: a line for bug reports, not for watching. */
@@ -145,6 +146,7 @@ fun PhoneMenuEntry.label(
     PhoneMenuEntry.SaveFrame -> L.playerSaveFrame
     PhoneMenuEntry.OpenInAnotherApp -> L.playerOpenInAnotherApp
     PhoneMenuEntry.LoadSubtitleFile -> L.playerLoadSubtitleFile
+    PhoneMenuEntry.LoadSubtitleUrl -> L.playerLoadSubtitleUrl
     PhoneMenuEntry.SaveToDownloads -> L.playerSaveToDownloads
     PhoneMenuEntry.MarkWatched -> if (watched) L.playerMarkUnwatched else L.playerMarkWatched
     PhoneMenuEntry.AddBookmark -> L.playerAddBookmark
@@ -282,6 +284,7 @@ object PlayerMenu {
         }
         if (openInAnotherApp) add(PhoneMenuEntry.OpenInAnotherApp)
         add(PhoneMenuEntry.LoadSubtitleFile)
+        add(PhoneMenuEntry.LoadSubtitleUrl)
         if (saveToDownloads) add(PhoneMenuEntry.SaveToDownloads)
         if (markWatched) add(PhoneMenuEntry.MarkWatched)
         add(PhoneMenuEntry.PlaybackDetails)

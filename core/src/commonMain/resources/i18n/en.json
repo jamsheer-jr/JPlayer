@@ -1607,6 +1607,10 @@
     "subdl_title": "Your SubDL key",
     "title": "Online subtitles",
     "track_label": "{language} · {provider}",
+    "translate_detail": "Subtitles downloaded or loaded are translated into this language. The timings stay as they are, and the original file is not changed.",
+    "translate_off": "Off. Subtitles are shown as they come",
+    "translate_on": "Subtitles are translated to {language}",
+    "translate_title": "Translate subtitles",
     "unknown_language": "Unknown language",
     "username": "Username",
     "wrong_password": "OpenSubtitles didn't accept that username and password"
@@ -1854,6 +1858,7 @@
     "lighter_picked_slow": "Playing Telegram's {quality} for a slow connection",
     "lighter_picked_software": "Playing Telegram's {quality}, which plays smoothly on this device. Copies has the original",
     "load_subtitle_file": "Load a subtitle file",
+    "load_subtitle_url": "Load subtitles from a link",
     "loader_finding": "Finding {time}",
     "loader_reading": "Reading the video",
     "loader_starting": "Starting",
@@ -2071,6 +2076,9 @@
     "subtitle_delay": "Subtitle delay {delay}",
     "subtitle_load_failed": "Could not load {file}",
     "subtitle_style_and_timing": "Subtitle style and timing",
+    "subtitle_url_hint": "https://…",
+    "subtitle_url_message": "Paste a link to a subtitle file (.srt, .ass, .ssa, .vtt or .sub). It is downloaded and shown over this video.",
+    "subtitle_url_title": "Load subtitles from a link",
     "subtitles": "Subtitles",
     "subtitles_hint": "Subtitles (V, C)",
     "subtitles_off": "Subtitles off",
@@ -3019,7 +3027,13 @@
     "subtitles": "Subtitles",
     "subtitles_earlier": "Show subtitles earlier",
     "subtitles_later": "Show subtitles later",
-    "track_number": "Track {number}"
+    "track_number": "Track {number}",
+    "translate_failed": "Couldn't translate the subtitles, so the ones as they came are shown",
+    "translating": "Translating subtitles…",
+    "url_downloading": "Getting subtitles from the link…",
+    "url_failed": "Couldn't download from that link. Check the link and your connection, then try again",
+    "url_invalid": "That link can't be used. Paste a full link starting with http:// or https://",
+    "url_not_subtitle": "That link didn't give a subtitle file. The link has to point to a .srt, .ass, .ssa, .vtt or .sub file"
   },
   "tv": {
     "browse_hint": "OK opens a chat or plays a video. Hold OK on a chat to add it to your favourites. Back goes up a level.",

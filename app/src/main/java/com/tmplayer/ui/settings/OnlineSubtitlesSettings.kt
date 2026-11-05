@@ -41,7 +41,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 
 /** Which of the section's prompts is open over Settings. */
-enum class OnlineDialog { SignIn, SignOut, SubdlKey }
+enum class OnlineDialog { SignIn, SignOut, SubdlKey, Translate }
 
 /**
  * Settings, Online subtitles: the viewer's OpenSubtitles account with what is left of today's
@@ -53,6 +53,7 @@ internal fun LazyListScope.onlineSubtitlesSection(onDialog: (OnlineDialog) -> Un
     sectionTitle { LocalStrings.current.onlineTitle }
     item { AccountRow(onDialog) }
     item { MachineRow() }
+    item { TranslateRow(onDialog) }
     item { SubdlRow(onDialog) }
     item { MsoneRow() }
     item { CacheRow() }
@@ -139,6 +140,27 @@ private fun MachineRow() {
         icon = TmIcons.Language,
         checked = account.includeMachine,
         onToggle = { online.setIncludeMachine(!account.includeMachine) },
+    )
+}
+
+/**
+ * The language subtitles are translated into as they are downloaded or loaded: the same
+ * setting the subtitle picker's Translate page writes, here with the languages as a list.
+ */
+@Composable
+private fun TranslateRow(onDialog: (OnlineDialog) -> Unit) {
+    val s = LocalStrings.current
+    val online = OnlineSubtitles.current ?: return
+    val account by online.account.collectAsState()
+    ActionRow(
+        title = s.onlineTranslateTitle,
+        subtitle = if (account.translateTo.isBlank()) {
+            s.onlineTranslateOff
+        } else {
+            s.onlineTranslateOn(OnlineSubtitles.languageName(account.translateTo))
+        },
+        icon = TmIcons.Language,
+        onClick = { onDialog(OnlineDialog.Translate) },
     )
 }
 
@@ -275,6 +297,36 @@ fun OnlineSubtitlesDialog(dialog: OnlineDialog, onClose: () -> Unit) {
                 }
             },
         )
+        OnlineDialog.Translate -> {
+            val current = online.store.now.translateTo
+            com.tmplayer.ui.components.ChoiceSheet(
+                title = s.onlineTranslateTitle,
+                note = s.onlineTranslateDetail,
+                onDismiss = onClose,
+                onClose = onClose,
+            ) {
+                com.tmplayer.ui.components.ChoiceList {
+                    com.tmplayer.ui.components.ChoiceLine(
+                        title = s.commonOff,
+                        selected = current.isBlank(),
+                        onClick = {
+                            online.setTranslateTo("")
+                            onClose()
+                        },
+                    )
+                    com.tmplayer.online.SubtitleTranslator.LANGUAGES.forEach { code ->
+                        com.tmplayer.ui.components.ChoiceLine(
+                            title = OnlineSubtitles.languageName(code),
+                            selected = current == code,
+                            onClick = {
+                                online.setTranslateTo(code)
+                                onClose()
+                            },
+                        )
+                    }
+                }
+            }
+        }
         OnlineDialog.SubdlKey -> {
             var key by remember { mutableStateOf(online.store.now.subdlKey) }
             TvConfirm(

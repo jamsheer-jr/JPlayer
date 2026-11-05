@@ -25,6 +25,12 @@ data class OnlineAccount(
     /** Signed in once, then OpenSubtitles stopped taking the token. */
     val expired: Boolean = false,
     val includeMachine: Boolean = false,
+    /**
+     * The language subtitles are translated into as they are downloaded or loaded, by ISO code
+     * ("ml"); blank is off. Applies to every source: the providers here, and a file or a link
+     * the viewer loads over a video.
+     */
+    val translateTo: String = "",
     val subdlKey: String = "",
     val subdlRefused: Boolean = false,
     val rejectedKey: String = "",
@@ -85,6 +91,7 @@ class OnlineSubtitlesStore(private val file: File) {
             resetAt = l("reset_at"),
             expired = s("expired") == "true",
             includeMachine = s("include_machine") == "true",
+            translateTo = s("translate_to"),
             subdlKey = s("subdl_key"),
             subdlRefused = s("subdl_refused") == "true",
             rejectedKey = s("rejected_key"),
@@ -109,6 +116,7 @@ class OnlineSubtitlesStore(private val file: File) {
         p["reset_at"] = a.resetAt.toString()
         p["expired"] = a.expired.toString()
         p["include_machine"] = a.includeMachine.toString()
+        p["translate_to"] = a.translateTo
         p["subdl_key"] = a.subdlKey
         p["subdl_refused"] = a.subdlRefused.toString()
         p["rejected_key"] = a.rejectedKey

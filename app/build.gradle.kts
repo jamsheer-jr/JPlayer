@@ -95,7 +95,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.tmplayer"
+        applicationId = "com.jplayer.app"
         // Android 6. The floor is the highest minSdk among the libraries (TDLib's tdl-coroutines,
         // Media3, nextlib, Compose, AndroidX and the Cast framework all declare 23), so older TVs
         // such as the Fire TV Stick 4K on Fire OS 6 (Android 7.1) and the Android 6 and 7 boxes
@@ -144,6 +144,15 @@ android {
             ?: System.getenv("MSONE_GATEWAY_KEY")
             ?: ""
         buildConfigField("String", "MSONE_GATEWAY_KEY", "\"$msoneKey\"")
+        // A SubDL key of the build's own. SubDL keys are otherwise the viewer's own, entered
+        // under Settings, Online subtitles; this one is only the fallback for a viewer who has
+        // not entered one (OnlineSubtitles). Optional: a build without it behaves exactly as
+        // before. Set SUBDL_API_KEY in local.properties or the environment; CI takes it from
+        // the repository secret.
+        val subdlKey = localProps.getProperty("SUBDL_API_KEY")
+            ?: System.getenv("SUBDL_API_KEY")
+            ?: ""
+        buildConfigField("String", "SUBDL_API_KEY", "\"$subdlKey\"")
         // The TMDB key for posters and overviews. Optional: a build without it still finds shows on
         // TVmaze and anime on AniList, and Settings asks for a key of the viewer's own for films.
         // Set TMDB_API_KEY in local.properties or the environment; CI takes it from the secret.

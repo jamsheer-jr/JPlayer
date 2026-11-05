@@ -3,5 +3,5 @@
     <!--
       The preview build installs beside the real one, so its name says which icon is which.
     -->
-    <string name="app_name">TMPlayer Test</string>
+    <string name="app_name">J Player Test</string>
 </resources>

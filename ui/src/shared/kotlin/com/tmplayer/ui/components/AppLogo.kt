@@ -94,7 +94,7 @@ fun BrandBadge(modifier: Modifier = Modifier) {
 }
 
 /** The app's name beside its mark. A brand, never translated. */
-const val BRAND_NAME = "TMPlayer"
+const val BRAND_NAME = "J Player"
 
 /**
  * How large a [BrandLockup] is drawn: the mark's side, the name's type to go with it, and the

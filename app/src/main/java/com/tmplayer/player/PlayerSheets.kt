@@ -105,6 +105,9 @@ class PlayerSheets(
             val onAnswer: (useLighter: Boolean?, dontAsk: Boolean) -> Unit,
         ) : Sheet
 
+        /** A link to a subtitle file, pasted by the viewer, for the video playing. */
+        class SubtitleUrl(val onSubmit: (String) -> Unit) : Sheet
+
         /** The copies of the video playing, [playing] ticked. */
         class Copies(
             val copies: List<MediaItem>,
@@ -191,6 +194,11 @@ class PlayerSheets(
         sheet.value = Sheet.HeavyAsk(codec, device, lighter, onAnswer)
     }
 
+    /** Asks for a link to a subtitle file; [onSubmit] gets the pasted address, trimmed. */
+    fun showSubtitleUrl(onSubmit: (String) -> Unit) {
+        sheet.value = Sheet.SubtitleUrl(onSubmit)
+    }
+
     /** Every copy of the video playing; choosing another plays it from the same moment. */
     fun showCopies(
         copies: List<MediaItem>,
@@ -273,6 +281,36 @@ class PlayerSheets(
                 playingQuality = shown.playingQuality,
                 onQuality = { close(); shown.onQuality(it) },
             )
+            is Sheet.SubtitleUrl -> {
+                val s = LocalStrings.current
+                var link by remember(shown) { mutableStateOf("") }
+                TvConfirm(
+                    title = s.playerSubtitleUrlTitle,
+                    message = s.playerSubtitleUrlMessage,
+                    confirmLabel = s.playerLoadSubtitleUrl,
+                    destructive = false,
+                    icon = TmIcons.Download,
+                    focusConfirm = true,
+                    onConfirm = {
+                        val pasted = link.trim()
+                        close()
+                        if (pasted.isNotEmpty()) shown.onSubmit(pasted)
+                    },
+                    onDismiss = ::close,
+                    extra = {
+                        com.tmplayer.ui.auth.PaneField(
+                            value = link,
+                            onValueChange = { link = it },
+                            placeholder = s.playerSubtitleUrlHint,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                                autoCorrectEnabled = false,
+                            ),
+                        )
+                    },
+                )
+            }
             is Sheet.LowStorageOffer -> {
                 val s = LocalStrings.current
                 // Focus on "Switch and play": it is the answer that does what the viewer pressed.

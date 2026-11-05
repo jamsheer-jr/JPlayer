@@ -183,6 +183,7 @@ class App : Application() {
         OnlineSubtitles.current = OnlineSubtitles(
             apiKey = BuildConfig.OPENSUBTITLES_API_KEY,
             msoneKey = BuildConfig.MSONE_GATEWAY_KEY,
+            subdlKey = BuildConfig.SUBDL_API_KEY,
             store = OnlineSubtitlesStore(java.io.File(filesDir, "online/account.properties")),
             cache = SubtitleCache(java.io.File(cacheDir, "online-subtitles")),
             appVersion = BuildConfig.VERSION_NAME,

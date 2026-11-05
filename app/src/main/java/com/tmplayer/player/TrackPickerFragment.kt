@@ -75,6 +75,7 @@ import com.tmplayer.online.SearchResult
 import com.tmplayer.online.SubtitleHit
 import com.tmplayer.online.SubtitleNotice
 import com.tmplayer.online.SubtitleTarget
+import com.tmplayer.online.SubtitleTranslator
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceColumns
 import com.tmplayer.ui.components.ChoiceList
@@ -119,7 +120,7 @@ class TrackPickerFragment : Fragment() {
     /** A track to choose, its name and, under it, what tells it apart from a namesake. */
     private class Option(val group: Tracks.Group?, val trackIndex: Int, val label: String, val detail: String? = null)
 
-    private enum class Page { Tracks, Online, Msone }
+    private enum class Page { Tracks, Online, Msone, Translate }
 
     /** The groups a page's lines fall into, in order, with the heading each one carries. */
     private enum class Group(val heading: () -> String?) {
@@ -178,6 +179,7 @@ class TrackPickerFragment : Fragment() {
                     val lines = trackLines(
                         onOnline = { page = Page.Online },
                         onMsone = { page = Page.Msone },
+                        onTranslate = { page = Page.Translate },
                         onInPlace = { tick++ },
                         lookIcon = ImageVector.vectorResource(R.drawable.ic_subtitles),
                     )
@@ -196,12 +198,13 @@ class TrackPickerFragment : Fragment() {
             }
             Page.Online -> OnlinePage(closeFocus, firstFocus, back, msone = false)
             Page.Msone -> OnlinePage(closeFocus, firstFocus, { page = Page.Tracks }, msone = true)
+            Page.Translate -> TranslatePage(closeFocus, firstFocus, back)
         }
     }
 
     // ---- the tracks ---------------------------------------------------------------------------
 
-    private fun trackLines(onOnline: () -> Unit, onMsone: () -> Unit, onInPlace: () -> Unit, lookIcon: ImageVector): List<Line> {
+    private fun trackLines(onOnline: () -> Unit, onMsone: () -> Unit, onTranslate: () -> Unit, onInPlace: () -> Unit, lookIcon: ImageVector): List<Line> {
         val host = host ?: return emptyList()
         val player = host.player ?: return emptyList()
         val options = buildList {
@@ -228,6 +231,7 @@ class TrackPickerFragment : Fragment() {
                 if (trackType == C.TRACK_TYPE_TEXT) {
                     onlineLine(onOnline)?.let(::add)
                     msoneLine(onMsone)?.let(::add)
+                    translateLine(onTranslate)?.let(::add)
                 }
                 return@buildList
             }
@@ -246,6 +250,7 @@ class TrackPickerFragment : Fragment() {
             if (trackType == C.TRACK_TYPE_TEXT) {
                 onlineLine(onOnline)?.let(::add)
                 msoneLine(onMsone)?.let(::add)
+                translateLine(onTranslate)?.let(::add)
             }
             addAll(timingLines(host, onInPlace))
             if (trackType == C.TRACK_TYPE_TEXT) addAll(styleLines(host, onInPlace, lookIcon))
@@ -265,6 +270,24 @@ class TrackPickerFragment : Fragment() {
     private fun msoneLine(onMsone: () -> Unit): Line? {
         if (OnlineSubtitles.current?.msoneShown != true) return null
         return Line("msone", L.msoneSearch, L.msoneSearchDetail, icon = TmIcons.Search, group = Group.Online, onClick = onMsone)
+    }
+
+    /**
+     * "Translate subtitles": the language subtitles are carried into as they are downloaded or
+     * loaded, Off when none is chosen. Needs no provider key: the setting lives on the device,
+     * and the translation itself is keyless.
+     */
+    private fun translateLine(onTranslate: () -> Unit): Line? {
+        val online = OnlineSubtitles.current ?: return null
+        val target = online.store.now.translateTo
+        return Line(
+            "translate",
+            L.onlineTranslateTitle,
+            if (target.isBlank()) L.commonOff else OnlineSubtitles.languageName(target),
+            icon = TmIcons.Language,
+            group = Group.Online,
+            onClick = onTranslate,
+        )
     }
 
     /** The offset now in force, under each timing line, so a press shows where it got to. */
@@ -448,12 +471,58 @@ class TrackPickerFragment : Fragment() {
                         pick()
                     })
                 }
+                // Beside the file: the same subtitle by link, for a viewer who has one.
+                val byLink = host?.loadSubtitleUrl
+                if (shown.hits.isEmpty() && (notice == null || msone) && byLink != null) {
+                    add(Line("url", L.playerLoadSubtitleUrl, icon = TmIcons.Download, group = Group.Online) {
+                        close()
+                        byLink()
+                    })
+                }
             }
             val focusKey = lines.firstOrNull { it.enabled }?.key
             Lines(lines, firstFocus, focusKey)
             // The remote goes to the first result that can be fetched, or to Close when there is
             // none, so it never sits on nothing.
             FocusOnOpen(if (focusKey != null) firstFocus else closeFocus, key = shown to focusKey)
+        }
+    }
+
+    /**
+     * The translation's language: Off, or one of [SubtitleTranslator.LANGUAGES], Malayalam
+     * first. Choosing one writes the setting and steps back to the tracks; subtitles already
+     * playing are not reloaded, the choice counts from the next one downloaded or loaded.
+     */
+    @Composable
+    private fun TranslatePage(closeFocus: FocusRequester, firstFocus: FocusRequester, onBack: () -> Unit) {
+        val online = OnlineSubtitles.current ?: return close()
+        val current = online.store.now.translateTo
+        ChoiceSheet(
+            title = L.onlineTranslateTitle,
+            note = L.onlineTranslateDetail,
+            onDismiss = onBack,
+            onClose = ::close,
+            closeFocus = closeFocus,
+            fullScreen = true,
+        ) {
+            val lines = buildList {
+                add(Line("off", L.commonOff, selected = current.isBlank()) {
+                    online.setTranslateTo("")
+                    onBack()
+                })
+                SubtitleTranslator.LANGUAGES.forEach { code ->
+                    add(Line("lang:$code", OnlineSubtitles.languageName(code), selected = current == code) {
+                        online.setTranslateTo(code)
+                        onBack()
+                    })
+                }
+            }
+            Lines(
+                lines,
+                firstFocus,
+                focusKey = lines.firstOrNull { it.selected == true }?.key ?: lines.firstOrNull()?.key,
+            )
+            FocusOnOpen(firstFocus)
         }
     }
 

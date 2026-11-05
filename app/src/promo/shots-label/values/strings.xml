@@ -4,5 +4,5 @@
       `-PpromoShots`: the name the launcher puts over the app's home screen channel, as people see
       it on their own television, rather than "TMPlayer Promo: Recently added".
     -->
-    <string name="app_name">TMPlayer</string>
+    <string name="app_name">J Player</string>
 </resources>

@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TMPlayer"
+rootProject.name = "JPlayer"
 include(":app")
 include(":core")
 include(":ui")

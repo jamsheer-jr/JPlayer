@@ -26,6 +26,7 @@ import com.tmplayer.online.SkipSegment
 import com.tmplayer.online.SkipTimesApi
 import com.tmplayer.online.SubtitleHit
 import com.tmplayer.online.SubtitleText
+import com.tmplayer.online.SubtitleTranslator
 import com.tmplayer.online.TmdbApi
 import com.tmplayer.online.TvMazeApi
 import com.tmplayer.online.WikidataApi
@@ -380,6 +381,31 @@ class GarbageInputTest {
                     skips.aniSkip("1", 1, 1_400)
                     skips.introDbApp("tt1", 1, 1)
                 }
+            }
+            val translator = SubtitleTranslator(http)
+            survive("SubtitleTranslator", shown) {
+                runBlocking {
+                    translator.translate(SubtitleText.Text("srt", shown), "ml")
+                    translator.translate(SubtitleText.Text("ass", shown), "ml")
+                    translator.translate(SubtitleText.Text("vtt", shown), "")
+                }
+            }
+        }
+        assertNoFailures()
+    }
+
+    /** The translation's own readers: the service's answers and the marked batches coming back. */
+    @Test
+    fun translateParsersNeverThrow() {
+        for (text in texts) {
+            survive("SubtitleTranslator.parseAnswer", text) { SubtitleTranslator.parseAnswer(text) }
+            survive("SubtitleTranslator.splitMarked", text) {
+                SubtitleTranslator.splitMarked(text, 3)
+                SubtitleTranslator.splitMarked(text, 0)
+            }
+            survive("SubtitleTranslator.sameLanguage", text) {
+                SubtitleTranslator.sameLanguage(text, text)
+                SubtitleTranslator.sameLanguage(null, text)
             }
         }
         assertNoFailures()

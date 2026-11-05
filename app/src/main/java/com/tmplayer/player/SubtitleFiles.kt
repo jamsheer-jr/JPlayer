@@ -15,11 +15,17 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.tmplayer.i18n.L
+import com.tmplayer.online.OnlineSubtitles
 import com.tmplayer.online.SubtitleText
+import com.tmplayer.online.SubtitleTranslator
+import com.tmplayer.online.UrlConnectionTransport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URI
+import java.security.MessageDigest
 import java.util.Locale
 
 /**
@@ -123,9 +129,165 @@ class SubtitleFiles(
             when (copied) {
                 null -> say(L.tracksFileUnreadable(name))
                 is Copy.Refused -> say(copied.reason)
-                is Copy.Done -> attach(copied, name)
+                is Copy.Done -> {
+                    val (ready, label) = maybeTranslate(copied, name)
+                    attach(ready, label)
+                }
             }
         }
+    }
+
+    /**
+     * A subtitle from a link the viewer pastes: the same road as a picked file from the download
+     * on. The link must be a full http or https address; what comes back is capped at the same
+     * size as a picked file, must name a subtitle (in the link itself or in the name the server
+     * gives the download), and is decoded, converted and translated by the very code a picked
+     * file goes through ([store], [maybeTranslate]), so a link and a file behave alike.
+     */
+    fun loadFromUrl(raw: String) {
+        val link = raw.trim()
+        val uri = runCatching { URI(link) }.getOrNull()
+        if (uri == null || (uri.scheme != "http" && uri.scheme != "https") || uri.host.isNullOrBlank()) {
+            say(L.tracksUrlInvalid)
+            return
+        }
+        activity.lifecycleScope.launch {
+            say(L.tracksUrlDownloading)
+            // Read on the main thread before the fetch: the player belongs to it.
+            val fps = player()?.videoFormat?.frameRate?.let { FrameRates.plausible(it).toDouble() }?.takeIf { it > 0 } ?: ExternalSubtitle.DEFAULT_FPS
+            val fetched = withContext(Dispatchers.IO) { runCatching { fetch(link) }.getOrNull() }
+            when (fetched) {
+                null -> say(L.tracksUrlFailed)
+                is Fetch.TooBig -> say(L.tracksFileTooBig)
+                is Fetch.Done -> {
+                    val name = fetched.name ?: L.tracksFileFallbackName
+                    if (!ExternalSubtitle.accepts(name) && !SubtitleText.isZip(fetched.bytes)) {
+                        say(L.tracksUrlNotSubtitle)
+                        return@launch
+                    }
+                    val stored = withContext(Dispatchers.IO) {
+                        runCatching { store(fetched.bytes, name, ExternalSubtitle.extensionOf(name), fps) }.getOrNull()
+                    }
+                    when (stored) {
+                        null -> say(L.tracksUrlFailed)
+                        is Copy.Refused -> say(stored.reason)
+                        is Copy.Done -> {
+                            val (ready, label) = maybeTranslate(stored, name)
+                            attach(ready, label)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * The stored file carried into the viewer's chosen language (Settings, Translate
+     * subtitles), or itself when translation is off, the file is already in that language, or
+     * its format is not one the translator takes. The translation is kept under a name made
+     * from the file's own hash and the language, so loading the same file again finds it
+     * instead of translating it again; the original file is never touched, and a failed
+     * translation loads the original with a sentence saying so.
+     */
+    private suspend fun maybeTranslate(done: Copy.Done, name: String): Pair<Copy.Done, String> {
+        val target = OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() }
+            ?: return done to name
+        if (SubtitleTranslator.sameLanguage(ExternalSubtitle.languageOf(name), target)) return done to name
+        val extension = ExternalSubtitle.extensionOf(done.file.name)
+        val mime = ExternalSubtitle.mimeTypeOf(extension) ?: return done to name
+        val label = translatedName(name, target, extension)
+        val kept = withContext(Dispatchers.IO) {
+            runCatching {
+                val folder = File(activity.cacheDir, "subtitles").apply { mkdirs() }
+                translatedFile(folder, done.file, target, extension).takeIf { it.isFile }
+            }.getOrNull()
+        }
+        if (kept != null) return Copy.Done(kept, mime) to label
+        say(L.tracksTranslating)
+        val made = withContext(Dispatchers.IO) {
+            runCatching {
+                val folder = File(activity.cacheDir, "subtitles").apply { mkdirs() }
+                val text = SubtitleText.Text(extension, done.file.readText())
+                val translated = SubtitleTranslator(UrlConnectionTransport).translate(text, target)
+                    ?: return@runCatching null
+                translatedFile(folder, done.file, target, extension).apply { writeText(translated.text) }
+            }.getOrNull()
+        }
+        if (made != null) return Copy.Done(made, mime) to label
+        say(L.tracksTranslateFailed)
+        return done to name
+    }
+
+    /** The cache file a translation of [source] into [target] is kept in, made from its hash. */
+    private fun translatedFile(folder: File, source: File, target: String, extension: String): File {
+        val hash = MessageDigest.getInstance("SHA-256").digest(source.readBytes())
+            .joinToString("") { "%02x".format(it) }.take(16)
+        return File(folder, "tr-$hash-$target.$extension")
+    }
+
+    /** A loaded file's name with the translation's language in it, the way side files are named. */
+    private fun translatedName(name: String, target: String, extension: String): String =
+        name.substringBeforeLast('.', name) + ".$target.$extension"
+
+    private sealed interface Fetch {
+        data class Done(val bytes: ByteArray, val name: String?) : Fetch
+        data object TooBig : Fetch
+    }
+
+    /**
+     * The bytes at [link], following redirects the way a browser does (a subtitle host's http
+     * address commonly answers with its https one, which HttpURLConnection will not follow on
+     * its own). Null when the address cannot be read or does not answer with a file. The name
+     * is the download's own when the server states one, else the link's last part.
+     */
+    private fun fetch(link: String): Fetch? {
+        var address = link
+        repeat(MAX_REDIRECTS + 1) {
+            val connection = (URI(address).toURL().openConnection() as HttpURLConnection).apply {
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "TMPlayer")
+            }
+            try {
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    val next = connection.getHeaderField("Location")?.takeIf { it.isNotBlank() } ?: return null
+                    address = runCatching { URI(address).resolve(next).toString() }.getOrNull() ?: return null
+                    return@repeat
+                }
+                if (code !in 200..299) return null
+                val bytes = connection.inputStream.use { input ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val chunk = ByteArray(16 * 1024)
+                    while (true) {
+                        val read = input.read(chunk)
+                        if (read < 0) break
+                        out.write(chunk, 0, read)
+                        if (out.size() > ExternalSubtitle.MAX_BYTES) return Fetch.TooBig
+                    }
+                    out.toByteArray()
+                }
+                val named = connection.getHeaderField("Content-Disposition")
+                    ?.let { dispositionName(it) }
+                val fromLink = address.substringAfterLast('/').substringBefore('?').substringBefore('#')
+                    .let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+                    .takeIf { it.isNotBlank() }
+                return Fetch.Done(bytes, named ?: fromLink)
+            } finally {
+                connection.disconnect()
+            }
+        }
+        return null
+    }
+
+    /** The file name a `Content-Disposition` header states, quoted or plain; null when it states none. */
+    private fun dispositionName(header: String): String? {
+        val at = header.indexOf("filename=")
+        if (at < 0) return null
+        val rest = header.substring(at + "filename=".length).trim()
+        val name = if (rest.startsWith("\"")) rest.substring(1).substringBefore('"') else rest.substringBefore(';').trim()
+        return name.substringAfterLast('/').takeIf { it.isNotBlank() }
     }
 
     private fun attach(copy: Copy.Done, name: String) {
@@ -168,7 +330,26 @@ class SubtitleFiles(
             }
             out.toByteArray()
         } ?: return Copy.Refused(L.tracksFileUnopenable)
+        return store(bytes, name, extension, fps)
+    }
+
+    /**
+     * Bytes from the picker or from a link, kept as a subtitle file in the cache: the one road
+     * both take, so both get the same decoding, the same MicroDVD conversion and the same
+     * refusals. A zip is opened for the subtitle inside it ([SubtitleText.fromArchive]).
+     */
+    private fun store(bytes: ByteArray, name: String, extension: String, fps: Double): Copy {
         val folder = File(activity.cacheDir, "subtitles").apply { mkdirs() }
+        if (SubtitleText.isZip(bytes)) {
+            val language = ExternalSubtitle.languageOf(name) ?: Locale.getDefault().language
+            val inside = runCatching { SubtitleText.from(bytes, name, language = language) }.getOrNull()
+                ?: return Copy.Refused(L.onlineNoticeUnreadable)
+            val mime = ExternalSubtitle.mimeTypeOf(inside.extension)
+                ?: return Copy.Refused(L.onlineNoticeUnreadable)
+            val file = File(folder, "${loaded.size + 1}.${inside.extension}")
+            file.writeText(inside.text)
+            return Copy.Done(file, mime)
+        }
         // Written back as UTF-8 whatever it arrived in: Media3 reads these formats as UTF-8, and
         // an older .srt saved in a Windows code page would otherwise lose every accented letter.
         // A file that is not Unicode is read in the code page of the language its name gives
@@ -196,4 +377,11 @@ class SubtitleFiles(
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }
     }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+
+    private companion object {
+        /** Redirects followed for a pasted link before the address is given up as a loop. */
+        const val MAX_REDIRECTS = 5
+        const val CONNECT_TIMEOUT_MS = 10_000
+        const val READ_TIMEOUT_MS = 20_000
+    }
 }

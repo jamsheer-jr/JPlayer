@@ -59,8 +59,8 @@ data class Release(
  */
 object UpdateFeed {
 
-    const val FEED_URL = "https://tmplayer.org/latest.json"
-    private const val REPO = "dracu-lah/TMPlayer"
+    const val FEED_URL = "https://jamsheer-jr.github.io/TMPlayer/latest.json"
+    private const val REPO = "jamsheer-jr/TMPlayer"
     private const val GITHUB_LATEST = "https://api.github.com/repos/$REPO/releases/latest"
 
     /** The newest releases, pre-releases included (and drafts, which only the owner is shown). */

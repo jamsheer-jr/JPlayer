@@ -44,6 +44,7 @@ jobs:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          SUBDL_API_KEY: ${{ secrets.SUBDL_API_KEY }}
           MSONE_GATEWAY_KEY: ${{ secrets.MSONE_GATEWAY_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           # Optional: without it a detail page shows the provider's own score alone.
@@ -57,6 +58,7 @@ jobs:
           TG_API_ID=$TG_API_ID
           TG_API_HASH=$TG_API_HASH
           OPENSUBTITLES_API_KEY=$OPENSUBTITLES_API_KEY
+          SUBDL_API_KEY=$SUBDL_API_KEY
           MSONE_GATEWAY_KEY=$MSONE_GATEWAY_KEY
           TMDB_API_KEY=$TMDB_API_KEY
           OMDB_API_KEY=$OMDB_API_KEY

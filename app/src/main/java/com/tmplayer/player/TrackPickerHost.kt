@@ -31,4 +31,10 @@ interface TrackPickerHost {
      * Null where there is no picker (a television, the fixture).
      */
     val pickSubtitleFile: (() -> Unit)? get() = null
+
+    /**
+     * Beside the file picker: ask for a link to a subtitle file and load it from there.
+     * Null where it is not offered (the fixture).
+     */
+    val loadSubtitleUrl: (() -> Unit)? get() = null
 }
