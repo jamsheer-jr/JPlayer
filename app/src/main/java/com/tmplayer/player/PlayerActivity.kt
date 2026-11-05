@@ -3567,8 +3567,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         // fine. There the back buffer is cut to a few seconds: a longer jump back reads the bytes
         // off the disk, where the stream already put them.
         val backBufferMs = if (bufferBytes <= LOW_RAM_BUFFER_BYTES) LOW_RAM_BACK_BUFFER_MS else BACK_BUFFER_MS
+        // The buffer ahead (J Player, 2026-11-06): a capable device holds up to 90 s ahead, so a
+        // dip in the line is ridden out instead of stalling the picture. The low-RAM budget keeps
+        // the old 50 s: there the byte cap bites first anyway, and a longer ask only churns. The
+        // start threshold stays at 1 s, so nothing about starting gets slower.
+        val maxBufferMs = if (bufferBytes <= LOW_RAM_BUFFER_BYTES) BUFFER_MAX_MS else BUFFER_MAX_MS_CAPABLE
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(BUFFER_MIN_MS, BUFFER_MAX_MS, BUFFER_PLAYBACK_MS, BUFFER_REBUFFER_MS)
+            .setBufferDurationsMs(BUFFER_MIN_MS, maxBufferMs, BUFFER_PLAYBACK_MS, BUFFER_REBUFFER_MS)
             // The same figures again for what Media3 calls local playback. Since 1.9.0 a file://
             // or content:// item gets one second of buffer on the theory that the whole file is
             // already on disk; this app's videos are still being written while they play, and one
@@ -3577,7 +3582,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // future Media3 cannot quietly put the one-second rule back.
             .setBufferDurationsMsForLocalPlayback(
                 BUFFER_MIN_MS,
-                BUFFER_MAX_MS,
+                maxBufferMs,
                 BUFFER_PLAYBACK_MS,
                 BUFFER_REBUFFER_MS,
             )
@@ -9032,6 +9037,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
         private const val BUFFER_MIN_MS = 15_000
         private const val BUFFER_MAX_MS = 50_000
+
+        /** The buffer ahead on a device whose byte budget is not the low-RAM one: see [buildPlayer]. */
+        private const val BUFFER_MAX_MS_CAPABLE = 90_000
         /**
          * What has to be buffered before the first frame plays: 1 s, down from Media3's 2.5 s,
          * since TDLib keeps filling at its own pace whatever the player holds and a stream that
