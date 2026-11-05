@@ -106,6 +106,16 @@ data class TrackPlan(
 /** One subtitle track as the pick sees it. */
 data class SubtitleTrackInfo(val language: String?, val isDefault: Boolean = false, val forced: Boolean = false)
 
+/** One audio track as the original pick sees it. */
+data class AudioTrackInfo(val isDefault: Boolean = false)
+
+/** The outcome of [TrackRules.pickOriginalAudio]. */
+sealed interface AudioPick {
+    /** Leave the player's own selection alone. */
+    data object Leave : AudioPick
+    data class Track(val index: Int) : AudioPick
+}
+
 /** The outcome of [TrackRules.pickSubtitle]. */
 sealed interface SubtitlePick {
     /** Leave the player's own selection alone. */
@@ -198,6 +208,17 @@ object TrackRules {
             ?: tracks.indexOfFirst { !it.forced }.takeIf { it >= 0 }
             ?: 0
         return SubtitlePick.Track(at)
+    }
+
+    /**
+     * The file's own soundtrack, for a video nothing else chose the audio for: the track the
+     * file marks as its default, or its first track where none is marked, which is where the
+     * original language sits in a file carrying several. A single soundtrack needs no pick.
+     */
+    fun pickOriginalAudio(tracks: List<AudioTrackInfo>): AudioPick {
+        if (tracks.size < 2) return AudioPick.Leave
+        val at = tracks.indexOfFirst { it.isDefault }.takeIf { it >= 0 } ?: 0
+        return AudioPick.Track(at)
     }
 
     private fun forcedFor(audioLanguage: String?, tracks: List<SubtitleTrackInfo>): SubtitlePick {

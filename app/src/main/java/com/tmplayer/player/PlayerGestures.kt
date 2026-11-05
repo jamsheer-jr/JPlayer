@@ -20,8 +20,10 @@ import kotlin.math.roundToInt
  * every further tap on the same side adds another jump with a running total; a double tap in the
  * middle plays and pauses; a held finger plays fast until it lifts; a sideways drag scrubs; a
  * vertical drag on the left is brightness and on the right volume; a pinch zooms the picture
- * freely around the fingers, and once it is enlarged one or two fingers move it about, as in VLC
- * (on Android 6, where the video surface cannot follow a zoom, a pinch steps the fitting instead).
+ * freely around the fingers; enlarged, a mostly vertical drag or the pinch's own travel moves
+ * the picture about, while a mostly sideways drag still scrubs, as in MX Player, so zooming
+ * never takes seeking away (on Android 6, where the video surface cannot follow a zoom, a pinch
+ * steps the fitting instead).
  *
  * Fed from the activity's own [android.app.Activity.dispatchTouchEvent] rather than attached to
  * the video view, because once the controller is up its buttons and scrub bar are the views under
@@ -191,12 +193,24 @@ class PlayerGestures(
                 val from = start ?: return false
                 if (viewHeight <= 0) return false
                 if (controlsVisible || scaling || holding) return false
-                // Enlarged, a drag moves the picture (VLC's way): brightness, volume and the
-                // sideways scrub wait until it is back at 100 per cent, where they work as ever.
-                if (dragKind == DRAG_PAN || (dragKind == DRAG_NONE && zoomed())) {
-                    dragKind = DRAG_PAN
+                if (dragKind == DRAG_PAN) {
                     onPan(-distanceX, -distanceY)
                     return true
+                }
+                // Enlarged, a mostly vertical drag moves the picture, but a mostly sideways
+                // one still scrubs (MX Player's way): zooming must not take seeking away.
+                // Until the travel is long enough to read, nothing is decided; once it reads
+                // sideways the drag falls through and begin() files it as a scrub.
+                if (dragKind == DRAG_NONE && zoomed()) {
+                    val travelX = event.x - from.x
+                    val travelY = event.y - from.y
+                    val arm = viewHeight * ARM_FRACTION
+                    if (abs(travelX) < arm && abs(travelY) < arm) return false
+                    if (abs(travelY) > abs(travelX)) {
+                        dragKind = DRAG_PAN
+                        onPan(-distanceX, -distanceY)
+                        return true
+                    }
                 }
                 // The finger left down after a pinch is still the pinch's, never a volume drag.
                 if (pinched) return false

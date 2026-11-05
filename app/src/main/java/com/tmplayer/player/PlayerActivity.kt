@@ -1202,6 +1202,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     private var settingsSubtitlesPending = false
 
+    /**
+     * Whether the file's own soundtrack still has to be put on: nothing (a resume, the series,
+     * Settings) chose an audio language for this video, so the original track is the pick.
+     * Cleared once applied.
+     */
+    private var originalAudioPending = false
+
     /** The subtitle tracks as last written to the log, and whether their first lines have been. See [logSubtitleTracks]. */
     private var subtitleLogLine: String? = null
     private var firstCuesLogged = false
@@ -1992,6 +1999,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             trackPlan = TrackRules.plan(resumed, tracks, trackPrefs, Translator.messages.tag)
             settingsSubtitlesPending = trackPlan.subtitleSource == TrackSource.Settings &&
                 (trackPlan.subtitles is SubtitlePlan.On || trackPlan.subtitles is SubtitlePlan.IfForeignAudio)
+            originalAudioPending = trackPlan.audioSource == TrackSource.FileDefaults
             downmixChoice = downmixRead.await()
             volumeBoostOn = boostRead.await()
             nightModeOn = nightRead.await()
@@ -4105,6 +4113,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             if (pictureUnplayable(tracks)) return
             if (checkSoftwareDecode(tracks)) return
             restoreResumeTracks(tracks)
+            applyOriginalAudio(tracks)
             applySettingsSubtitles(tracks)
             rememberTracks(tracks)
             subtitleFiles.onTracksChanged(tracks)
@@ -4370,6 +4379,30 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
         }
         if (changed) exo.trackSelectionParameters = builder.build()
+    }
+
+    /**
+     * The file's own soundtrack, once its tracks are known, when nothing else chose one: the
+     * original track, which a preferred language would otherwise beat to a dub. Before
+     * [applySettingsSubtitles], so its "only when the audio is foreign" reads the soundtrack
+     * that will actually play. Once per video; a choice made in the picker afterwards is the
+     * viewer's.
+     */
+    private fun applyOriginalAudio(current: Tracks) {
+        if (!originalAudioPending) return
+        val exo = player ?: return
+        if (current.groups.isEmpty()) return
+        originalAudioPending = false
+        val audio = tracksOfType(current, C.TRACK_TYPE_AUDIO)
+        val described = audio.map { (group, index) ->
+            AudioTrackInfo(isDefault = group.getTrackFormat(index).selectionFlags and C.SELECTION_FLAG_DEFAULT != 0)
+        }
+        val pick = TrackRules.pickOriginalAudio(described) as? AudioPick.Track ?: return
+        val (group, index) = audio[pick.index]
+        if (group.isTrackSelected(index)) return
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+            .build()
     }
 
     /**

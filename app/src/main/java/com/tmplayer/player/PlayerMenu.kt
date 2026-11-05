@@ -264,6 +264,8 @@ object PlayerMenu {
         if (pictureShape && zoomed) add(PhoneMenuEntry.ResetZoom)
         if (stereo) add(PhoneMenuEntry.Stereo)
         add(PhoneMenuEntry.Speed)
+        add(PhoneMenuEntry.LoadSubtitleFile)
+        add(PhoneMenuEntry.LoadSubtitleUrl)
         add(PhoneMenuEntry.VolumeBoost)
         add(PhoneMenuEntry.NightMode)
         add(PhoneMenuEntry.EvenVolume)
@@ -283,8 +285,6 @@ object PlayerMenu {
             add(PhoneMenuEntry.Bookmarks)
         }
         if (openInAnotherApp) add(PhoneMenuEntry.OpenInAnotherApp)
-        add(PhoneMenuEntry.LoadSubtitleFile)
-        add(PhoneMenuEntry.LoadSubtitleUrl)
         if (saveToDownloads) add(PhoneMenuEntry.SaveToDownloads)
         if (markWatched) add(PhoneMenuEntry.MarkWatched)
         add(PhoneMenuEntry.PlaybackDetails)

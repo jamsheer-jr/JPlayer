@@ -10,6 +10,27 @@ import org.junit.Test
 
 class TrackPreferencesTest {
 
+    // ---- the original soundtrack --------------------------------------------------------------
+
+    @Test
+    fun `a lone soundtrack is left alone`() {
+        assertEquals(AudioPick.Leave, TrackRules.pickOriginalAudio(listOf(AudioTrackInfo())))
+        assertEquals(AudioPick.Leave, TrackRules.pickOriginalAudio(emptyList()))
+    }
+
+    @Test
+    fun `the track the file marks default is the original`() {
+        val tracks = listOf(AudioTrackInfo(), AudioTrackInfo(isDefault = true), AudioTrackInfo())
+        assertEquals(AudioPick.Track(1), TrackRules.pickOriginalAudio(tracks))
+    }
+
+    @Test
+    fun `with none marked, the first soundtrack is the original`() {
+        val tracks = listOf(AudioTrackInfo(), AudioTrackInfo(), AudioTrackInfo())
+        assertEquals(AudioPick.Track(0), TrackRules.pickOriginalAudio(tracks))
+    }
+
+
     private val japaneseAudio = TrackPreferences(audioLanguage = "ja", mode = SubtitleMode.Always)
 
     // ---- normalisation ----------------------------------------------------------------------
