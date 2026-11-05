@@ -109,6 +109,8 @@ enum class PhoneMenuEntry {
     OpenInAnotherApp,
     LoadSubtitleFile,
     LoadSubtitleUrl,
+    /** The language loaded and downloaded subtitles are translated into, or Off. */
+    TranslateSubtitles,
     SaveToDownloads,
     MarkWatched,
     /** Last: a line for bug reports, not for watching. */
@@ -147,6 +149,7 @@ fun PhoneMenuEntry.label(
     PhoneMenuEntry.OpenInAnotherApp -> L.playerOpenInAnotherApp
     PhoneMenuEntry.LoadSubtitleFile -> L.playerLoadSubtitleFile
     PhoneMenuEntry.LoadSubtitleUrl -> L.playerLoadSubtitleUrl
+    PhoneMenuEntry.TranslateSubtitles -> L.onlineTranslateTitle
     PhoneMenuEntry.SaveToDownloads -> L.playerSaveToDownloads
     PhoneMenuEntry.MarkWatched -> if (watched) L.playerMarkUnwatched else L.playerMarkWatched
     PhoneMenuEntry.AddBookmark -> L.playerAddBookmark
@@ -266,6 +269,7 @@ object PlayerMenu {
         add(PhoneMenuEntry.Speed)
         add(PhoneMenuEntry.LoadSubtitleFile)
         add(PhoneMenuEntry.LoadSubtitleUrl)
+        add(PhoneMenuEntry.TranslateSubtitles)
         add(PhoneMenuEntry.VolumeBoost)
         add(PhoneMenuEntry.NightMode)
         add(PhoneMenuEntry.EvenVolume)

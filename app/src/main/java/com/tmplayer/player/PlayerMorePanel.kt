@@ -83,6 +83,7 @@ import androidx.tv.material3.Text
 import com.tmplayer.R
 import com.tmplayer.data.Bookmark
 import com.tmplayer.i18n.Translator
+import com.tmplayer.online.OnlineSubtitles
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
 import com.tmplayer.ui.components.ChoicePage
@@ -184,6 +185,7 @@ class PlayerMorePanel(
         data object Speed : Page
         data object Stereo : Page
         data object Sleep : Page
+        data object Translate : Page
         data object Keys : Page
         class Details(val title: String, val lines: List<String>) : Page
         class Bookmarks(val actions: BookmarkSheetActions) : Page
@@ -384,7 +386,7 @@ class PlayerMorePanel(
         LockScreen, PictureInPicture, PlaybackDetails, StartOver, PictureShape, ResetZoom, Stereo, Speed,
         VolumeBoost, NightMode, EvenVolume, SleepTimer, AbLoop, NextChapter, PreviousChapter,
         NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, OpenInAnotherApp,
-        LoadSubtitleFile, LoadSubtitleUrl, SaveToDownloads, MarkWatched, RemoteKeys,
+        LoadSubtitleFile, LoadSubtitleUrl, TranslateSubtitles, SaveToDownloads, MarkWatched, RemoteKeys,
     }
 
     private class Line(val kind: Kind, val label: String, val icon: ImageVector, val detail: String?)
@@ -466,6 +468,13 @@ class PlayerMorePanel(
             Kind.OpenInAnotherApp -> Line(kind, s.playerOpenInAnotherApp, TmIcons.OpenExternal, null)
             Kind.LoadSubtitleFile -> Line(kind, s.playerLoadSubtitleFile, TmIcons.Subtitles, null)
             Kind.LoadSubtitleUrl -> Line(kind, s.playerLoadSubtitleUrl, TmIcons.Download, null)
+            Kind.TranslateSubtitles -> Line(
+                kind,
+                s.onlineTranslateTitle,
+                TmIcons.Language,
+                OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() }
+                    ?.let { OnlineSubtitles.languageName(it) } ?: s.commonOff,
+            )
             Kind.SaveToDownloads -> Line(kind, s.playerSaveToDownloads, TmIcons.Download, s.playerSaveToDownloadsDetail)
             Kind.MarkWatched -> if (host.watched()) {
                 Line(kind, s.playerMarkUnwatched, TmIcons.Close, s.playerMarkUnwatchedDetail)
@@ -487,6 +496,7 @@ class PlayerMorePanel(
             Kind.Speed -> Page.Speed
             Kind.Stereo -> Page.Stereo
             Kind.SleepTimer -> Page.Sleep
+            Kind.TranslateSubtitles -> Page.Translate
             Kind.RemoteKeys -> Page.Keys
             Kind.Bookmarks -> host.bookmarks()?.let { Page.Bookmarks(it) }
             Kind.PlaybackDetails -> host.playbackDetails()?.let { (title, lines) -> Page.Details(title, lines) }
@@ -558,6 +568,11 @@ class PlayerMorePanel(
                 running = host.sleepDetail(),
                 chosen = host.sleepChoice(),
                 onPick = { close(); host.setSleep(it) },
+                onDismiss = ::back,
+                onClose = ::close,
+            )
+            Page.Translate -> TranslateSheet(
+                onDone = { close() },
                 onDismiss = ::back,
                 onClose = ::close,
             )

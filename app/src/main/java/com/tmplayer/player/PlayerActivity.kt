@@ -6382,6 +6382,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             PhoneMenuEntry.OpenInAnotherApp -> openInAnotherApp()
             PhoneMenuEntry.LoadSubtitleFile -> subtitleFiles.pick()
             PhoneMenuEntry.LoadSubtitleUrl -> showSheet { it.showSubtitleUrl { link -> subtitleFiles.loadFromUrl(link) } }
+            // The More panel opens its own translate page for this one; it never lands here.
+            PhoneMenuEntry.TranslateSubtitles -> Unit
             PhoneMenuEntry.SaveToDownloads -> saveToDownloads()
             PhoneMenuEntry.MarkWatched -> toggleWatched()
             PhoneMenuEntry.ResetZoom -> resetZoom()

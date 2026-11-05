@@ -42,6 +42,8 @@ import com.tmplayer.ui.browse.copyHeading
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
+import com.tmplayer.online.OnlineSubtitles
+import com.tmplayer.online.SubtitleTranslator
 import com.tmplayer.ui.components.ChoiceSheet
 import com.tmplayer.ui.components.FocusOnOpen
 import com.tmplayer.ui.components.LocalChoiceFullScreen
@@ -450,6 +452,49 @@ internal fun SpeedSheet(
                 FineSpeedLines(current, onFine, if (preset == null) focus else null)
             }
             SkipSilenceLine(skipSilence, onSkipSilence)
+        }
+        FocusOnOpen(focus)
+    }
+}
+
+/**
+ * "Translate subtitles": Off, or one of [SubtitleTranslator.LANGUAGES], Malayalam first. The
+ * same page the subtitle picker's Online group opens; the More menu carries it too, because
+ * that is where a viewer who just loaded a subtitle looks for it. Choosing writes the setting
+ * and ends the errand; subtitles already playing are not reloaded, the choice counts from the
+ * next one downloaded or loaded.
+ */
+@Composable
+internal fun TranslateSheet(
+    onDone: () -> Unit,
+    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val s = LocalStrings.current
+    val online = OnlineSubtitles.current
+    val current = online?.store?.now?.translateTo.orEmpty()
+    val focus = remember { FocusRequester() }
+    ChoiceSheet(title = s.onlineTranslateTitle, note = s.onlineTranslateDetail, onDismiss = onDismiss, onClose = onClose, fullScreen = true) {
+        ChoiceList {
+            ChoiceLine(
+                title = s.commonOff,
+                selected = current.isBlank(),
+                modifier = if (current.isBlank()) Modifier.focusRequester(focus) else Modifier,
+            ) {
+                online?.setTranslateTo("")
+                onDone()
+            }
+            SubtitleTranslator.LANGUAGES.forEach { code ->
+                val selected = current == code
+                ChoiceLine(
+                    title = OnlineSubtitles.languageName(code),
+                    selected = selected,
+                    modifier = if (selected) Modifier.focusRequester(focus) else Modifier,
+                ) {
+                    online?.setTranslateTo(code)
+                    onDone()
+                }
+            }
         }
         FocusOnOpen(focus)
     }
