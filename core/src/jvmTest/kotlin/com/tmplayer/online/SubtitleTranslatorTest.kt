@@ -177,6 +177,20 @@ class SubtitleTranslatorTest {
     }
 
     @Test
+    fun `loose lines come back one for one`() = runBlocking {
+        val out = SubtitleTranslator(FakeTranslate()).translateLines(listOf("Hello there", "General Kenobi"), "ml")
+        assertEquals(listOf("T: Hello there", "T: General Kenobi"), out)
+    }
+
+    @Test
+    fun `loose lines answer null per line when the service cannot be reached`() = runBlocking {
+        val down = HttpTransport { throw java.io.IOException("offline") }
+        val out = SubtitleTranslator(down).translateLines(listOf("Hello there", "General Kenobi"), "ml")
+        assertEquals(2, out.size)
+        assertTrue(out.all { it == null })
+    }
+
+    @Test
     fun `a file with no words gives null`() = runBlocking {
         val timingsOnly = "1\n00:00:01,000 --> 00:00:02,000\n\n"
         assertNull(SubtitleTranslator(FakeTranslate()).translate(SubtitleText.Text("srt", timingsOnly), "ml"))

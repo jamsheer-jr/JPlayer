@@ -51,6 +51,18 @@ class SubtitleTranslator(private val http: HttpTransport = UrlConnectionTranspor
         return SubtitleText.Text(text.extension, parsed.rebuild(translated))
     }
 
+    /**
+     * Loose lines of subtitle words translated into [target], one answer (or null) per line,
+     * in the caller's order: [translate] with the file taken apart by somebody else, which is
+     * what a player showing a track built into the video has, since that track never exists as
+     * a file anywhere. The lines go up together, so the engine sees the run of them whole; a
+     * line it drops or mangles answers null, and that line keeps its own words.
+     */
+    suspend fun translateLines(lines: List<String>, target: String): List<String?> {
+        if (lines.isEmpty()) return emptyList()
+        return translateCues(lines, target)
+    }
+
     /** One cue's place in the file: [words] is what is sent, [write] puts the answer back. */
     private class Cue(val words: String, val write: (String) -> Unit)
 

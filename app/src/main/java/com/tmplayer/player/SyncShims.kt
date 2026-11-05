@@ -1,12 +1,20 @@
 package com.tmplayer.player
 
+import android.os.Handler
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.TextOutput
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ForwardingRenderer
 import androidx.media3.exoplayer.Renderer
+import com.tmplayer.online.SubtitleTranslator
 import java.nio.ByteBuffer
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * A text renderer that runs [delayUs] behind the picture, which is how the subtitle delay works.
@@ -27,6 +35,91 @@ class DelayedTextRenderer(
     override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
         super.render((positionUs - delayUs()).coerceAtLeast(0L), elapsedRealtimeUs)
     }
+}
+
+/**
+ * A text output that carries the words of a subtitle track built into the file into another
+ * language as they play, which is how the translate setting reaches embedded subtitles: one
+ * loaded as a file was translated before it was attached, but a track inside the video never
+ * exists as a file anywhere, so its words can only be caught on their way to the screen.
+ *
+ * A line is shown as it came the moment it is due (its timing is the file's and is never
+ * touched), its words are sent for translation, and when the answer lands the line still on
+ * screen is put up again translated, through [poster], the output's own thread. The answer is
+ * kept, so a line met again, on a seek back or a second watching, is translated from its first
+ * moment. A picture cue (a DVD or PGS image) has no words and passes through untouched, and a
+ * translated line is plain: the styling the file dressed the original in does not survive
+ * flattening it for the service, which is the same bargain the file translation makes.
+ *
+ * [target] is read on the playback thread each time lines arrive, and answers come back on
+ * [scope]; a line whose translation failed is simply asked for again next time it appears.
+ */
+@UnstableApi
+class TranslatingTextOutput(
+    private val delegate: TextOutput,
+    private val poster: Handler,
+    private val scope: CoroutineScope,
+    private val target: () -> String?,
+) : TextOutput {
+
+    /** Words already carried over, by the line as it was sent: session lived, a film at most. */
+    private val cache = ConcurrentHashMap<String, String>()
+
+    /** Lines a request is out for, so a line on screen is not asked for twice. */
+    private val asked = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    /** The lines on screen now, so an answer that lands can be put up in place of the original. */
+    @Volatile
+    private var showing: List<Cue> = emptyList()
+
+    override fun onCues(cues: List<Cue>) {
+        showing = cues
+        val language = target()
+        if (language == null) {
+            delegate.onCues(cues)
+            return
+        }
+        delegate.onCues(translated(cues, language))
+        askFor(cues, language)
+    }
+
+    /** [cues] with every line the cache already holds carried into [language]. */
+    private fun translated(cues: List<Cue>, language: String): List<Cue> = cues.map { cue ->
+        val words = wordsOf(cue) ?: return@map cue
+        cache[key(language, words)]?.let { cue.buildUpon().setText(it).build() } ?: cue
+    }
+
+    /**
+     * One cue's words as they would be sent: flattened to one line, as the file translation
+     * flattens them. Null for a picture cue and for a line with no words in it.
+     */
+    private fun wordsOf(cue: Cue): String? {
+        val words = cue.text?.toString()?.replace('\n', ' ')?.trim().orEmpty()
+        return words.takeIf { it.isNotEmpty() }
+    }
+
+    private fun askFor(cues: List<Cue>, language: String) {
+        val missing = cues.mapNotNull(::wordsOf).distinct()
+            .filter { cache[key(language, it)] == null && asked.add(key(language, it)) }
+        if (missing.isEmpty()) return
+        scope.launch {
+            val answers = runCatching { SubtitleTranslator().translateLines(missing, language) }.getOrNull()
+            var landed = false
+            missing.forEachIndexed { index, words ->
+                asked.remove(key(language, words))
+                val answer = answers?.getOrNull(index)
+                if (answer != null) {
+                    cache[key(language, words)] = answer
+                    landed = true
+                }
+            }
+            if (landed && target() == language) {
+                poster.post { delegate.onCues(translated(showing, language)) }
+            }
+        }
+    }
+
+    private fun key(language: String, words: String) = "$language\u0001$words"
 }
 
 /**

@@ -3,6 +3,7 @@ package com.tmplayer.player
 import android.annotation.SuppressLint
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.os.Handler
 import android.os.Looper
 import android.content.Intent
 import android.content.res.Configuration
@@ -152,6 +153,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import com.tmplayer.online.MovieHash
+import com.tmplayer.online.OnlineSubtitles
 import com.tmplayer.online.EpisodeNames
 import com.tmplayer.online.OnlineMetadata
 import com.tmplayer.online.SkipSegment
@@ -373,6 +375,17 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** [syncDelays]' subtitle half in microseconds, for [DelayedTextRenderer] on the playback thread. */
     @Volatile
     private var subtitleDelayUs = 0L
+
+    /**
+     * Whether the text track playing is built into the file itself (rather than one loaded,
+     * whose words were translated when it was loaded), and that track's language. Written on
+     * tracks changes, read on the playback thread by [liveSubtitleTarget].
+     */
+    @Volatile
+    private var textTrackEmbedded = false
+
+    @Volatile
+    private var textTrackLanguage: String? = null
 
     /** The audio half's processor, owned by the current player's sink. */
     private var audioOffset: AudioOffsetProcessor? = null
@@ -3528,7 +3541,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 out: ArrayList<Renderer>,
             ) {
                 val built = ArrayList<Renderer>()
-                super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, built)
+                // The output is wrapped, not the renderers: a track built into the file has
+                // its words translated on their way to the screen. See [TranslatingTextOutput].
+                val liveOutput = TranslatingTextOutput(output, Handler(outputLooper), App.backgroundScope) { liveSubtitleTarget() }
+                super.buildTextRenderers(context, liveOutput, outputLooper, extensionRendererMode, built)
                 built.mapTo(out) { DelayedTextRenderer(it) { subtitleDelayUs } }
             }
         }
@@ -4110,6 +4126,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         override fun onTracksChanged(tracks: Tracks) {
             if (!tracks.isEmpty) markStart("tracks known", STAGE_TRACKS)
             logSubtitleTracks(tracks)
+            val selectedText = tracksOfType(tracks, C.TRACK_TYPE_TEXT)
+                .firstOrNull { (group, index) -> group.isTrackSelected(index) }
+            textTrackEmbedded = selectedText?.let { (group, index) ->
+                !EXTERNAL_TRACK_ID.containsMatchIn(group.getTrackFormat(index).id.orEmpty())
+            } ?: false
+            textTrackLanguage = selectedText?.let { (group, index) -> group.getTrackFormat(index).language }
             if (pictureUnplayable(tracks)) return
             if (checkSoftwareDecode(tracks)) return
             restoreResumeTracks(tracks)
@@ -4403,6 +4425,18 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
             .build()
+    }
+
+    /**
+     * The language a built in track's words are carried into as they play, or null to leave
+     * them as they are: the translate setting, on a track that is in the file itself, and not
+     * when the track is already in that language. Read on the playback thread.
+     */
+    private fun liveSubtitleTarget(): String? {
+        if (!textTrackEmbedded) return null
+        val target = OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() } ?: return null
+        if (TrackLanguages.same(textTrackLanguage, target)) return null
+        return target
     }
 
     /**
@@ -9131,6 +9165,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
          * a lift lost signal, short enough that a video which really will not play says so.
          */
         private const val MAX_RECOVERY_ATTEMPTS = 4
+
+        /** A track loaded as a file carries this in its format id: "external-1", "external-2". */
+        private val EXTERNAL_TRACK_ID = Regex("""external-\d+""")
         private const val RECOVERY_BACKOFF_MS = 800L
 
         /** 1..32; the same top slot the streaming path asks for. */

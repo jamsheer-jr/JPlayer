@@ -1607,7 +1607,7 @@
     "subdl_title": "Your SubDL key",
     "title": "Online subtitles",
     "track_label": "{language} · {provider}",
-    "translate_detail": "Subtitles downloaded or loaded are translated into this language. The timings stay as they are, and the original file is not changed.",
+    "translate_detail": "Subtitles downloaded or loaded are translated into this language, and so are subtitles built into the video, as they play. The timings stay as they are, and the original file is not changed.",
     "translate_off": "Off. Subtitles are shown as they come",
     "translate_on": "Subtitles are translated to {language}",
     "translate_title": "Translate subtitles",
