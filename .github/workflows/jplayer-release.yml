@@ -1,0 +1,121 @@
+name: J Player release (Android)
+
+# J Player is Android only. This workflow builds one signed universal APK with the
+# owner's own credentials and publishes it as a GitHub release on this repository.
+# It is started by hand (Actions, J Player release (Android), Run workflow) after CI
+# has passed on the same commit. Upstream's release.yml is left untouched; it builds
+# every platform and is not used for J Player.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, x.y.z"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android (signed APK, release)
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 is not set"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          cat > keystore.properties <<EOF
+          storeFile=release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Write app credentials
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          SUBDL_API_KEY: ${{ secrets.SUBDL_API_KEY }}
+        run: |
+          if [ -z "$TG_API_ID" ]; then
+            echo "::error::TG_API_ID is not set, so the APK would not be able to sign in"
+            exit 1
+          fi
+          cat > local.properties <<EOF
+          TG_API_ID=$TG_API_ID
+          TG_API_HASH=$TG_API_HASH
+          TMDB_API_KEY=$TMDB_API_KEY
+          SUBDL_API_KEY=$SUBDL_API_KEY
+          EOF
+
+      - name: Derive the version code
+        id: version
+        run: |
+          V="${{ inputs.version }}"
+          MAJOR="${V%%.*}"; REST="${V#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+          CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + 99))
+          echo "name=$V" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Version $V, code $CODE"
+
+      - name: Build the signed APK
+        run: |
+          ./gradlew :app:assembleRelease \
+            -PtmVersionName=${{ steps.version.outputs.name }} \
+            -PtmVersionCode=${{ steps.version.outputs.code }}
+
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          SRC="app/build/outputs/apk/release/app-universal-release.apk"
+          if [ ! -f "$SRC" ]; then
+            echo "::error::$SRC was not built"
+            exit 1
+          fi
+          cp "$SRC" "dist/JPlayer-${{ steps.version.outputs.name }}-universal.apk"
+          ls -la dist
+
+      - name: Shred signing material
+        run: rm -f release.keystore keystore.properties local.properties
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.version.outputs.name }}"
+          gh release create "v$V" \
+            "dist/JPlayer-$V-universal.apk" \
+            --title "J Player $V" \
+            --notes "J Player plays the videos in your own Telegram chats on your phone and Android TV.
+
+          In this build:
+          - Load a subtitle from a file or a link while a video plays
+          - Translate subtitles to Malayalam and other languages, timings kept
+          - Online subtitles through SubDL, posters and details through TMDB
+          - Playback speed, offline save, picture in picture, sleep timer, favourites
+
+          Install: download the APK below, open it, and allow the install when Android asks."
