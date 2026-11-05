@@ -3,9 +3,12 @@
     <!--
       The system splash (Android 12 and later): the mark's dark navy behind the app icon, so
       the splash and the start-up loader (which paints the same navy) read as one sequence.
-      Only the splash is navy; the app's own windows keep their themed backgrounds.
+      Only the splash is navy; the app's own windows keep their themed backgrounds. A style in
+      a versioned folder replaces the base style whole, so the base items are repeated here.
     -->
     <style name="Theme.TMPlayer" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:colorBackground">@color/window_background</item>
         <item name="android:windowSplashScreenBackground">#050C1C</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#050C1C</item>
     </style>
