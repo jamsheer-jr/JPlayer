@@ -331,7 +331,7 @@
         android:orientation="vertical"
         android:paddingLeft="24dp"
         android:paddingRight="24dp"
-        android:paddingBottom="12dp">
+        android:paddingBottom="8dp">
 
         <TextView
             android:id="@+id/controls_title"
@@ -618,26 +618,33 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- Phone only (PlayerControls shows it there): the transport on its own row under
-             the bar, MX Player style: the episode steps either side of play or pause, where
-             the thumb rests. The steps stay invisible without a neighbouring episode, so
-             the play button keeps the middle either way. -->
+        <!-- Phone only (PlayerControls shows and finishes it there): the ONE slim bottom row,
+             MX Player shape. The lock is moved here from the pill row by PlayerControls at the
+             far left, the episode steps and play or pause sit in the centre as plain icons (no
+             disc, no pill), and picture shape (also moved, before this row's own last button)
+             and picture in picture close the right end. The steps stay invisible without a
+             neighbouring episode, so the play button keeps the middle either way. The row over
+             this one keeps only the copy and Episodes pills, exactly where they were. -->
         <LinearLayout
             android:id="@+id/controls_transport"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center"
+            android:gravity="center_vertical"
             android:orientation="horizontal"
             android:visibility="gone">
 
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
             <ImageButton
                 android:id="@+id/transport_previous"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@drawable/bg_center_button"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_control_button"
                 android:contentDescription="Previous episode"
-                android:padding="13dp"
+                android:padding="12dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_player_previous"
                 android:tint="@color/player_control_icon"
@@ -645,34 +652,51 @@
 
             <FrameLayout
                 android:id="@+id/transport_play_pause"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:layout_marginStart="24dp"
-                android:layout_marginEnd="24dp"
-                android:background="@drawable/bg_center_button"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/bg_control_button"
                 android:clickable="true"
                 android:contentDescription="Pause"
                 android:focusable="true">
 
                 <com.tmplayer.player.PlayPauseIcon
                     android:id="@+id/transport_play_icon"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
                     android:layout_gravity="center"
                     android:importantForAccessibility="no" />
             </FrameLayout>
 
             <ImageButton
                 android:id="@+id/transport_next"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@drawable/bg_center_button"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_control_button"
                 android:contentDescription="Next episode"
-                android:padding="13dp"
+                android:padding="12dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_player_next"
                 android:tint="@color/player_control_icon"
                 android:visibility="invisible" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/control_pip"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_control_button"
+                android:contentDescription="Picture in picture"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_pip"
+                android:tint="@color/player_control_icon"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

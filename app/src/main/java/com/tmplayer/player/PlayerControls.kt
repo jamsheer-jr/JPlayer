@@ -79,6 +79,8 @@ class PlayerControls(
     private val onCycleShape: () -> Unit = {},
     /** The phone row's lock, shown while the row has room for it. */
     private val onLock: () -> Unit = {},
+    /** The phone bottom row's picture in picture button. */
+    private val onPip: () -> Unit = {},
 ) {
 
     private val container: View = root.findViewById(R.id.player_controls)
@@ -106,6 +108,7 @@ class PlayerControls(
     private val centerNext: ImageButton = root.findViewById(R.id.center_next)
     private val centerPreviousCaption: TextView = root.findViewById(R.id.center_previous_caption)
     private val centerNextCaption: TextView = root.findViewById(R.id.center_next_caption)
+    private val pipButton: ImageButton = root.findViewById(R.id.control_pip)
     private val transport: View = root.findViewById(R.id.controls_transport)
     private val transportPrevious: ImageButton = root.findViewById(R.id.transport_previous)
     private val transportNext: ImageButton = root.findViewById(R.id.transport_next)
@@ -274,6 +277,7 @@ class PlayerControls(
             holdFocus(shapeButton)
         }
         wire(lockButton) { onLock() }
+        wire(pipButton) { onPip() }
         wire(episodesButton) { onEpisodes() }
         wire(copyButton) { onCopies() }
         episodesButton.text = L.episodesTitle
@@ -578,10 +582,10 @@ class PlayerControls(
     }
 
     /**
-     * The phone's layout: the name goes to the top, the transport sits on its own row under the
-     * bar (MX style), and the centre keeps only the play disc, as the pause cue. The bottom row
-     * is left with speed and rotate, plus picture shape and the lock when wide: subtitles and
-     * audio live on the top bar.
+     * The phone's layout: the name goes to the top, and one slim row under the bar carries the
+     * lock, the transport and picture shape with picture in picture (MX shape), and the centre
+     * keeps only the play disc, as the pause cue. Subtitles and audio live on the top bar;
+     * speed and rotate live in More.
      */
     private fun setUpPhone(root: View) {
         listOf(tint, topBar, center, times).forEach { it.visibility = View.VISIBLE }
@@ -590,6 +594,23 @@ class PlayerControls(
         wire(centerPlay) { onTogglePlay(); renderPlayPause(animate = true) }
         transport.visibility = View.VISIBLE
         wire(transportPlay) { onTogglePlay(); renderPlayPause(animate = true) }
+
+        // One slim bottom row (J Player, 2026-11-06, MX shape): the pill row is dissolved. Its
+        // speed and rotate stay reachable in More, and subtitles and audio live on the top bar,
+        // so the whole pill scroll view goes. The lock and picture shape move into the transport
+        // row itself: the lock at the far left, picture shape at the right just before picture
+        // in picture, both always shown, upright or sideways. The copy and Episodes pills keep
+        // the row over this one, exactly where they were. A television never runs this: its
+        // row, its pill and its shape button stay where they have always been.
+        (buttons.parent as? View)?.visibility = View.GONE
+        val row = transport as android.widget.LinearLayout
+        (lockButton.parent as? android.view.ViewGroup)?.removeView(lockButton)
+        row.addView(lockButton, 0)
+        lockButton.visibility = View.VISIBLE
+        (shapeButton.parent as? android.view.ViewGroup)?.removeView(shapeButton)
+        row.addView(shapeButton, (row.childCount - 1).coerceAtLeast(0))
+        shapeButton.visibility = if (shapeOffered) View.VISIBLE else View.GONE
+        pipButton.visibility = View.VISIBLE
         wire(root.findViewById(R.id.control_back)) { onBack() }
         val more = root.findViewById<View>(R.id.control_more)
         wire(more) { onMore(more) }
@@ -614,31 +635,26 @@ class PlayerControls(
 
     /**
      * True while the row carries picture shape and the lock. On a television always for picture
-     * shape (the lock stays first in More there, where a held OK undoes it); on a phone only when
-     * the row is at least [WIDE_ROW_DP] across, which a phone held sideways or a tablet is and a
-     * phone held upright is not. The overflow leaves out what the row shows, and offers what it
-     * does not. Sound alone has no picture to shape, so the overflow leaves it out there too.
+     * shape (the lock stays first in More there, where a held OK undoes it); on a phone always
+     * for both, since the slim bottom row (see [setUpPhone]) carries them at any width. The
+     * overflow leaves out what the row shows, and offers what it does not. Sound alone has no
+     * picture to shape, so the overflow leaves it out there too.
      */
     val shapeOnRow: Boolean get() = shapeButton.visibility == View.VISIBLE || !shapeOffered
     val lockOnRow: Boolean get() = lockButton.visibility == View.VISIBLE
 
     /**
-     * Shows or hides the phone's two extra buttons by the room the row has. Before the first
-     * layout the width is the screen's, less the row's padding.
+     * Keeps the phone's lock and picture shape on the bottom row at any width (J Player,
+     * 2026-11-06): they used to come and go at [WIDE_ROW_DP], which left a phone held upright
+     * with neither. A television only settles picture shape here.
      */
     private fun fitRow() {
         if (isTv) {
             shapeButton.visibility = if (shapeOffered) View.VISIBLE else View.GONE
             return
         }
-        val metrics = cluster.resources.displayMetrics
-        val width = cluster.width.takeIf { it > 0 } ?: metrics.widthPixels
-        val across = (width - cluster.paddingLeft - cluster.paddingRight) / metrics.density
-        val wanted = if (across >= WIDE_ROW_DP) View.VISIBLE else View.GONE
-        val shapeWanted = if (shapeOffered) wanted else View.GONE
-        if (shapeButton.visibility == shapeWanted && lockButton.visibility == wanted) return
-        shapeButton.visibility = shapeWanted
-        lockButton.visibility = wanted
+        shapeButton.visibility = if (shapeOffered) View.VISIBLE else View.GONE
+        lockButton.visibility = View.VISIBLE
     }
 
     /** Offers or takes away the picture shape button, for a video that is sound alone. */
@@ -731,6 +747,7 @@ class PlayerControls(
             R.id.control_speed to L.playerPlaybackSpeed,
             R.id.control_rotate to L.playerScreenOrientation,
             R.id.control_lock to L.playerLockScreen,
+            R.id.control_pip to L.playerPictureInPicture,
             R.id.control_tv_more to L.commonMore,
             R.id.transport_previous to L.playerPreviousEpisode,
             R.id.transport_play_pause to L.commonPause,

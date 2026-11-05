@@ -429,8 +429,10 @@ class PlayerExtrasRenderTest {
     @Config(sdk = [35], qualifiers = "w411dp-h891dp-port-night-xhdpi")
     fun rowPhoneUpright() {
         val controls = row(tv = false, name = "extras-row-phone-port.png")
-        // Upright the row has no room: both stay in the overflow, which then offers picture shape.
-        assertTrue(!controls.shapeOnRow && !controls.lockOnRow)
+        // The slim bottom row carries both at any width (J Player, 2026-11-06): a phone held
+        // upright used to lose the lock and picture shape to the overflow, and got both back.
+        assertTrue("picture shape on the row", controls.shapeOnRow)
+        assertTrue("the lock on the row", controls.lockOnRow)
     }
 
     @Test

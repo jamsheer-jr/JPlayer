@@ -1553,6 +1553,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // The row's picture shape button: the next shape along, as W does on the desktop.
             onCycleShape = { applyScale(videoScale.next()) },
             onLock = ::lockScreen,
+            onPip = ::enterPictureInPictureNow,
             onBack = ::finish,
             onMore = ::showOverflow,
             onRemainingToggled = { remaining ->
