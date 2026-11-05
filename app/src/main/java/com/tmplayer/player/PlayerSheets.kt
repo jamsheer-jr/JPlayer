@@ -890,9 +890,18 @@ internal fun CopiesSheet(
     val touch = isTouch()
     val focus = remember { FocusRequester() }
     val spans = remember(copies) { VideoCopies.spansChats(copies) }
+    // Best picture first, the biggest of it next: the order the detail page's chooser lists
+    // them in, so the two lists never disagree. The copy playing stays listed and ticked
+    // wherever it lands (VideoCopies.oneOfEachFile keeps it in the list upstream).
+    val ordered = remember(copies) {
+        copies.sortedWith(
+            compareByDescending<MediaItem> { VideoCopies.heightOf(it) ?: 0 }
+                .thenByDescending { it.sizeBytes },
+        )
+    }
     ChoiceSheet(title = s.playerCopies, note = s.playerCopiesNote, onDismiss = onClose, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
         ChoiceList {
-            copies.forEach { copy ->
+            ordered.forEach { copy ->
                 val here = copy.id == playing
                 // The upload is ticked only while no Telegram copy stands in for it.
                 val ticked = here && playingQuality == 0

@@ -485,14 +485,19 @@ object GlobalSearch {
     /** The name a card goes by: the show's, or the tile title, never a shortened poster title. */
     fun titleOf(group: ResultGroup): String = group.show?.takeIf { group.isShow } ?: SeriesShelf.tileTitle(group.asItem())
 
-    /** On this device first, then the best picture, then the newest. */
+    /**
+     * The best picture first, the biggest of that picture next, then the newest: the order
+     * the copies are listed and led with everywhere (the detail page's chooser sorts the
+     * same way, by height then size). A copy already on this device still plays first when
+     * one is picked, which is [VideoCopies.pick]'s business, not the list's.
+     */
     fun copyOrder(copies: List<MediaItem>): List<MediaItem> {
         if (copies.size < 2) return copies.toList()
         // Each copy's quality read once, not on every comparison of the sort.
         return copies.map { it to (qualityOf(it)?.let(::qualityRank) ?: 0) }
             .sortedWith(
-                compareByDescending<Pair<MediaItem, Int>> { it.first.onDevice }
-                    .thenByDescending { it.second }
+                compareByDescending<Pair<MediaItem, Int>> { it.second }
+                    .thenByDescending { it.first.sizeBytes }
                     .thenByDescending { it.first.date }
                     .thenByDescending { it.first.messageId },
             )
