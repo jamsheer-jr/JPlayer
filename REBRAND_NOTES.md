@@ -424,3 +424,23 @@ own, or no online subtitles), `OMDB_API_KEY` if wanted, and the four `KEYSTORE_`
 `KEY_` signing secrets before a signed release. Nothing else needs changing in code:
 TMDB already reads its key from the env-backed field, and Telegram, OpenSubtitles, MSone
 and OMDb were already wired the same way.
+
+## MX style UI (asked 2026-11-05, after v1.0.3)
+
+He sent three MX Player screenshots and wants that arrangement: top title bar
+with subtitle/audio/decoder icons, a circle shortcut row, seekbar above a
+lock/prev/play/next/aspect/PiP row; a subtitle panel list (Open, Online
+subtitles, Translate, Synchronization -/+ steppers, Panel, Customization);
+a circle icon quick settings grid.
+
+Current phone controls are Views, not Compose: res/layout/player_controls.xml
+(591 lines) wired by player/PlayerControls.kt (setUpPhone). The layout already
+has a topbar (back, title, cast, more), a centre cluster (prev/play/next) and
+a bottom cluster (title, times, timebar, a pill row of round buttons:
+subtitles, audio, speed, shape, rotate, lock, tv_more; copy and episodes at
+the ends). So stage 1 is a rearrangement, not a rewrite: move title to the
+topbar only, put the transport row (lock, prev, play, next, PiP) under the
+timebar MX style, and add a decoder badge beside the topbar icons.
+Stage 2: subtitle panel in MX list shape (the More menu already carries Open
+file/link, Online via the picker, Translate, Size, Position, Sync as of the
+post-v1.0.3 commit). Stage 3: the quick settings circle grid.

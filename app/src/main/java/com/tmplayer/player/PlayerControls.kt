@@ -259,6 +259,9 @@ class PlayerControls(
     init {
         wire(root.findViewById(R.id.control_subtitles)) { onPickSubtitles() }
         wire(root.findViewById(R.id.control_audio)) { onPickAudio() }
+        // The top bar's own subtitle and audio buttons (phone only, the bar is): same pickers.
+        wire(root.findViewById(R.id.control_top_subtitles)) { onPickSubtitles() }
+        wire(root.findViewById(R.id.control_top_audio)) { onPickAudio() }
         wire(root.findViewById(R.id.control_speed)) { onPickSpeed() }
         wire(rotate) { onCycleOrientation() }
         wire(shapeButton) {
@@ -714,6 +717,8 @@ class PlayerControls(
             R.id.times_duration to L.playerShowTimeRemaining,
             R.id.control_subtitles to L.tracksSubtitles,
             R.id.control_audio to L.playerAudio,
+            R.id.control_top_subtitles to L.tracksSubtitles,
+            R.id.control_top_audio to L.playerAudio,
             R.id.control_speed to L.playerPlaybackSpeed,
             R.id.control_rotate to L.playerScreenOrientation,
             R.id.control_lock to L.playerLockScreen,

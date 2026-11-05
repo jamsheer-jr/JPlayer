@@ -145,6 +145,30 @@
             android:tint="@color/player_control_icon"
             android:visibility="gone" />
 
+        <!-- The subtitle and audio pickers on the top bar too, where MX Player keeps them:
+             the same two actions as the row's buttons, a thumb nearer the top of the screen. -->
+        <ImageButton
+            android:id="@+id/control_top_subtitles"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_control_button"
+            android:contentDescription="Subtitles"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_subtitles"
+            android:tint="@color/player_control_icon" />
+
+        <ImageButton
+            android:id="@+id/control_top_audio"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_control_button"
+            android:contentDescription="Audio"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_audio_language"
+            android:tint="@color/player_control_icon" />
+
         <ImageButton
             android:id="@+id/control_more"
             android:layout_width="48dp"
