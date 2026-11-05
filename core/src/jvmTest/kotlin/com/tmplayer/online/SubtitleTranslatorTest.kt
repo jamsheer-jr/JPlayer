@@ -25,7 +25,7 @@ class SubtitleTranslatorTest {
      * its answer is: markers kept, markers lost but lines kept, or one blob for the whole batch.
      * A request for one cue (no markers) is answered with that cue translated.
      */
-    private class FakeTranslate(var mode: Mode = Mode.Marked) : HttpTransport {
+    private inner class FakeTranslate(var mode: Mode = Mode.Marked) : HttpTransport {
         val urls = mutableListOf<String>()
 
         override suspend fun send(request: HttpRequest): HttpResponse {
