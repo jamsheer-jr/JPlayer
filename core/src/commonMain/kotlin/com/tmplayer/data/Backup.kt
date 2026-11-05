@@ -144,6 +144,7 @@ object Backups {
         "gesture_brightness" to Kind.BOOL,
         "gesture_seek" to Kind.BOOL,
         "gesture_volume" to Kind.BOOL,
+        "hide_rip_tags" to Kind.BOOL,
         "high_contrast" to Kind.BOOL,
         "history_tab" to Kind.TEXT,
         // The retired hidden chats (AddedChats.HIDDEN_KEY). Never written now (the setting is
@@ -158,6 +159,7 @@ object Backups {
         "downloads_sort" to Kind.TEXT,
         "hold_speed" to Kind.FLOAT,
         "home_carousel" to Kind.BOOL,
+        "home_catalog" to Kind.BOOL,
         "home_continue" to Kind.BOOL,
         "home_recent" to Kind.BOOL,
         "home_starred_rows" to Kind.BOOL,

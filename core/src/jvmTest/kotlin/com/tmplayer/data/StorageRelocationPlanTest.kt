@@ -89,7 +89,7 @@ class StorageRelocationPlanTest {
             cacheBytes = (3.1 * gb).toLong(),
             adopt = false,
         )
-        assertEquals("Move TMPlayer's files to E:\\?", title)
+        assertEquals("Move J Player's files to E:\\?", title)
         assertEquals(
             "Downloads (12 videos, 38.0 GB) move to E:\\TMPlayer\\downloads. Recently played videos (3.1 GB) are cleared and " +
                 "start again at E:\\TMPlayer\\cache. Nothing is removed from Telegram. Playback and downloads " +

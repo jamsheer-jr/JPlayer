@@ -111,7 +111,9 @@ class HomeLayoutTest {
 
     @Test
     fun `values not stored read as the defaults`() {
-        assertEquals(HomeLayout(), HomeLayout.of(null, null, null, null))
-        assertEquals(HomeLayout(carousel = false), HomeLayout.of(false, null, null, null))
+        // The store turns the catalog shelves on unless the viewer turned them off, while
+        // the bare layout leaves them off, so the stored default differs on that one row.
+        assertEquals(HomeLayout(catalogRows = true), HomeLayout.of(null, null, null, null))
+        assertEquals(HomeLayout(carousel = false, catalogRows = true), HomeLayout.of(false, null, null, null))
     }
 }

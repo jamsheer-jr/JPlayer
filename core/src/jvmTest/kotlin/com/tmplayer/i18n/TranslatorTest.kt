@@ -166,7 +166,7 @@ class TranslatorTest {
         assertEquals("Retry", L.commonRetry)
         assertEquals("1 video", L.browseVideosCount(1))
         assertEquals("12 videos", L.browseVideosCount(12))
-        assertEquals("What stays on this TV and which services TMPlayer contacts", L.settingsPrivacyDetail("tv"))
+        assertEquals("What stays on this TV and which services J Player contacts", L.settingsPrivacyDetail("tv"))
         assertEquals("Sort order: Newest", L.browseSortBy("Newest"))
     }
 

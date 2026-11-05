@@ -67,5 +67,5 @@ object VideoFiltering {
     }
 
     /** [GlobalSearch.qualityRank] of 1080p. */
-    private const val HD_RANK = 3
+    private const val HD_RANK = 5
 }
