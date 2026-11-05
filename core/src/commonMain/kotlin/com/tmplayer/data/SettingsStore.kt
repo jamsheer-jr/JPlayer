@@ -250,6 +250,7 @@ private val SCREEN_ORIENTATION = stringPreferencesKey("screen_orientation")
 // The phone player's touch settings. See [TouchPrefs].
 private val TAP_PLAYS_PAUSES = booleanPreferencesKey("player_tap_plays_pauses")
 private val DOUBLE_TAP_MS = longPreferencesKey("double_tap_ms")
+private val DOUBLE_TAP_PAUSES = booleanPreferencesKey("player_double_tap_pauses")
 private val HOLD_SPEED = floatPreferencesKey("hold_speed")
 private val CONTROLS_TIMEOUT_MS = longPreferencesKey("controls_timeout_ms")
 private val GESTURE_SEEK = booleanPreferencesKey("gesture_seek")
@@ -1596,6 +1597,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             val next = change(touchPrefsOf(prefs))
             prefs[TAP_PLAYS_PAUSES] = next.tapPlaysPauses
             prefs[DOUBLE_TAP_MS] = TouchPrefs.sanitiseDoubleTap(next.doubleTapMs)
+            prefs[DOUBLE_TAP_PAUSES] = next.doubleTapPauses
             prefs[HOLD_SPEED] = TouchPrefs.sanitiseHold(next.holdSpeed)
             prefs[CONTROLS_TIMEOUT_MS] = TouchPrefs.sanitiseTimeout(next.controlsTimeoutMs)
             prefs[GESTURE_SEEK] = next.seekGesture
@@ -1609,6 +1611,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     private fun touchPrefsOf(prefs: Preferences) = TouchPrefs(
         tapPlaysPauses = prefs[TAP_PLAYS_PAUSES] ?: false,
         doubleTapMs = TouchPrefs.sanitiseDoubleTap(prefs[DOUBLE_TAP_MS]),
+        doubleTapPauses = prefs[DOUBLE_TAP_PAUSES] ?: true,
         holdSpeed = TouchPrefs.sanitiseHold(prefs[HOLD_SPEED]),
         controlsTimeoutMs = TouchPrefs.sanitiseTimeout(prefs[CONTROLS_TIMEOUT_MS]),
         seekGesture = prefs[GESTURE_SEEK] ?: true,

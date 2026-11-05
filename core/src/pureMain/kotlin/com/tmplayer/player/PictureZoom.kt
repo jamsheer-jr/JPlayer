@@ -7,8 +7,8 @@ import kotlin.math.roundToInt
 
 /**
  * Free zoom over the picture, as VLC and MX Player have it: a pinch that follows the fingers from
- * 100 to 400 per cent around the point between them, a drag that moves the enlarged picture, and a
- * pinch back under [SNAP] that settles on the plain fitted picture again.
+ * 50 to 400 per cent around the point between them, a drag that moves the enlarged picture, and a
+ * pinch back to near 100 per cent that settles on the plain fitted picture again.
  *
  * It sits on top of the chosen [VideoScale]: the shape decides the picture's size at 100 per cent
  * ([Frame.pictureWidth] and [Frame.pictureHeight]), the zoom enlarges that. Choosing a shape starts
@@ -33,21 +33,21 @@ data class PictureZoom(val scale: Float = MIN, val panX: Float = 0f, val panY: F
             get() = listOf(viewWidth, viewHeight, pictureWidth, pictureHeight).all { it.isFinite() && it > 0f }
     }
 
-    /** True once the picture is larger than the shape draws it. */
-    val zoomed: Boolean get() = scale > MIN
+    /** True once the picture is not the size the shape draws it, larger or smaller. */
+    val zoomed: Boolean get() = scale != MIN
 
     /** The zoom as the chip shows it: 135 for 1.35. */
     val percent: Int get() = (scale * 100f).roundToInt()
 
     /**
      * One step of a pinch: the scale times [factor], around the point ([focusX], [focusY]) the
-     * fingers are centred on, which stays under them. Held between [MIN] and [MAX]; a factor that
-     * is not a number or not above zero changes nothing.
+     * fingers are centred on, which stays under them. Held between [FLOOR] and [MAX]; a factor
+     * that is not a number or not above zero changes nothing.
      */
     fun pinch(factor: Float, focusX: Float, focusY: Float, frame: Frame): PictureZoom {
         if (!frame.valid || !factor.isFinite() || factor <= 0f || !focusX.isFinite() || !focusY.isFinite()) return this
-        val from = scale.coerceIn(MIN, MAX)
-        val next = (from * factor).coerceIn(MIN, MAX)
+        val from = scale.coerceIn(FLOOR, MAX)
+        val next = (from * factor).coerceIn(FLOOR, MAX)
         val grow = next / from
         val fx = focusX - frame.viewWidth / 2f
         val fy = focusY - frame.viewHeight / 2f
@@ -62,12 +62,13 @@ data class PictureZoom(val scale: Float = MIN, val panX: Float = 0f, val panY: F
     }
 
     /**
-     * Held to [MIN]..[MAX], with the picture's edge never inside the view's edge. Called again
-     * whenever the frame changes size: a phone turned, a window resized, another shape.
+     * Held to [FLOOR]..[MAX], with the picture's edge never inside the view's edge on a side
+     * where it is enlarged past the view; a shrunk picture stays centred, bars and all. Called
+     * again whenever the frame changes size: a phone turned, a window resized, another shape.
      */
     fun clampedTo(frame: Frame): PictureZoom {
         if (!frame.valid) return NONE
-        val held = if (scale.isFinite()) scale.coerceIn(MIN, MAX) else MIN
+        val held = if (scale.isFinite()) scale.coerceIn(FLOOR, MAX) else MIN
         val reachX = max(0f, (held * frame.pictureWidth - frame.viewWidth) / 2f)
         val reachY = max(0f, (held * frame.pictureHeight - frame.viewHeight) / 2f)
         val x = if (panX.isFinite()) panX.coerceIn(-reachX, reachX) else 0f
@@ -75,8 +76,9 @@ data class PictureZoom(val scale: Float = MIN, val panX: Float = 0f, val panY: F
         return PictureZoom(held, x, y)
     }
 
-    /** Where a pinch comes to rest as the fingers lift: just over 100 per cent is 100 per cent. */
-    fun settled(frame: Frame): PictureZoom = if (scale < SNAP) NONE else clampedTo(frame)
+    /** Where a pinch comes to rest as the fingers lift: near 100 per cent, either way, is 100. */
+    fun settled(frame: Frame): PictureZoom =
+        if (scale > SNAP_UNDER && scale < SNAP) NONE else clampedTo(frame)
 
     /**
      * A key's or a wheel notch's step, [steps] of [STEP] each (negative to zoom out), around
@@ -107,8 +109,14 @@ data class PictureZoom(val scale: Float = MIN, val panX: Float = 0f, val panY: F
         const val MIN = 1f
         const val MAX = 4f
 
+        /** The smallest a pinch can shrink the picture: half the size the shape draws it. */
+        const val FLOOR = 0.5f
+
         /** A pinch let go under this settles on 100 per cent, so "almost back" is back. */
         const val SNAP = 1.05f
+
+        /** The same from below: a pinch let go over this settles on 100 per cent. */
+        const val SNAP_UNDER = 0.95f
 
         /** One key press or wheel notch: four of them double the picture. */
         val STEP: Float = 2f.pow(0.25f)

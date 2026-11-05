@@ -1139,6 +1139,19 @@ fun SettingsScreen(
                         )
                     }
                     item {
+                        ToggleRow(
+                            title = s.settingsDoubleTapPause,
+                            subtitle = if (touchPrefs.doubleTapPauses) {
+                                s.settingsDoubleTapPauseOn
+                            } else {
+                                s.settingsDoubleTapPauseOff
+                            },
+                            icon = TmIcons.Pause,
+                            checked = touchPrefs.doubleTapPauses,
+                            onToggle = { update { it.copy(doubleTapPauses = !it.doubleTapPauses) } },
+                        )
+                    }
+                    item {
                         val choices = TouchPrefs.HOLD_CHOICES
                         StepperRow(
                             title = s.settingsHoldSpeed,

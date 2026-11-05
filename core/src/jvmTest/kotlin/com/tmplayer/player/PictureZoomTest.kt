@@ -36,10 +36,10 @@ class PictureZoomTest {
     }
 
     @Test
-    fun `scale is held between 100 and 400 per cent`() {
+    fun `scale is held between 50 and 400 per cent`() {
         assertEquals(4f, PictureZoom.NONE.pinch(10f, 960f, 540f, wide).scale, 0.0001f)
-        assertEquals(1f, PictureZoom.NONE.pinch(0.2f, 960f, 540f, wide).scale, 0.0001f)
-        assertFalse(PictureZoom.NONE.pinch(0.2f, 960f, 540f, wide).zoomed)
+        assertEquals(0.5f, PictureZoom.NONE.pinch(0.2f, 960f, 540f, wide).scale, 0.0001f)
+        assertTrue(PictureZoom.NONE.pinch(0.2f, 960f, 540f, wide).zoomed)
     }
 
     @Test
@@ -68,6 +68,19 @@ class PictureZoomTest {
     fun `just over 100 per cent settles on 100`() {
         assertEquals(PictureZoom.NONE, PictureZoom(1.04f, 10f, 5f).settled(wide))
         assertEquals(1.06f, PictureZoom(1.06f).settled(wide).scale, 0.0001f)
+    }
+
+    @Test
+    fun `just under 100 per cent settles on 100`() {
+        assertEquals(PictureZoom.NONE, PictureZoom(0.96f, 10f, 5f).settled(wide))
+        assertEquals(0.94f, PictureZoom(0.94f).settled(wide).scale, 0.0001f)
+    }
+
+    @Test
+    fun `a shrunk picture stays centred when dragged`() {
+        val zoom = PictureZoom(0.5f).panBy(500f, 500f, wide)
+        assertEquals(0f, zoom.panX, 0.001f)
+        assertEquals(0f, zoom.panY, 0.001f)
     }
 
     @Test

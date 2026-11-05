@@ -14,6 +14,8 @@ data class TouchPrefs(
     val tapPlaysPauses: Boolean = false,
     /** How far each double tap on a side of the picture jumps. */
     val doubleTapMs: Long = DOUBLE_TAP_DEFAULT_MS,
+    /** A double tap anywhere on the picture plays or pauses, instead of jumping on the sides. */
+    val doubleTapPauses: Boolean = true,
     /** The speed a held finger plays at; zero turns the hold off. */
     val holdSpeed: Float = HOLD_DEFAULT,
     /** How long the controls stay up while playing; zero keeps them up until tapped away. */

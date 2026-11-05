@@ -11,7 +11,7 @@ object FirstRunHint {
 
     /** One line per gesture: the double tap always, then each swipe that is on. */
     fun phone(prefs: TouchPrefs, s: Strings): List<String> = buildList {
-        add(s.playerDoubleTapHint(prefs.doubleTapMs / 1000))
+        add(if (prefs.doubleTapPauses) s.playerDoubleTapPauseHint else s.playerDoubleTapHint(prefs.doubleTapMs / 1000))
         if (prefs.seekGesture) add(s.settingsSeekGesture)
         if (prefs.brightnessGesture) add(s.settingsBrightnessGesture)
         if (prefs.volumeGesture) add(s.settingsVolumeGesture)

@@ -2786,13 +2786,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /** One step of a pinch, from the gestures, in window pixels. */
-    private fun zoomBy(factor: Float, focusX: Float, focusY: Float, dx: Float, dy: Float) {
+    private fun zoomBy(factor: Float, focusX: Float, focusY: Float) {
         val frame = zoomFrame() ?: return
         // The row would only be in the way of the picture being looked at.
         if (controlsUp) controls?.hideAnimated()
         val origin = IntArray(2)
         touchSurface?.getLocationInWindow(origin)
-        zoom = zoom.pinch(factor, focusX - origin[0], focusY - origin[1], frame).panBy(dx, dy, frame)
+        zoom = zoom.pinch(factor, focusX - origin[0], focusY - origin[1], frame)
         renderZoom()
         showZoom(live = true)
     }

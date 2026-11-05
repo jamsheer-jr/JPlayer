@@ -16,14 +16,15 @@ import kotlin.math.roundToInt
  * The gestures a phone viewer expects from a video player, and nothing else.
  *
  * A remote has buttons for all of this, so none of it exists on the TV. On a phone: a tap raises
- * the controls (or plays and pauses, if the viewer chose that); a double tap on a side jumps, and
- * every further tap on the same side adds another jump with a running total; a double tap in the
- * middle plays and pauses; a held finger plays fast until it lifts; a sideways drag scrubs; a
+ * the controls (or plays and pauses, if the viewer chose that); a double tap plays or pauses, or,
+ * where the viewer has put it back to jumping in Settings, a double tap on a side jumps and every
+ * further tap on the same side adds another jump with a running total, while one in the middle
+ * plays and pauses; a held finger plays fast until it lifts; a sideways drag scrubs; a
  * vertical drag on the left is brightness and on the right volume; a pinch zooms the picture
- * freely around the fingers; enlarged, a mostly vertical drag or the pinch's own travel moves
- * the picture about, while a mostly sideways drag still scrubs, as in MX Player, so zooming
- * never takes seeking away (on Android 6, where the video surface cannot follow a zoom, a pinch
- * steps the fitting instead).
+ * freely around the fingers' centre, without the fingers' travel dragging the picture sideways
+ * with it; enlarged, a mostly vertical drag moves the picture about, while a mostly sideways
+ * drag still scrubs, as in MX Player, so zooming never takes seeking away (on Android 6, where
+ * the video surface cannot follow a zoom, a pinch steps the fitting instead).
  *
  * Fed from the activity's own [android.app.Activity.dispatchTouchEvent] rather than attached to
  * the video view, because once the controller is up its buttons and scrub bar are the views under
@@ -56,10 +57,12 @@ class PlayerGestures(
     /** True while the picture is enlarged, when a one finger drag moves it instead of its usual job. */
     private val zoomed: () -> Boolean = { false },
     /**
-     * One step of a free pinch: the scale change since the last, the point between the fingers in
-     * window pixels, and how far that point moved (the two finger drag).
+     * One step of a free pinch: the scale change since the last, and the point between the
+     * fingers in window pixels. The fingers' travel is not passed on: a pinch zooms around its
+     * centre and never drags the picture sideways, which the viewer asked to have stopped.
+     * Moving the picture is [onPan]'s job.
      */
-    private val onZoom: (factor: Float, focusX: Float, focusY: Float, dx: Float, dy: Float) -> Unit = { _, _, _, _, _ -> },
+    private val onZoom: (factor: Float, focusX: Float, focusY: Float) -> Unit = { _, _, _ -> },
     /** The fingers of a free pinch lifted, or the pinch was cut short. */
     private val onZoomEnd: () -> Unit = {},
     /** A one finger drag on the enlarged picture, in pixels. */
@@ -87,11 +90,11 @@ class PlayerGestures(
     var prefs = TouchPrefs()
 
     /**
-     * True while the transport row is up, in which case drags are left alone.
-     *
-     * A thumb on the scrub bar rarely travels in a straight line, and stealing that as a volume
-     * change would make the one control everybody uses unreliable. Taps, double taps, holds and
-     * pinches on the bare picture still work, since none of them collides.
+     * True while the transport row is up. It once held the drags back, which left a viewer who
+     * had raised the controls unable to scrub or level until they faded, unlike every other
+     * player; now a drag that starts on the picture works with the row up, and one that starts
+     * on the row itself is chrome ([isOnChrome]) and never reaches here, so the scrub bar keeps
+     * its own touches. Kept as the activity's report, for the tap handling if it wants it.
      */
     var controlsVisible = false
 
@@ -173,6 +176,14 @@ class PlayerGestures(
 
             override fun onDoubleTap(event: MotionEvent): Boolean {
                 if (viewWidth <= 0) return false
+                // The way MX Player answers a double tap, and the default here: anywhere on
+                // the picture it plays or pauses. The side jumps below are what is left when
+                // the viewer switches this off in Settings.
+                if (prefs.doubleTapPauses) {
+                    counter.reset()
+                    onTogglePlay(false)
+                    return true
+                }
                 val now = SystemClock.uptimeMillis()
                 when (val zone = TapZone.of(event.x, viewWidth)) {
                     TapZone.Centre -> {
@@ -192,7 +203,7 @@ class PlayerGestures(
             ): Boolean {
                 val from = start ?: return false
                 if (viewHeight <= 0) return false
-                if (controlsVisible || scaling || holding) return false
+                if (scaling || holding) return false
                 if (dragKind == DRAG_PAN) {
                     onPan(-distanceX, -distanceY)
                     return true
@@ -249,10 +260,8 @@ class PlayerGestures(
     /** True from a pinch's start to the end of the touch it was part of. */
     private var pinched = false
 
-    /** True while the pinch under way drives the free zoom, and where its fingers' centre was last. */
+    /** True while the pinch under way drives the free zoom. */
     private var zooming = false
-    private var lastFocusX = 0f
-    private var lastFocusY = 0f
 
     private fun endZoom() {
         if (!zooming) return
@@ -269,17 +278,15 @@ class PlayerGestures(
                 pinched = true
                 dragKind = DRAG_NONE
                 zooming = zoomAllowed()
-                lastFocusX = detector.focusX
-                lastFocusY = detector.focusY
                 return true
             }
 
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (zooming) {
                     // Every step, so the picture follows the fingers; true resets the factor.
-                    onZoom(detector.scaleFactor, detector.focusX, detector.focusY, detector.focusX - lastFocusX, detector.focusY - lastFocusY)
-                    lastFocusX = detector.focusX
-                    lastFocusY = detector.focusY
+                    // Only the scale and the centre travel: the fingers moving sideways does
+                    // not drag the picture with them.
+                    onZoom(detector.scaleFactor, detector.focusX, detector.focusY)
                     return true
                 }
                 // One step per pinch, not one per frame: the control has three stops, and

@@ -25,7 +25,7 @@ class FirstRunHintTest {
 
     @Test
     fun `the double tap line says the jump that is set`() {
-        val lines = FirstRunHint.phone(TouchPrefs(doubleTapMs = 30_000), s)
+        val lines = FirstRunHint.phone(TouchPrefs(doubleTapMs = 30_000, doubleTapPauses = false), s)
         assertTrue(lines.first(), lines.first().contains("30 seconds"))
     }
 }
