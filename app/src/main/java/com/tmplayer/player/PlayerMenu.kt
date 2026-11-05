@@ -111,6 +111,12 @@ enum class PhoneMenuEntry {
     LoadSubtitleUrl,
     /** The language loaded and downloaded subtitles are translated into, or Off. */
     TranslateSubtitles,
+    /** The subtitle text size, stepped through its choices in place. */
+    SubtitleSize,
+    /** How far up the picture the subtitles sit, stepped in place. */
+    SubtitlePosition,
+    /** The subtitle timing page: earlier, later, reset. */
+    SubtitleSync,
     SaveToDownloads,
     MarkWatched,
     /** Last: a line for bug reports, not for watching. */
@@ -150,6 +156,9 @@ fun PhoneMenuEntry.label(
     PhoneMenuEntry.LoadSubtitleFile -> L.playerLoadSubtitleFile
     PhoneMenuEntry.LoadSubtitleUrl -> L.playerLoadSubtitleUrl
     PhoneMenuEntry.TranslateSubtitles -> L.onlineTranslateTitle
+    PhoneMenuEntry.SubtitleSize -> L.tracksSubtitleSize
+    PhoneMenuEntry.SubtitlePosition -> L.tracksSubtitlePosition
+    PhoneMenuEntry.SubtitleSync -> L.playerSubtitleSync
     PhoneMenuEntry.SaveToDownloads -> L.playerSaveToDownloads
     PhoneMenuEntry.MarkWatched -> if (watched) L.playerMarkUnwatched else L.playerMarkWatched
     PhoneMenuEntry.AddBookmark -> L.playerAddBookmark
@@ -270,6 +279,9 @@ object PlayerMenu {
         add(PhoneMenuEntry.LoadSubtitleFile)
         add(PhoneMenuEntry.LoadSubtitleUrl)
         add(PhoneMenuEntry.TranslateSubtitles)
+        add(PhoneMenuEntry.SubtitleSize)
+        add(PhoneMenuEntry.SubtitlePosition)
+        add(PhoneMenuEntry.SubtitleSync)
         add(PhoneMenuEntry.VolumeBoost)
         add(PhoneMenuEntry.NightMode)
         add(PhoneMenuEntry.EvenVolume)

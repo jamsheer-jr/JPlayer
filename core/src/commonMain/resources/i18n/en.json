@@ -2077,6 +2077,7 @@
     "subtitle_delay": "Subtitle delay {delay}",
     "subtitle_load_failed": "Could not load {file}",
     "subtitle_style_and_timing": "Subtitle style and timing",
+    "subtitle_sync": "Subtitle sync",
     "subtitle_url_hint": "https://…",
     "subtitle_url_message": "Paste a link to a subtitle file (.srt, .ass, .ssa, .vtt or .sub). It is downloaded and shown over this video.",
     "subtitle_url_title": "Load subtitles from a link",

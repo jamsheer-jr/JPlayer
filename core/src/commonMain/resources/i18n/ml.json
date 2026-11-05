@@ -2062,6 +2062,7 @@
     "subtitle_delay": "സബ്ടൈറ്റിൽ വൈകൽ {delay}",
     "subtitle_load_failed": "{file} ലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല",
     "subtitle_style_and_timing": "സബ്ടൈറ്റിൽ ശൈലിയും സമയവും",
+    "subtitle_sync": "സബ്ടൈറ്റിൽ സിങ്ക്",
     "subtitle_url_hint": "https://…",
     "subtitle_url_message": "ഒരു സബ്ടൈറ്റിൽ ഫയലിലേക്കുള്ള ലിങ്ക് പേസ്റ്റ് ചെയ്യുക (.srt, .ass, .ssa, .vtt അല്ലെങ്കിൽ .sub). അത് ഡൗൺലോഡ് ചെയ്ത് ഈ വീഡിയോയ്ക്ക് മുകളിൽ കാണിക്കും.",
     "subtitle_url_title": "ലിങ്കിൽ നിന്ന് സബ്ടൈറ്റിൽ ലോഡ് ചെയ്യുക",

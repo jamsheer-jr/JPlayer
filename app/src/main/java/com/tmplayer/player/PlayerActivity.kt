@@ -6334,6 +6334,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         override val tv: Boolean get() = FormFactor.isTv(this@PlayerActivity)
         override fun title() = mediaTitle
         override fun sideways() = sheetGoesSideways()
+        override fun subtitleSizeLabel(): String = subtitleStyleNow().size.label
+        override fun subtitlePositionLabel(): String = subtitleStyleNow().position.label
+        override fun subtitleDelayMs(): Long = syncDelaysNow().subtitleMs
+        override fun stepSubtitleDelay(direction: Int) = stepDelay(C.TRACK_TYPE_TEXT, direction)
         override fun phoneEntries() = PlayerMenu.phoneEntries(
             pictureInPicture = hasPictureInPicture(),
             openInAnotherApp = savable == true,
@@ -6417,6 +6421,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             PhoneMenuEntry.LoadSubtitleUrl -> showSheet { it.showSubtitleUrl { link -> subtitleFiles.loadFromUrl(link) } }
             // The More panel opens its own translate page for this one; it never lands here.
             PhoneMenuEntry.TranslateSubtitles -> Unit
+            PhoneMenuEntry.SubtitleSize -> changeSubtitleStyle(subtitleStyleNow().nextSize())
+            PhoneMenuEntry.SubtitlePosition -> changeSubtitleStyle(subtitleStyleNow().nextPosition())
+            // The More panel opens its own sync page for this one; it never lands here.
+            PhoneMenuEntry.SubtitleSync -> Unit
             PhoneMenuEntry.SaveToDownloads -> saveToDownloads()
             PhoneMenuEntry.MarkWatched -> toggleWatched()
             PhoneMenuEntry.ResetZoom -> resetZoom()

@@ -160,6 +160,10 @@ class PlayerMoreRenderTest {
         override fun nightMode() = false
         override fun evenVolume() = true
         override fun sleepDetail() = "23 minutes left"
+        override fun subtitleSizeLabel() = "Medium"
+        override fun subtitlePositionLabel() = "Bottom"
+        override fun subtitleDelayMs() = 0L
+        override fun stepSubtitleDelay(direction: Int) = Unit
         override fun sleepChoice() = 30
         override fun loop(): AbLoop? = null
         override fun chapter(): String? = null

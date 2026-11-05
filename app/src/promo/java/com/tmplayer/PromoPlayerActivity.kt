@@ -480,6 +480,10 @@ private class PromoMoreHost(override val tv: Boolean) : com.tmplayer.player.Play
     override fun nightMode() = false
     override fun evenVolume() = true
     override fun sleepDetail(): String? = null
+    override fun subtitleSizeLabel(): String = "Medium"
+    override fun subtitlePositionLabel(): String = "Bottom"
+    override fun subtitleDelayMs(): Long = 0
+    override fun stepSubtitleDelay(direction: Int) = Unit
     override fun sleepChoice(): Int? = null
     override fun loop(): com.tmplayer.player.AbLoop? = null
     override fun chapter(): String? = null

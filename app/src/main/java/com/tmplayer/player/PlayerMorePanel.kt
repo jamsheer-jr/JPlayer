@@ -142,6 +142,13 @@ interface PlayerMoreHost {
 
     /** The playback details' heading and lines, or null before there is a player. */
     fun playbackDetails(): Pair<String, List<String>>?
+    /** The subtitle look's current size and position, for their lines in the panel. */
+    fun subtitleSizeLabel(): String
+    fun subtitlePositionLabel(): String
+
+    /** The subtitle delay in force, and stepping it (-1 earlier, 1 later, 0 back to none). */
+    fun subtitleDelayMs(): Long
+    fun stepSubtitleDelay(direction: Int)
     fun onPhoneEntry(entry: PhoneMenuEntry)
     fun onTvEntry(entry: PlayerMenuEntry)
     fun setShape(scale: VideoScale)
@@ -186,6 +193,7 @@ class PlayerMorePanel(
         data object Stereo : Page
         data object Sleep : Page
         data object Translate : Page
+        data object Sync : Page
         data object Keys : Page
         class Details(val title: String, val lines: List<String>) : Page
         class Bookmarks(val actions: BookmarkSheetActions) : Page
@@ -386,7 +394,7 @@ class PlayerMorePanel(
         LockScreen, PictureInPicture, PlaybackDetails, StartOver, PictureShape, ResetZoom, Stereo, Speed,
         VolumeBoost, NightMode, EvenVolume, SleepTimer, AbLoop, NextChapter, PreviousChapter,
         NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, OpenInAnotherApp,
-        LoadSubtitleFile, LoadSubtitleUrl, TranslateSubtitles, SaveToDownloads, MarkWatched, RemoteKeys,
+        LoadSubtitleFile, LoadSubtitleUrl, TranslateSubtitles, SubtitleSize, SubtitlePosition, SubtitleSync, SaveToDownloads, MarkWatched, RemoteKeys,
     }
 
     private class Line(val kind: Kind, val label: String, val icon: ImageVector, val detail: String?)
@@ -475,6 +483,9 @@ class PlayerMorePanel(
                 OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() }
                     ?.let { OnlineSubtitles.languageName(it) } ?: s.commonOff,
             )
+            Kind.SubtitleSize -> Line(kind, s.tracksSubtitleSize, TmIcons.TextSize, host.subtitleSizeLabel())
+            Kind.SubtitlePosition -> Line(kind, s.tracksSubtitlePosition, TmIcons.ChevronUp, host.subtitlePositionLabel())
+            Kind.SubtitleSync -> Line(kind, s.playerSubtitleSync, TmIcons.Clock, SyncDelays.label(host.subtitleDelayMs()))
             Kind.SaveToDownloads -> Line(kind, s.playerSaveToDownloads, TmIcons.Download, s.playerSaveToDownloadsDetail)
             Kind.MarkWatched -> if (host.watched()) {
                 Line(kind, s.playerMarkUnwatched, TmIcons.Close, s.playerMarkUnwatchedDetail)
@@ -497,6 +508,7 @@ class PlayerMorePanel(
             Kind.Stereo -> Page.Stereo
             Kind.SleepTimer -> Page.Sleep
             Kind.TranslateSubtitles -> Page.Translate
+            Kind.SubtitleSync -> Page.Sync
             Kind.RemoteKeys -> Page.Keys
             Kind.Bookmarks -> host.bookmarks()?.let { Page.Bookmarks(it) }
             Kind.PlaybackDetails -> host.playbackDetails()?.let { (title, lines) -> Page.Details(title, lines) }
@@ -568,6 +580,12 @@ class PlayerMorePanel(
                 running = host.sleepDetail(),
                 chosen = host.sleepChoice(),
                 onPick = { close(); host.setSleep(it) },
+                onDismiss = ::back,
+                onClose = ::close,
+            )
+            Page.Sync -> SubtitleSyncSheet(
+                delayMs = { host.subtitleDelayMs() },
+                onStep = { host.stepSubtitleDelay(it) },
                 onDismiss = ::back,
                 onClose = ::close,
             )
@@ -735,7 +753,7 @@ class PlayerMorePanel(
         const val SCRIM_ALPHA = 0.32f
 
         /** Lines that act and leave the panel up: the switches and the frame steps. */
-        val STAYS_OPEN = setOf(Kind.VolumeBoost, Kind.NightMode, Kind.EvenVolume, Kind.NextFrame, Kind.PreviousFrame)
+        val STAYS_OPEN = setOf(Kind.VolumeBoost, Kind.NightMode, Kind.EvenVolume, Kind.NextFrame, Kind.PreviousFrame, Kind.SubtitleSize, Kind.SubtitlePosition)
     }
 }
 

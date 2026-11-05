@@ -458,6 +458,48 @@ internal fun SpeedSheet(
 }
 
 /**
+ * "Subtitle sync": the picker's Timing lines (earlier, later, reset) on their own page in the
+ * More panel, so the timing can be fixed without opening the whole subtitle picker. Each press
+ * steps the delay and the figures are read again, the way the picker's lines redraw.
+ */
+@Composable
+internal fun SubtitleSyncSheet(
+    delayMs: () -> Long,
+    onStep: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val s = LocalStrings.current
+    var tick by remember { mutableStateOf(0) }
+    @Suppress("UNUSED_VARIABLE") val seen = tick
+    val ms = delayMs()
+    fun step(direction: Int) {
+        onStep(direction)
+        tick++
+    }
+    ChoiceSheet(title = s.playerSubtitleSync, onDismiss = onDismiss, onClose = onClose) {
+        ChoiceList {
+            ChoiceLine(
+                title = s.tracksSubtitlesEarlier,
+                detail = s.tracksDelayStep(SyncDelays.label(ms)),
+                icon = TmIcons.ChevronLeft,
+            ) { step(-1) }
+            ChoiceLine(
+                title = s.tracksSubtitlesLater,
+                detail = s.tracksDelayStep(SyncDelays.label(ms)),
+                icon = TmIcons.ChevronRight,
+            ) { step(1) }
+            ChoiceLine(
+                title = s.tracksResetTiming,
+                detail = if (ms == 0L) s.tracksDelayNone else s.tracksDelayNow(SyncDelays.label(ms)),
+                icon = TmIcons.Refresh,
+                enabled = ms != 0L,
+            ) { step(0) }
+        }
+    }
+}
+
+/**
  * "Translate subtitles": Off, or one of [SubtitleTranslator.LANGUAGES], Malayalam first. The
  * same page the subtitle picker's Online group opens; the More menu carries it too, because
  * that is where a viewer who just loaded a subtitle looks for it. Choosing writes the setting
