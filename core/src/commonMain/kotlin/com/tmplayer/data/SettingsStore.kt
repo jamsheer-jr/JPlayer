@@ -2410,6 +2410,19 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun copyToPlay(item: MediaItem): MediaItem {
         // Never a copy in a chat the kids lock hides.
         val copies = VideoCopies.visible(item.versions).takeIf { it.size > 1 } ?: return item
+        // A resume opens the copy that was being watched (J Player, 2026-11-06): the newest
+        // resume record names its copy by chat and message, and that copy plays, ahead of the
+        // device and habit rules in the pick below, which would otherwise hand back the lead
+        // copy or a downloaded one and lose the place's own file. An explicit pick in the
+        // copies list still wins: choosing a copy is a decision, resuming is a memory. With no
+        // record, a record at the very start, or a record whose copy is gone from the versions,
+        // the pick below decides as before.
+        if (copyPickFor(item) == null) {
+            resumeRecordFor(item)?.takeIf { it.positionMs > 0 }?.let { record ->
+                copies.firstOrNull { it.chatId == record.chatId && it.messageId == record.messageId }
+                    ?.let { return it.asVersion(item) }
+            }
+        }
         val started = continueWatching.first().mapTo(HashSet()) { progressKey(it.chatId, it.messageId) }
         val picked = VideoCopies.pick(
             copies,
