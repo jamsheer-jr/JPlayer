@@ -309,6 +309,7 @@ fun SettingsScreen(
     val autoplayNext by settings.autoplayNext.collectAsStateWithLifecycle(initialValue = true)
     val resumeRewindMs by settings.resumeRewindMs.collectAsStateWithLifecycle(initialValue = ResumeRewind.DEFAULT_MS)
     val detailFirst by settings.detailFirst.collectAsStateWithLifecycle(initialValue = true)
+    val hideRipTags by settings.hideRipTags.collectAsStateWithLifecycle(initialValue = false)
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
     val wifiOnly by settings.wifiOnlyDownloads.collectAsStateWithLifecycle(initialValue = false)
@@ -893,6 +894,17 @@ fun SettingsScreen(
                         icon = TmIcons.Info,
                         checked = detailFirst,
                         onToggle = { scope.launch { settings.setDetailFirst(!detailFirst) } },
+                    )
+                }
+                // Cam and rip junk out of the titles on tiles and pages, while it is on: the
+                // file names themselves keep every word, and HDRip always stays.
+                item {
+                    ToggleRow(
+                        title = s.settingsHideRipTags,
+                        subtitle = if (hideRipTags) s.settingsHideRipTagsOn else s.settingsHideRipTagsOff,
+                        icon = TmIcons.Info,
+                        checked = hideRipTags,
+                        onToggle = { scope.launch { settings.setHideRipTags(!hideRipTags) } },
                     )
                 }
                 item {

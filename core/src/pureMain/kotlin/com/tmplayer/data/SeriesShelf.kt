@@ -475,12 +475,19 @@ object SeriesShelf {
      */
     fun tileTitle(item: MediaItem): String {
         val renamed = VideoCorrections.current[item.id]?.title
+        // A title the viewer wrote themselves is theirs and is never cleaned; every other
+        // shape goes through the cam and rip cleaning the viewer can ask for ([TitleCleaning]).
         val title = when {
-            renamed != null -> renamed
+            renamed != null -> return finishTitle(renamed, item)
             item.versions.size > 1 || item.parts.size > 1 || item.isJoined -> filmTitle(item)
             item.fileName.isBlank() || item.genericFileName -> item.title
             else -> item.fileTileTitle ?: item.title
         }
+        return finishTitle(TitleCleaning.shown(title), item)
+    }
+
+    /** The extra's label on a tile title: "Night Train (2019) · Trailer". */
+    private fun finishTitle(title: String, item: MediaItem): String {
         val extra = item.extra ?: return title
         return L.messages.gridExtraTitle(title, extraLabel(extra))
     }

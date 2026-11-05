@@ -38,6 +38,7 @@ private val OPEN_LAST_CHAT = booleanPreferencesKey("open_last_chat")
 private val DOWNLOAD_FIRST = booleanPreferencesKey("download_before_playing")
 private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
 private val DETAIL_FIRST = booleanPreferencesKey("detail_first")
+private val HIDE_RIP_TAGS = booleanPreferencesKey("hide_rip_tags")
 private val COMPACT_NAV = booleanPreferencesKey("compact_nav")
 private val DOWNMIX_STEREO = booleanPreferencesKey("downmix_stereo")
 private val VOLUME_BOOST = booleanPreferencesKey("volume_boost")
@@ -598,6 +599,17 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setDetailFirst(value: Boolean) {
         prefs.edit { it[DETAIL_FIRST] = value }
+    }
+
+    /**
+     * Whether tile and detail titles hide the cam and rip junk in a file name (HDCam, TS,
+     * PreDVD and the like, never HDRip): [TitleCleaning]. Off by default; the stored value
+     * is mirrored into [TitleCleaning.hideTags] by whoever collects this flow.
+     */
+    val hideRipTags: Flow<Boolean> = read { it[HIDE_RIP_TAGS] ?: false }
+
+    suspend fun setHideRipTags(value: Boolean) {
+        prefs.edit { it[HIDE_RIP_TAGS] = value }
     }
 
     /**
