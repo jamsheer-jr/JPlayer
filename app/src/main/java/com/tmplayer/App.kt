@@ -26,7 +26,6 @@ import com.tmplayer.data.WatchedStore
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.onboarding.SetupChoice
 import com.tmplayer.ui.onboarding.SetupImages
-import com.tmplayer.ui.onboarding.TourPage
 import com.tmplayer.online.MetadataCache
 import com.tmplayer.online.MetadataStore
 import com.tmplayer.online.OnlineMetadata
@@ -139,7 +138,6 @@ class App : Application() {
         }
         // The setup's pictures are this app's drawables, which the shared :ui code cannot name.
         SetupImages.drawable = ::setupDrawable
-        SetupImages.tour = ::tourDrawable
         // The PIN's waits run on time since boot, deep sleep included, which no date setting moves.
         com.tmplayer.data.PinClock.source = { android.os.SystemClock.elapsedRealtime() }
         // Before anything else that could throw: a crash reporter that starts after the crash is
@@ -343,44 +341,5 @@ private fun setupDrawable(choice: SetupChoice, tv: Boolean, dark: Boolean): Int 
         tv -> R.drawable.setup_performance_lighter_tv
         dark -> R.drawable.setup_performance_lighter_dark
         else -> R.drawable.setup_performance_lighter
-    }
-}
-
-/**
- * A quick tour page's picture (CP69), named in full so resource shrinking keeps each one. The phone
- * player has a dark look of its own, so its light and dark pictures are the same shot. The TV home
- * screen row is a television page only.
- */
-private fun tourDrawable(page: TourPage, tv: Boolean, dark: Boolean): Int = when (page) {
-    TourPage.Videos -> when {
-        tv -> R.drawable.tour_videos_tv
-        dark -> R.drawable.tour_videos_dark
-        else -> R.drawable.tour_videos
-    }
-    TourPage.Home -> when {
-        tv -> R.drawable.tour_home_tv
-        dark -> R.drawable.tour_home_dark
-        else -> R.drawable.tour_home
-    }
-    TourPage.Player -> when {
-        tv -> R.drawable.tour_player_tv
-        dark -> R.drawable.tour_player_dark
-        else -> R.drawable.tour_player
-    }
-    TourPage.Controls -> when {
-        tv -> R.drawable.tour_controls_tv
-        dark -> R.drawable.tour_controls_dark
-        else -> R.drawable.tour_controls
-    }
-    TourPage.Downloads -> when {
-        tv -> R.drawable.tour_downloads_tv
-        dark -> R.drawable.tour_downloads_dark
-        else -> R.drawable.tour_downloads
-    }
-    TourPage.TvHome -> if (tv) R.drawable.tour_tvhome_tv else 0
-    TourPage.Settings -> when {
-        tv -> R.drawable.tour_settings_tv
-        dark -> R.drawable.tour_settings_dark
-        else -> R.drawable.tour_settings
     }
 }

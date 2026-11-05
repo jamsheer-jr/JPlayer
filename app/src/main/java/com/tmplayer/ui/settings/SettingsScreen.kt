@@ -1794,14 +1794,6 @@ fun SettingsScreen(
                         onClick = { com.tmplayer.ui.connect.ProxyScreenState.open = true },
                     )
                 }
-                item {
-                    ActionRow(
-                        title = s.settingsTour,
-                        subtitle = s.settingsTourBody,
-                        icon = TmIcons.Info,
-                        onClick = { scope.launch { settings.openTour() } },
-                    )
-                }
                 // J Player shows no What's new, Changelog or Report a problem rows here: the
                 // first two carried the upstream project's release notes and site, and the
                 // report row mailed and filed issues with the upstream project.

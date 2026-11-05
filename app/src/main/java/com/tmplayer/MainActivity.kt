@@ -141,7 +141,6 @@ import com.tmplayer.ui.components.ConnectionStatus
 import com.tmplayer.ui.components.rememberToast
 import com.tmplayer.ui.onboarding.Setup
 import com.tmplayer.ui.onboarding.SetupAndTour
-import com.tmplayer.ui.onboarding.TourOnly
 import com.tmplayer.ui.update.UpdateDialog
 import com.tmplayer.ui.update.LinkQrDialog
 import com.tmplayer.ui.update.openLink
@@ -646,8 +645,6 @@ private fun Root() {
     // The setup after sign in (CP67), armed by a sign in screen. False until the store answers,
     // which is right for everybody already signed in: they are never asked.
     val setupPending by settings.setupPending.collectAsStateWithLifecycle(initialValue = false)
-    // The quick tour (CP69). Done until the store answers, so the offer never flashes up.
-    val tourState by settings.tourState.collectAsStateWithLifecycle(initialValue = SettingsStore.TourState.Done)
     // The favourites the kids lock lets through, as the Favourites tab lists them, so every count
     // of them (the badge, Clear all) says the same number.
     val storedFavorites by settings.favorites.collectAsStateWithLifecycle(initialValue = emptySet())
@@ -1653,7 +1650,8 @@ private fun Root() {
                     recommendations = recommendations,
                 )
             }
-            // Appearance, then the choices; the quick tour is offered on its own once the shell is up.
+            // Appearance, then the choices. (The quick tour was removed from this app in v1.0.6: its
+            // pictures showed the player as it looked before the MX style rows.)
             SetupAndTour(
                 settings,
                 steps,
@@ -1667,12 +1665,6 @@ private fun Root() {
                     }
                 },
             )
-            return@Box
-        }
-
-        // The quick tour on its own (CP69): taken from the offer below, or opened from Settings.
-        if (tourState == SettingsStore.TourState.Pending) {
-            TourOnly(onDone = { scope.launch { runCatching { settings.markTourDone() } } })
             return@Box
         }
 
@@ -2365,22 +2357,6 @@ private fun Root() {
                     whatsNew.showing = false
                     if (!openLink(context, WhatsNew.CHANGELOG)) changelogQr = true
                 },
-            )
-        }
-        // The quick tour, offered once to an install that was signed in before it existed (CP69): a
-        // fresh sign in has it after the setup. Behind every other card, and on the chat list only.
-        if (tourState == SettingsStore.TourState.Never && inShell && screen is Screen.Chats && !showUpdate &&
-            noticeLanguage == null && !whatsNew.showing && supportRung == 0 && !crashPending
-        ) {
-            TvConfirm(
-                title = s.tourOfferTitle,
-                message = s.tourOfferBody,
-                confirmLabel = s.tourOfferTake,
-                cancelLabel = s.deviceNotNow,
-                destructive = false,
-                focusConfirm = true,
-                onConfirm = { scope.launch { runCatching { settings.openTour() } } },
-                onDismiss = { scope.launch { runCatching { settings.markTourDone() } } },
             )
         }
         if (changelogQr) LinkQrDialog(WhatsNew.CHANGELOG, s.settingsQrChangelogPage, onClose = { changelogQr = false })
