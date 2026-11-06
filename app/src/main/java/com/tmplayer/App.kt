@@ -145,6 +145,8 @@ class App : Application() {
             launch { store.touchPrefs.collect { com.tmplayer.ui.components.Micro.haptics = it.haptics } }
             // Cam and rip junk out of titles, while the viewer has the switch on.
             launch { store.hideRipTags.collect { com.tmplayer.data.TitleCleaning.hideTags = it } }
+            // The viewer's own title words ride on that same switch.
+            launch { store.hiddenTitleWords.collect { com.tmplayer.data.TitleCleaning.customWords = it } }
         }
         // The setup's pictures are this app's drawables, which the shared :ui code cannot name.
         SetupImages.drawable = ::setupDrawable

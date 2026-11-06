@@ -142,6 +142,7 @@ import com.tmplayer.data.SupportReminder
 import com.tmplayer.data.Td
 import com.tmplayer.data.switchAccount
 import com.tmplayer.data.ThemeChoice
+import com.tmplayer.data.TitleCleaning
 import com.tmplayer.data.UiScale
 import com.tmplayer.data.UpdateWords
 import com.tmplayer.data.Updates
@@ -160,6 +161,7 @@ import com.tmplayer.player.SubtitleStyle
 import com.tmplayer.player.TouchPrefs
 import com.tmplayer.player.TrackPreferences
 import com.tmplayer.ui.about.About
+import com.tmplayer.ui.auth.PaneField
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
 import com.tmplayer.ui.components.ChoiceSection
@@ -317,6 +319,7 @@ fun SettingsScreen(
     val resumeRewindMs by settings.resumeRewindMs.collectAsStateWithLifecycle(initialValue = ResumeRewind.DEFAULT_MS)
     val detailFirst by settings.detailFirst.collectAsStateWithLifecycle(initialValue = true)
     val hideRipTags by settings.hideRipTags.collectAsStateWithLifecycle(initialValue = false)
+    val hiddenTitleWords by settings.hiddenTitleWords.collectAsStateWithLifecycle(initialValue = emptySet())
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
     val wifiOnly by settings.wifiOnlyDownloads.collectAsStateWithLifecycle(initialValue = false)
@@ -508,6 +511,9 @@ fun SettingsScreen(
     } else {
         emptyList()
     }
+
+    // The word being typed into the Playback page's hidden words editor (item 15).
+    var newHiddenWord by rememberSaveable { mutableStateOf("") }
 
     // Back on a page goes to the list, not out of Settings. Composed after the caller's own
     // handler, so it is the one asked first while a page is open.
@@ -1016,6 +1022,50 @@ fun SettingsScreen(
                         icon = TmIcons.Info,
                         checked = hideRipTags,
                         onToggle = { scope.launch { settings.setHideRipTags(!hideRipTags) } },
+                    )
+                }
+                // The viewer's own words for that same switch (owner, v1.0.11): each word a
+                // row of its own naming it, a tap takes it out, and a field with an Add row
+                // puts a new one in. TitleCleaning reads them only through the switch, so
+                // with it off the rows simply wait. An empty word, one already listed in any
+                // case, or one past the kept count is refused where it stands.
+                hiddenTitleWords.forEach { word ->
+                    item {
+                        ActionRow(
+                            title = word,
+                            subtitle = s.settingsHideWordRemove,
+                            icon = TmIcons.Delete,
+                            onClick = {
+                                scope.launch { settings.setHiddenTitleWords(hiddenTitleWords - word) }
+                            },
+                        )
+                    }
+                }
+                item {
+                    PaneField(
+                        value = newHiddenWord,
+                        onValueChange = { newHiddenWord = it },
+                        placeholder = s.settingsHideWordField,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = if (touch) 16.dp else 0.dp, vertical = 8.dp),
+                    )
+                }
+                item {
+                    ActionRow(
+                        title = s.settingsHideWordAdd,
+                        subtitle = s.settingsHideWordAddDetail,
+                        icon = TmIcons.Add,
+                        onClick = {
+                            val word = newHiddenWord.trim()
+                            if (word.isNotEmpty() &&
+                                hiddenTitleWords.size < TitleCleaning.MAX_CUSTOM_WORDS &&
+                                hiddenTitleWords.none { it.equals(word, ignoreCase = true) }
+                            ) {
+                                newHiddenWord = ""
+                                scope.launch { settings.setHiddenTitleWords(hiddenTitleWords + word) }
+                            }
+                        },
                     )
                 }
                 item {
