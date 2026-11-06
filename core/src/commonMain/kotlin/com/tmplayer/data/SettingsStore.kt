@@ -86,7 +86,6 @@ private val HOME_STARRED_ROWS = booleanPreferencesKey("home_starred_rows")
 private val HOME_CATALOG = booleanPreferencesKey("home_catalog")
 private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
 private val LAST_CHAT = longPreferencesKey("last_chat")
-private val BUILTIN_JMOVIES_SEEN = longPreferencesKey("builtin_jmovies_seen")
 private val MIN_SIZE = longPreferencesKey("min_size_bytes")
 private val MAX_SIZE = longPreferencesKey("max_size_bytes")
 private val CHAT_FILTER = stringPreferencesKey("chat_filter")
@@ -642,19 +641,6 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun forgetLastChat() {
         prefs.edit { it.remove(LAST_CHAT) }
-    }
-
-    /**
-     * The newest J MOVIES post Home has already counted as seen (v1.0.10): the built-in
-     * channel card's new videos badge counts the video posts past this id. A message id is
-     * this account's own, so the mark is this device's and this account's, and a backup
-     * never carries it (see BackupCoverageTest's left behind list, with new_video_seen).
-     */
-    suspend fun builtInChannelSeenNow(): Long = prefs.data.first()[BUILTIN_JMOVIES_SEEN] ?: 0L
-
-    /** Remembers [messageId] as the newest J MOVIES post Home has counted. */
-    suspend fun setBuiltInChannelSeen(messageId: Long) {
-        prefs.edit { it[BUILTIN_JMOVIES_SEEN] = messageId }
     }
 
     // ---- a chat's own order, and the viewer's corrections ------------------------------------

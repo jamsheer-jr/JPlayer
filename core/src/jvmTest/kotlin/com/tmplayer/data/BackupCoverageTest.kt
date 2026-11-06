@@ -47,9 +47,8 @@ class BackupCoverageTest {
         "support_supporter", "support_watches", "support_watch_ms", "support_asked_at", "support_windows",
         "support_nudged_at",
         // Which video each starred chat had at the last new videos check, and whether the offer
-        // after a star was made: this account on this device, started afresh on another. The
-        // built-in channel's seen mark is the same kind of thing: a message id of this account.
-        "new_video_seen", "new_video_offered", "builtin_jmovies_seen",
+        // after a star was made: this account on this device, started afresh on another.
+        "new_video_seen", "new_video_offered",
         // The star rung's bookkeeping (CP76), with the support card's above.
         "support_star_asked_at", "support_starred",
         // What the CP76 notifications already said and where each chat check got to: this
