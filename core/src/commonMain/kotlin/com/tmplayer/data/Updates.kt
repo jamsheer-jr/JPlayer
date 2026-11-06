@@ -70,7 +70,7 @@ val UpdateState.release: Release?
 object Updates {
 
     /** The releases page without the scheme, as the Android dialogs print it. */
-    const val RELEASES_PAGE = "github.com/jamsheer-jr/TMPlayer/releases"
+    const val RELEASES_PAGE = "github.com/jamsheer-jr/JPlayer/releases"
 
     /**
      * Whether this build looks for updates at all. Off in a build that a store installs and keeps

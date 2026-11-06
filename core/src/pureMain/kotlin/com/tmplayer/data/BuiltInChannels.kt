@@ -34,5 +34,5 @@ object BuiltInChannels {
     val ALL: List<BuiltInChannel> = listOf(J_MOVIES, PRO_SEARCH)
 
     /** The app's release page: every release, newest first. */
-    const val RELEASES_URL = "https://github.com/jamsheer-jr/TMPlayer/releases"
+    const val RELEASES_URL = "https://github.com/jamsheer-jr/JPlayer/releases"
 }
