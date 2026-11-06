@@ -50,7 +50,7 @@ class SeriesShelfTest {
         assertEquals(listOf(double.id), second.alsoIn.map { it.id })
         val finished: (MediaItem) -> Boolean = { it.id == double.id }
         assertTrue(second.watched(finished))
-        val progress = SeriesShelf.progress(show, finished) { 0f }
+        val progress = SeriesShelf.progress(show, finished, { 0f })
         assertEquals(2, progress.watched)
         assertEquals(3, progress.next?.episode)
     }
