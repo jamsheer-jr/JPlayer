@@ -126,9 +126,12 @@ sealed interface HomeRow {
         val kind: String,
         val label: String,
         val entries: List<ShelfEntry>,
+        /** Every tile the shelf holds, past the row's cut: its See all page lists these. */
+        val all: List<ShelfEntry> = entries,
     ) : HomeRow {
         override val key: String get() = "catalog-$kind"
-        override val total: Int get() = entries.size
+        override val total: Int get() = all.size
+        override val hasMore: Boolean get() = all.size > entries.size
     }
 }
 
@@ -143,6 +146,12 @@ sealed interface HomeRow {
 data class TitleMeta(
     val genres: List<String> = emptyList(),
     val rating: Double? = null,
+    /** The title's original language (ISO 639-1) from the online match, where it gave one. */
+    val originalLanguage: String? = null,
+    /** The year the title came out, from the online match, where it gave one. */
+    val year: Int? = null,
+    /** Where the title streams, by the app's platform names, from the online match. */
+    val providers: List<String> = emptyList(),
 )
 
 /**
@@ -276,7 +285,12 @@ object HomeRows {
         trending: Map<String, Int> = emptyMap(),
         watchedGenres: Set<String> = emptySet(),
         watchedKeys: Set<String> = emptySet(),
-    ): List<HomeRow> = buildList<HomeRow> {
+        /** A phone's order (owner, 2026-11-06): Watch later and the starred chats' rows directly under Continue watching. A television keeps the order it has. */
+        phoneOrder: Boolean = false,
+        /** Now, for the Weekly shelf (new arrivals this week); zero turns that shelf off. */
+        nowMs: Long = 0L,
+    ): List<HomeRow> {
+        val rows = buildList<HomeRow> {
         val seen = HashSet<String>()
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
         // through still shows in its chat's row rather than vanishing from Home altogether.
@@ -297,6 +311,61 @@ object HomeRows {
         if (resume.isNotEmpty()) add(HomeRow.Continue(resume, everyResume.drop(LIMIT)))
         val inContinue = HashSet(seen)
 
+        val homeChats = favourites.distinctBy { it.id }
+
+        // The starred chats' rows, as a step of their own: on a phone they stand directly
+        // under Continue watching with Watch later (owner, 2026-11-06), on a television
+        // where they have always stood, under Recently added.
+        val emitChatRows: MutableList<HomeRow>.() -> Unit = {
+            // A row for each starred chat, in the chat list's order (user, 2026-10-23:
+            // carousel, Continue watching, Recently added, then the favourites). The chats
+            // Home picked for itself feed Recently added and the carousel only.
+            // Off in Settings: no starred chat has a row, and none is read for one.
+            if (layout.starredRows) homeChats.filter { starred == null || it.id in starred }.forEach { chat ->
+                val items = loaded[chat.id]
+                if (items == null) {
+                    add(HomeRow.Chat(chat.id, chat.title, emptyList(), loaded = false))
+                    return@forEach
+                }
+                val entries = row(items, seen, shownCopies, inContinue)
+                if (entries.isNotEmpty()) {
+                    val all = items.distinctBy { it.id }
+                    add(
+                        HomeRow.Chat(
+                            chat.id,
+                            chat.title,
+                            entries,
+                            loaded = true,
+                            more = beyond(all, entries),
+                            complete = chat.id !in partial,
+                            fetched = all.size,
+                        ),
+                    )
+                }
+            }
+        }
+
+        // Watch later and New episodes are worked out here, while only Continue's keys are
+        // in [seen]: a show's tile in a chat row marks every episode seen, which would
+        // empty New episodes wherever the same show stands in a starred chat's row. Where
+        // the two rows stand is the shape's choice below; Watch later stands on a phone
+        // even where Home fills itself, which is the order the owner asked for there.
+        val everyLater = watchLater.distinctBy { it.id }.filterNot { !it.isShow && it.key in inContinue }
+        val later = everyLater.take(LIMIT)
+        later.forEach { if (!it.isShow) seen += it.key }
+        val watchLaterRow =
+            if (later.isNotEmpty() && (!autoFill || phoneOrder)) HomeRow.WatchLater(later, everyLater.drop(LIMIT)) else null
+        val newEpisodesRow = fresh.filterNot { keyOf(it.item.chatId, it.item.messageId) in seen }
+            .take(LIMIT)
+            .takeIf { it.isNotEmpty() && !autoFill }
+            ?.let { HomeRow.NewEpisodes(it) }
+
+        // A phone's order (owner, 2026-11-06): Continue watching, Watch later, Favourites.
+        if (phoneOrder) {
+            watchLaterRow?.let { add(it) }
+            emitChatRows()
+        }
+
         // The Series row, directly under Continue watching (owner, 2026-11-06): fed by
         // every chat whose videos Home has read (the whole [loaded] map, not only Home's
         // picked chats) together with the search across chats, so a series in any visible
@@ -306,12 +375,11 @@ object HomeRows {
             val seriesPool = (loaded.values.flatten() + recent.orEmpty()).distinctBy { it.id }
             val shows = seriesShows(seriesPool, shownCopies, inContinue)
             if (shows.isNotEmpty()) {
-                add(HomeRow.Catalog("series", "", shows.take(LIMIT)))
-                addAll(seriesLanguageRows(shows))
+                add(HomeRow.Catalog("series", "", shows.take(LIMIT), all = shows))
+                addAll(seriesLanguageRows(shows, titleMeta))
             }
         }
 
-        val homeChats = favourites.distinctBy { it.id }
         // The chats Recently added draws from: Home's chats, or the added ones (in Home's order).
         val homeOrder = if (recentFrom == null) homeChats.map { it.id } else recentFrom.distinct()
         val homeIds = homeOrder.toHashSet()
@@ -349,47 +417,20 @@ object HomeRows {
             }
         }
 
-        // Started since it was saved: Continue already has it, with its place.
-        // A show stays whatever of it was begun: its page carries on from the episode up next.
-        val everyLater = watchLater.distinctBy { it.id }.filterNot { !it.isShow && it.key in inContinue }
-        val later = everyLater.take(LIMIT)
-        later.forEach { if (!it.isShow) seen += it.key }
-        if (later.isNotEmpty() && !autoFill) add(HomeRow.WatchLater(later, everyLater.drop(LIMIT)))
-        val newEpisodes = fresh.filterNot { keyOf(it.item.chatId, it.item.messageId) in seen }.take(LIMIT)
-        if (newEpisodes.isNotEmpty() && !autoFill) add(HomeRow.NewEpisodes(newEpisodes))
+        // Watch later and New episodes stand here on a television; on a phone Watch later
+        // already stood under Continue watching (see above), and New episodes follows
+        // Recently added either way.
+        if (!phoneOrder) watchLaterRow?.let { add(it) }
+        newEpisodesRow?.let { add(it) }
 
-        // A row for each starred chat, under Recently added, in the chat list's order (user,
-        // 2026-10-23: carousel, Continue watching, Recently added, then the favourites). The chats
-        // Home picked for itself feed Recently added and the carousel only.
-        // Off in Settings: no starred chat has a row, and none is read for one.
-        if (layout.starredRows) homeChats.filter { starred == null || it.id in starred }.forEach { chat ->
-            val items = loaded[chat.id]
-            if (items == null) {
-                add(HomeRow.Chat(chat.id, chat.title, emptyList(), loaded = false))
-                return@forEach
-            }
-            val entries = row(items, seen, shownCopies, inContinue)
-            if (entries.isNotEmpty()) {
-                val all = items.distinctBy { it.id }
-                add(
-                    HomeRow.Chat(
-                        chat.id,
-                        chat.title,
-                        entries,
-                        loaded = true,
-                        more = beyond(all, entries),
-                        complete = chat.id !in partial,
-                        fetched = all.size,
-                    ),
-                )
-            }
-        }
+        // The starred chats' rows on a television; a phone put them under Continue watching.
+        if (!phoneOrder) emitChatRows()
         // The shelves at the foot (J Player, 2026-11-06), from every video Home's chats hold,
         // the recent search's included: a second way through them, under the chat rows.
         if (layout.catalogRows) {
             val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
                 .distinctBy { it.id }
-            catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys).forEach { add(it) }
+            catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys, nowMs).forEach { add(it) }
             // The viewer's own collections under the shelves (J Player, 2026-11-06): a title is
             // in a collection by its progress key, and any copy of it stands for it, the way a
             // folded tile stands for its copies everywhere else on Home. One tile is enough:
@@ -400,11 +441,65 @@ object HomeRows {
                     itemsOf(entry).forEach { item -> byKey.putIfAbsent(item.progressKey, entry) }
                 }
                 collections.forEachIndexed { index, collection ->
-                    val entries = collection.keys.mapNotNull { byKey[it] }.distinct().take(LIMIT)
-                    if (entries.isNotEmpty()) add(HomeRow.Catalog("collection-$index", collection.name, entries))
+                    val all = collection.keys.mapNotNull { byKey[it] }.distinct()
+                    if (all.isNotEmpty()) add(HomeRow.Catalog("collection-$index", collection.name, all.take(LIMIT), all = all))
                 }
             }
         }
+        }
+        return arrangeCatalog(rows, layout)
+    }
+
+    /**
+     * The catalog group a shelf kind belongs to, for the Categories picker (owner,
+     * 2026-11-06): the picker's groups are coarser than kinds (every language shelf is
+     * "lang", every OTT row "ott"), so hiding and ordering speak in groups.
+     */
+    fun catalogGroupOf(kind: String): String = when {
+        kind == "series" || kind.startsWith("series-lang-") -> "series"
+        kind.startsWith("lang-") -> "lang"
+        kind.startsWith("genre-") -> "genre"
+        kind.startsWith("ott-") -> "ott"
+        kind.startsWith("year-") -> "year"
+        kind.startsWith("collection-") -> "collections"
+        kind == "multi-lang" -> "multi"
+        else -> kind
+    }
+
+    /**
+     * [build]'s rows with the viewer's category choices laid over them: a hidden group's
+     * catalog rows are left out, and within each run of catalog rows the listed groups
+     * stand in the viewer's order, the rest keeping their built order after them. Only
+     * catalog rows move or go; every other row keeps its exact place.
+     */
+    private fun arrangeCatalog(rows: List<HomeRow>, layout: HomeLayout): List<HomeRow> {
+        if (layout.hiddenCatalog.isEmpty() && layout.catalogOrder.isEmpty()) return rows
+        val out = ArrayList<HomeRow>(rows.size)
+        var at = 0
+        while (at < rows.size) {
+            if (rows[at] !is HomeRow.Catalog) {
+                out += rows[at]
+                at++
+                continue
+            }
+            var end = at
+            val run = ArrayList<HomeRow.Catalog>()
+            while (end < rows.size && rows[end] is HomeRow.Catalog) {
+                run += rows[end] as HomeRow.Catalog
+                end++
+            }
+            val kept = run.filter { catalogGroupOf(it.kind) !in layout.hiddenCatalog }
+            val ordered = if (layout.catalogOrder.isEmpty()) {
+                kept
+            } else {
+                kept.sortedBy { row ->
+                    layout.catalogOrder.indexOf(catalogGroupOf(row.kind)).let { if (it < 0) Int.MAX_VALUE else it }
+                }
+            }
+            out += ordered
+            at = end
+        }
+        return out
     }
 
     /** Tiles a shelf needs before it is a shelf at all: fewer reads as a gap in the chat rows. */
@@ -435,6 +530,43 @@ object HomeRows {
         is ShelfEntry.File -> VideoCopies.languagesOf(entry.item).firstOrNull()
         is ShelfEntry.Show -> VideoCopies.languagesOf(entry.series.cover).firstOrNull()
             ?: entry.series.episodes.firstOrNull()?.copies?.firstOrNull()?.let { VideoCopies.languagesOf(it).firstOrNull() }
+    }
+
+    /**
+     * An entry's language, the online match's original language first (owner, 2026-11-06):
+     * TMDB knows a show's language whatever its files are named, and the name's markers
+     * are the fallback for a title nobody matched.
+     */
+    private fun languageOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): String? =
+        metaOf(entry, titleMeta)?.originalLanguage?.takeIf { it in LANGUAGE_NAMES } ?: languageOf(entry)
+
+    /** The platform an entry belongs to: the match's providers first, else its name's own tag ([MediaFacts]). */
+    private fun platformOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): String? =
+        metaOf(entry, titleMeta)?.providers?.firstOrNull()
+            ?: MediaFacts.read(leadNameOf(entry)).platform
+
+    /** A file name's platform slug for its OTT row kind: the label's letters and numbers, lowered. */
+    private fun ottKind(platform: String): String =
+        "ott-" + platform.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-')
+
+    /** The name an entry is filed under: a file's own name, a show's cover's. */
+    private fun leadNameOf(entry: ShelfEntry): String = when (entry) {
+        is ShelfEntry.File -> entry.item.fileName.ifBlank { entry.item.title }
+        is ShelfEntry.Show -> entry.series.cover.fileName.ifBlank { entry.series.cover.title }
+    }
+
+    /** A year named in a file's name, the way release names carry it; null where none stands. */
+    private fun nameYearOf(entry: ShelfEntry): Int? =
+        Regex("""(?:^|[ ._\[(])(19\d\d|20\d\d)(?:[ ._\])]|$)""").find(leadNameOf(entry))?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+    /** An entry's year: the match's where it gave one, else the one its name carries. */
+    private fun yearOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): Int? =
+        metaOf(entry, titleMeta)?.year ?: nameYearOf(entry)
+
+    /** Whether an entry carries more than one soundtrack language, by its names or its copies. */
+    private fun isMultiLanguage(entry: ShelfEntry): Boolean {
+        if (Regex("""(?i)(?<![A-Za-z])multi(?![A-Za-z])""").containsMatchIn(leadNameOf(entry))) return true
+        return itemsOf(entry).any { VideoCopies.languagesOf(it).size >= 2 }
     }
 
     /** The meta of an entry's tile: a file's own, a show's cover's (its newest episode). */
@@ -479,6 +611,7 @@ object HomeRows {
         trending: Map<String, Int> = emptyMap(),
         watchedGenres: Set<String> = emptySet(),
         watchedKeys: Set<String> = emptySet(),
+        nowMs: Long = 0L,
     ): List<HomeRow.Catalog> {
         if (pool.isEmpty()) return emptyList()
         val all = arranged(pool, HashSet(inProgress), continuing, inProgress)
@@ -487,17 +620,30 @@ object HomeRows {
             if (trending.isNotEmpty()) {
                 val ranked = all.mapNotNull { entry -> trending[leadIdOf(entry)]?.let { entry to it } }
                     .sortedBy { it.second }
-                if (ranked.size >= CATALOG_MIN) add(HomeRow.Catalog("trending", "", ranked.take(LIMIT).map { it.first }))
+                if (ranked.size >= CATALOG_MIN) add(HomeRow.Catalog("trending", "", ranked.take(LIMIT).map { it.first }, all = ranked.map { it.first }))
+            }
+            // Top 10 (owner, 2026-11-06): the titles with the most presence in the chats,
+            // a title counted once per copy of it anywhere in the pool, most first.
+            run {
+                val presence = HashMap<String, Int>()
+                pool.forEach { item ->
+                    val key = SameTitle.filmKey(item) ?: item.id
+                    presence[key] = (presence[key] ?: 0) + 1
+                }
+                val scored = all.map { entry ->
+                    entry to itemsOf(entry).map { SameTitle.filmKey(it) ?: it.id }.distinct().sumOf { presence[it] ?: 0 }
+                }.sortedByDescending { it.second }
+                if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("top10", "", scored.take(10).map { it.first }, all = scored.map { it.first }))
             }
             val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null }
-            if (movies.size >= CATALOG_MIN) add(HomeRow.Catalog("movies", "", movies.take(LIMIT)))
-            val byLanguage = all.groupBy { languageOf(it) }
+            if (movies.size >= CATALOG_MIN) add(HomeRow.Catalog("movies", "", movies.take(LIMIT), all = movies))
+            val byLanguage = all.groupBy { languageOf(it, titleMeta) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }
                 .sortedWith(compareByDescending<Map.Entry<String?, List<ShelfEntry>>> { it.value.size }.thenBy { LANGUAGE_NAMES[it.key] })
                 .take(CATALOG_LANGUAGES)
                 .forEach { (code, entries) ->
-                    add(HomeRow.Catalog("lang-$code", LANGUAGE_NAMES.getValue(code!!), entries.take(LIMIT)))
+                    add(HomeRow.Catalog("lang-$code", LANGUAGE_NAMES.getValue(code!!), entries.take(LIMIT), all = entries))
                 }
             if (titleMeta.isNotEmpty()) {
                 val byGenre = LinkedHashMap<String, MutableList<ShelfEntry>>()
@@ -510,12 +656,12 @@ object HomeRows {
                     .sortedWith(compareByDescending<Map.Entry<String, List<ShelfEntry>>> { it.value.size }.thenBy { it.key })
                     .take(CATALOG_GENRES)
                     .forEach { (genre, entries) ->
-                        add(HomeRow.Catalog(genreKind(genre), genre, entries.take(LIMIT)))
+                        add(HomeRow.Catalog(genreKind(genre), genre, entries.take(LIMIT), all = entries))
                     }
                 val rated = all.mapNotNull { entry ->
                     metaOf(entry, titleMeta)?.rating?.takeIf { it >= TOP_RATED_MIN }?.let { entry to it }
                 }.sortedByDescending { it.second }
-                if (rated.size >= CATALOG_MIN) add(HomeRow.Catalog("top-rated", "", rated.take(LIMIT).map { it.first }))
+                if (rated.size >= CATALOG_MIN) add(HomeRow.Catalog("top-rated", "", rated.take(LIMIT).map { it.first }, all = rated.map { it.first }))
                 if (watchedGenres.isNotEmpty()) {
                     val wanted = watchedGenres.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
                     val scored = all.mapNotNull { entry ->
@@ -526,8 +672,33 @@ object HomeRows {
                     }.sortedWith(
                         compareByDescending<Triple<ShelfEntry, Int, Double>> { it.second }.thenByDescending { it.third },
                     )
-                    if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("because", "", scored.take(LIMIT).map { it.first }))
+                    if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("because", "", scored.take(LIMIT).map { it.first }, all = scored.map { it.first }))
                 }
+            }
+            // OTT rows (owner, 2026-11-06): one per platform, from the match's providers
+            // or the name's own tag, the fullest first, capped like the language shelves.
+            val byPlatform = all.groupBy { platformOf(it, titleMeta) }
+            byPlatform.entries
+                .filter { (platform, entries) -> platform != null && entries.size >= CATALOG_MIN }
+                .sortedWith(compareByDescending<Map.Entry<String?, List<ShelfEntry>>> { it.value.size }.thenBy { it.key })
+                .take(CATALOG_LANGUAGES)
+                .forEach { (platform, entries) ->
+                    add(HomeRow.Catalog(ottKind(platform!!), platform, entries.take(LIMIT), all = entries))
+                }
+            // Multi Language (owner, 2026-11-06): the titles carrying more than one
+            // soundtrack language, by name or by their copies' tracks.
+            val multi = all.filter { isMultiLanguage(it) }
+            if (multi.size >= CATALOG_MIN) add(HomeRow.Catalog("multi-lang", "", multi.take(LIMIT), all = multi))
+            // The 2026 row (owner, 2026-11-06): titles that came out this year, by their
+            // match's year or the year their name carries.
+            val thisYear = all.filter { yearOf(it, titleMeta) == 2026 }
+            if (thisYear.size >= CATALOG_MIN) add(HomeRow.Catalog("year-2026", "2026", thisYear.take(LIMIT), all = thisYear))
+            // Weekly (owner, 2026-11-06): what arrived in the chats in the last seven
+            // days, by the posts' own dates. No clock handed in, no row.
+            if (nowMs > 0) {
+                val cutoff = nowMs / 1000 - 7 * 24 * 60 * 60
+                val weekly = all.filter { entry -> itemsOf(entry).any { it.date.toLong() >= cutoff } }
+                if (weekly.size >= CATALOG_MIN) add(HomeRow.Catalog("weekly", "", weekly.take(LIMIT), all = weekly))
             }
         }
     }
@@ -557,8 +728,8 @@ object HomeRows {
      * language. A show whose language no name announces stands in the Series row alone
      * rather than nowhere.
      */
-    private fun seriesLanguageRows(shows: List<ShelfEntry.Show>): List<HomeRow> =
-        shows.groupBy { languageOf(it) }
+    private fun seriesLanguageRows(shows: List<ShelfEntry.Show>, titleMeta: Map<String, TitleMeta> = emptyMap()): List<HomeRow> =
+        shows.groupBy { languageOf(it, titleMeta) }
             .entries
             .filter { (code, _) -> code != null && LANGUAGE_NAMES.containsKey(code) }
             .sortedWith(
@@ -566,7 +737,7 @@ object HomeRows {
                     .thenBy { seriesLanguageTitle(it.key!!) },
             )
             .map { (code, entries) ->
-                HomeRow.Catalog("series-lang-$code", seriesLanguageTitle(code!!), entries.take(LIMIT))
+                HomeRow.Catalog("series-lang-$code", seriesLanguageTitle(code!!), entries.take(LIMIT), all = entries)
             }
 
     /**

@@ -198,7 +198,7 @@ class TmdbApi(
      * recommended any). Videos in the UI language and English, and those with no language.
      */
     suspend fun extras(key: String, film: Boolean, id: String, language: String, region: String): MetaReply<MetaExtras> {
-        val append = if (film) "credits,videos,release_dates,recommendations,similar" else "aggregate_credits,videos,content_ratings,recommendations,similar,external_ids"
+        val append = if (film) "credits,videos,release_dates,recommendations,similar,watch/providers" else "aggregate_credits,videos,content_ratings,recommendations,similar,external_ids,watch/providers"
         val ui = language.substringBefore('-').lowercase()
         val videoLanguages = listOf(ui, "en", "null").distinct().joinToString(",")
         return get(key, if (film) "movie/$id" else "tv/$id", "language=$language&include_video_language=$videoLanguages&append_to_response=$append") { json ->
@@ -288,6 +288,18 @@ class TmdbApi(
             imdbId = (json.optJSONObject("external_ids")?.optString("imdb_id") ?: json.optString("imdb_id"))
                 ?.takeIf { it.startsWith("tt") },
             tvdbId = json.optJSONObject("external_ids")?.optInt("tvdb_id")?.takeIf { it > 0 }?.toString(),
+            originalLanguage = json.optString("original_language").ifBlank { null },
+            year = (if (film) json.optString("release_date") else json.optString("first_air_date"))
+                .take(4).toIntOrNull()?.takeIf { it in 1900..2100 },
+            // Where it streams, for the viewer's region with India as the fallback (the
+            // owner's dictionary is India's services): flatrate only, by the app's names.
+            providers = run {
+                val byRegion = json.optJSONObject("watch/providers")?.optJSONObject("results")
+                val local = byRegion?.optJSONObject(region) ?: byRegion?.optJSONObject("IN")
+                objects(local?.optJSONArray("flatrate"))
+                    .mapNotNull { MetaRules.tmdbProviderLabel(it.optString("provider_name")) }
+                    .distinct()
+            },
         )
     }
 

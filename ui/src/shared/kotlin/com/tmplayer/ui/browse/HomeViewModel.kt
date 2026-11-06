@@ -1148,6 +1148,10 @@ fun rememberHomeRows(
                 trending = if (layout.catalogRows) homeTrendingRanks(home, loaded, recent, trendingRefs) else emptyMap(),
                 watchedGenres = if (layout.catalogRows) homeWatchedGenres(watched) else emptySet(),
                 watchedKeys = watched.mapTo(HashSet()) { it.key },
+                // A phone's order (owner, 2026-11-06): Watch later and the starred chats
+                // directly under Continue watching; a television keeps its arrangement.
+                phoneOrder = com.tmplayer.ui.components.isTouch(),
+                nowMs = System.currentTimeMillis(),
             )
         }
         homeMemo.built = inputs
@@ -1294,8 +1298,15 @@ private fun homeTitleMeta(
             val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info
             val extras = info?.let { online.storedExtras(it) }
             val found = extras
-                ?.takeIf { it.genres.isNotEmpty() || it.rating != null }
-                ?.let { com.tmplayer.data.TitleMeta(it.genres, it.rating) }
+                ?.takeIf {
+                    it.genres.isNotEmpty() || it.rating != null || it.originalLanguage != null ||
+                        it.year != null || it.providers.isNotEmpty()
+                }
+                ?.let {
+                    com.tmplayer.data.TitleMeta(
+                        it.genres, it.rating, it.originalLanguage, it.year, it.providers,
+                    )
+                }
             byQuery[key] = found
             found
         }

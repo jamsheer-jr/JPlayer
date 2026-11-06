@@ -404,6 +404,10 @@ fun SettingsScreen(
     var onlineDialog by remember { mutableStateOf<OnlineDialog?>(null) }
     var editingTmdbKey by remember { mutableStateOf(false) }
     var editingOmdbKey by remember { mutableStateOf(false) }
+    // Home's banner and categories sheets (owner, 2026-11-06): "banner", "pins" or "categories".
+    var homeSheet by remember { mutableStateOf<String?>(null) }
+    val bannerMode by settings.homeBannerMode.collectAsStateWithLifecycle(initialValue = "auto")
+    val bannerPins by settings.homeBannerPins.collectAsStateWithLifecycle(initialValue = emptyList())
     val language by settings.language.collectAsStateWithLifecycle(initialValue = "")
     // What TMPlayer is holding, split into downloads, cache and everything else. Worked out by
     // [StorageSplit], which is also what the Downloads screen reads, so the two panels cannot
@@ -1577,6 +1581,37 @@ fun SettingsScreen(
                         onToggle = { scope.launch { settings.setHomeCatalog(!homeLayout.catalogRows) } },
                     )
                 }
+                // The banner's way and the titles pinned to it (owner, 2026-11-06).
+                item(key = "home_banner") {
+                    ActionRow(
+                        title = s.settingsHomeBanner,
+                        subtitle = when (bannerMode) {
+                            "pinned" -> s.settingsHomeBannerPinned
+                            "off" -> s.settingsHomeBannerOff
+                            else -> s.settingsHomeBannerAuto
+                        },
+                        icon = TmIcons.Home,
+                        onClick = { homeSheet = "banner" },
+                    )
+                }
+                item(key = "home_pins") {
+                    ActionRow(
+                        title = s.settingsHomePins,
+                        subtitle = if (bannerPins.isEmpty()) s.settingsHomePinsEmpty else s.settingsHomePinsDetail,
+                        icon = TmIcons.StarOutline,
+                        onClick = { homeSheet = "pins" },
+                    )
+                }
+                // Which catalog categories Home builds (owner, 2026-11-06), the same
+                // tick list shape as the chats picker.
+                item(key = "home_categories") {
+                    ActionRow(
+                        title = s.settingsHomeCategories,
+                        subtitle = s.settingsHomeCategoriesDetail,
+                        icon = TmIcons.Grid,
+                        onClick = { homeSheet = "categories" },
+                    )
+                }
                 settingsNote { SettingsNoteText(s.settingsHomeFollowsAddedChosen) }
             }
 
@@ -2473,6 +2508,65 @@ fun SettingsScreen(
     onlineDialog?.let { OnlineSubtitlesDialog(it, onClose = { onlineDialog = null }) }
     if (editingTmdbKey) MetadataKeyDialog(onClose = { editingTmdbKey = false })
     if (editingOmdbKey) OmdbKeyDialog(onClose = { editingOmdbKey = false })
+
+    if (homeSheet == "banner") {
+        ChoiceSheet(title = s.settingsHomeBanner, note = s.settingsHomeBannerDetail, onDismiss = { homeSheet = null }, onClose = { homeSheet = null }) {
+            ChoiceList {
+                listOf(
+                    "auto" to s.settingsHomeBannerAuto,
+                    "pinned" to s.settingsHomeBannerPinned,
+                    "off" to s.settingsHomeBannerOff,
+                ).forEach { (mode, label) ->
+                    ChoiceLine(title = label, selected = bannerMode == mode) {
+                        scope.launch { settings.setHomeBannerMode(mode) }
+                        homeSheet = null
+                    }
+                }
+            }
+        }
+    }
+    if (homeSheet == "pins") {
+        val candidates = remember {
+            com.tmplayer.online.KnownMedia.all().distinctBy { it.progressKey }.takeLast(100).asReversed()
+        }
+        ChoiceSheet(title = s.settingsHomePins, note = s.settingsHomePinsDetail, onDismiss = { homeSheet = null }, onClose = { homeSheet = null }) {
+            ChoiceList {
+                if (candidates.isEmpty()) {
+                    ChoiceLine(title = s.settingsHomePinsEmpty, enabled = false) {}
+                }
+                candidates.forEach { item ->
+                    val ticked = item.progressKey in bannerPins
+                    ChoiceLine(
+                        title = item.title.ifBlank { item.fileName },
+                        selected = if (touch) null else ticked,
+                        icon = if (ticked) TmIcons.Check else null,
+                    ) {
+                        val next = if (ticked) bannerPins - item.progressKey else (bannerPins + item.progressKey).takeLast(5)
+                        scope.launch { settings.setHomeBannerPins(next) }
+                    }
+                }
+            }
+        }
+    }
+    if (homeSheet == "categories") {
+        val ordered = (homeLayout.catalogOrder + com.tmplayer.data.HomeLayout.CATALOG_GROUPS).distinct()
+        ChoiceSheet(title = s.settingsHomeCategories, note = s.settingsHomeCategoriesDetail, onDismiss = { homeSheet = null }, onClose = { homeSheet = null }) {
+            ChoiceList {
+                ordered.forEach { group ->
+                    val shown = group !in homeLayout.hiddenCatalog
+                    ChoiceLine(
+                        title = homeCategoryLabel(group, s),
+                        detail = if (shown) s.settingsHomeCategoryShown else s.settingsHomeCategoryHidden,
+                        selected = if (touch) null else shown,
+                        icon = if (shown) TmIcons.Check else null,
+                    ) {
+                        val next = if (shown) homeLayout.hiddenCatalog + group else homeLayout.hiddenCatalog - group
+                        scope.launch { settings.setHomeHiddenCatalog(next) }
+                    }
+                }
+            }
+        }
+    }
 
     if (pickingKidsChats) {
         KidsChatsSheet(
@@ -3458,6 +3552,24 @@ private fun SignOutButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
+/** A Home catalog category's name in Settings, by its group (see [com.tmplayer.data.HomeLayout.CATALOG_GROUPS]). */
+internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): String = when (group) {
+    "trending" -> s.settingsCatTrending
+    "top10" -> s.settingsCatTop10
+    "movies" -> s.settingsCatMovies
+    "series" -> s.settingsCatSeries
+    "lang" -> s.settingsCatLang
+    "genre" -> s.settingsCatGenre
+    "top-rated" -> s.settingsCatTopRated
+    "ott" -> s.settingsCatOtt
+    "multi" -> s.settingsCatMulti
+    "year" -> s.settingsCatYear
+    "weekly" -> s.settingsCatWeekly
+    "because" -> s.settingsCatBecause
+    "collections" -> s.settingsCatCollections
+    else -> group
+}
+
 internal fun ActionRow(
     title: String,
     subtitle: String,

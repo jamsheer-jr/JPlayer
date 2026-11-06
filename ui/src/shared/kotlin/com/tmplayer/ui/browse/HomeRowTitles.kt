@@ -21,6 +21,9 @@ fun homeRowTitle(row: HomeRow, s: Messages): String = when (row) {
         "top-rated" -> s.homeRowTopRated
         "trending" -> s.homeRowTrending
         "because" -> s.homeRowBecause
+        "top10" -> s.homeRowTop10
+        "weekly" -> s.homeRowWeekly
+        "multi-lang" -> s.homeRowMultiLang
         else -> row.label
     }
 }

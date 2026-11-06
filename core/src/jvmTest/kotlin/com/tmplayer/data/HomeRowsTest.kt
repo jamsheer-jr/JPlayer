@@ -620,4 +620,91 @@ class HomeRowsTest {
         assertEquals(2, show.series.episodeCount)
         assertTrue(rows.drop(1).none { row -> row is HomeRow.Recent && row.entries.any { it is ShelfEntry.File && it.item.messageId == e1.messageId } })
     }
+
+    private fun later(item: MediaItem, at: Long = 0) = WatchLaterRecord(
+        chatId = item.chatId,
+        messageId = item.messageId,
+        fileId = 1,
+        title = item.title,
+        fileName = item.fileName,
+        chatTitle = "",
+        sizeBytes = 1,
+        durationSec = 60,
+        mimeType = "video/mp4",
+        addedAt = at,
+    )
+
+    @Test
+    fun phoneOrderPutsWatchLaterAndFavouritesUnderContinue() {
+        val films = listOf(video(1), video(1), video(1))
+        val rows = HomeRows.build(
+            continueWatching = listOf(resume(films[0])),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            watchLater = listOf(later(films[1])),
+            layout = HomeLayout(catalogRows = true),
+            autoFill = true,
+            phoneOrder = true,
+        )
+        val keys = rows.map { it.key }
+        assertEquals("continue", keys[0])
+        assertEquals("watch-later", keys[1])
+        assertEquals("chat-1", keys[2])
+        // A television keeps its order: no Watch later row where Home fills itself.
+        val tv = HomeRows.build(
+            continueWatching = listOf(resume(films[0])),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            watchLater = listOf(later(films[1])),
+            layout = HomeLayout(catalogRows = true),
+            autoFill = true,
+        )
+        assertFalse(tv.any { it.key == "watch-later" })
+    }
+
+    @Test
+    fun newShelvesGroupByPlatformYearAndWeek() {
+        val films = listOf(
+            video(1, "Alpha HS 2026.mkv", date = 1_700_000_000),
+            video(1, "Beta HS 2026.mkv", date = 1_700_000_100),
+            video(1, "Gamma HS 2026.mkv", date = 1_700_000_200),
+            video(1, "Delta NF 2025.mkv", date = 1_600_000_000),
+            video(1, "Epsilon NF 2025.mkv", date = 1_600_000_100),
+            video(1, "Zeta NF 2025.mkv", date = 1_600_000_200),
+        )
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            nowMs = 1_700_000_200_000L,
+        )
+        val kinds = rows.filterIsInstance<HomeRow.Catalog>().map { it.kind }
+        assertTrue("ott-disney-hotstar" in kinds)
+        assertTrue("ott-netflix" in kinds)
+        assertTrue("year-2026" in kinds)
+        assertTrue("weekly" in kinds)
+        assertTrue("top10" in kinds)
+        val ott = rows.filterIsInstance<HomeRow.Catalog>().first { it.kind == "ott-netflix" }
+        assertEquals(3, ott.all.size)
+        assertEquals("Netflix", ott.label)
+    }
+
+    @Test
+    fun hiddenCategoriesAreLeftOut() {
+        val films = listOf(video(1), video(1), video(1), video(1))
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true, hiddenCatalog = setOf("movies", "top10")),
+        )
+        val kinds = rows.filterIsInstance<HomeRow.Catalog>().map { it.kind }
+        assertFalse("movies" in kinds)
+        assertFalse("top10" in kinds)
+    }
 }

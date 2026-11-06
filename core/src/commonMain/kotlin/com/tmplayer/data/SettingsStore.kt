@@ -84,6 +84,10 @@ private val HOME_CONTINUE = booleanPreferencesKey("home_continue")
 private val HOME_RECENT = booleanPreferencesKey("home_recent")
 private val HOME_STARRED_ROWS = booleanPreferencesKey("home_starred_rows")
 private val HOME_CATALOG = booleanPreferencesKey("home_catalog")
+private val HOME_HIDDEN_CATALOG = stringPreferencesKey("home_hidden_catalog")
+private val HOME_CATALOG_ORDER = stringPreferencesKey("home_catalog_order")
+private val HOME_BANNER_MODE = stringPreferencesKey("home_banner_mode")
+private val HOME_BANNER_PINS = stringPreferencesKey("home_banner_pins")
 private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
 private val LAST_CHAT = longPreferencesKey("last_chat")
 private val MIN_SIZE = longPreferencesKey("min_size_bytes")
@@ -1218,7 +1222,32 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             recentlyAdded = it[HOME_RECENT],
             starredRows = it[HOME_STARRED_ROWS],
             catalogRows = it[HOME_CATALOG],
+            hiddenCatalog = HomeLayout.groupsOf(it[HOME_HIDDEN_CATALOG]).toSet(),
+            catalogOrder = HomeLayout.groupsOf(it[HOME_CATALOG_ORDER]),
         )
+    }
+
+    suspend fun setHomeHiddenCatalog(groups: Set<String>) {
+        prefs.edit { it[HOME_HIDDEN_CATALOG] = HomeLayout.groupsText(groups) }
+    }
+
+    suspend fun setHomeCatalogOrder(groups: List<String>) {
+        prefs.edit { it[HOME_CATALOG_ORDER] = HomeLayout.groupsText(groups) }
+    }
+
+    /** The Home banner's way: "auto" (the newest titles), "pinned" (the viewer's own), or "off". */
+    val homeBannerMode: Flow<String> = read { it[HOME_BANNER_MODE] ?: "auto" }
+
+    suspend fun setHomeBannerMode(mode: String) {
+        prefs.edit { it[HOME_BANNER_MODE] = mode }
+    }
+
+    /** The titles pinned to the Home banner, by progress key: see [HomeFeatured]. */
+    val homeBannerPins: Flow<List<String>> = read { it[HOME_BANNER_PINS] }
+        .map { raw -> raw?.split('\n')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty() }
+
+    suspend fun setHomeBannerPins(keys: List<String>) {
+        prefs.edit { it[HOME_BANNER_PINS] = keys.distinct().take(10).joinToString("\n") }
     }
 
     suspend fun setHomeContinue(value: Boolean) {

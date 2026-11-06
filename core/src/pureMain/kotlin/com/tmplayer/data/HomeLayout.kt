@@ -28,6 +28,16 @@ data class HomeLayout(
      * viewer turned it off.
      */
     val catalogRows: Boolean = false,
+    /**
+     * The catalog categories the viewer turned off in Settings (owner, 2026-11-06), by
+     * group name (see [HomeRows.catalogGroupOf]): a hidden group's rows are not built.
+     */
+    val hiddenCatalog: Set<String> = emptySet(),
+    /**
+     * The viewer's own order for the catalog categories, by group name: rows in a listed
+     * group stand before the rest, in the order listed. Empty is the built in order.
+     */
+    val catalogOrder: List<String> = emptyList(),
 ) {
     /** Whether Recently added's videos are wanted at all: for its row or for the carousel. */
     val needsRecent: Boolean get() = carousel || recentlyAdded
@@ -51,13 +61,31 @@ data class HomeLayout(
             recentlyAdded: Boolean?,
             starredRows: Boolean?,
             catalogRows: Boolean? = null,
+            hiddenCatalog: Set<String>? = null,
+            catalogOrder: List<String>? = null,
         ): HomeLayout = HomeLayout(
             carousel = carousel ?: true,
             continueWatching = continueWatching ?: true,
             recentlyAdded = recentlyAdded ?: true,
             starredRows = starredRows ?: true,
             catalogRows = catalogRows ?: true,
+            hiddenCatalog = hiddenCatalog ?: emptySet(),
+            catalogOrder = catalogOrder ?: emptyList(),
         )
+
+        /** The catalog groups, in the built in order the Categories picker lists. */
+        val CATALOG_GROUPS = listOf(
+            "trending", "top10", "movies", "series", "lang", "genre", "top-rated",
+            "ott", "multi", "year", "weekly", "because", "collections",
+        )
+
+        /** A stored group list (one name per line), read leniently: unknown names dropped. */
+        fun groupsOf(raw: String?): List<String> =
+            raw?.split('\n')?.map { it.trim() }?.filter { it in CATALOG_GROUPS }?.distinct().orEmpty()
+
+        /** [groups] as one stored value. */
+        fun groupsText(groups: Collection<String>): String =
+            groups.filter { it in CATALOG_GROUPS }.distinct().joinToString("\n")
 
         /**
          * The added chats ([chosen], [AddedChats.ids]) Home reads for Recently added, in [chats]'

@@ -92,6 +92,16 @@ data class MetaExtras(
     val scoresAt: Long = 0,
     /** OMDb itself answered (not only Wikidata), so the page has IMDb's score if OMDb has one. */
     val scoresFromOmdb: Boolean = false,
+    /** The title's original language (ISO 639-1), for Home's series language rows (owner, 2026-11-06). */
+    val originalLanguage: String? = null,
+    /** The year the title came out, for Home's year row. */
+    val year: Int? = null,
+    /**
+     * Where the title streams in India, by the app's own platform names (see
+     * [MetaRules.tmdbProviderLabel]): Home's OTT rows group by these, with the file name's
+     * own platform tag as the fallback for a title never matched.
+     */
+    val providers: List<String> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = genres.isEmpty() && runtimeMin == null && seasons == null && rating == null && certification == null &&
@@ -126,6 +136,9 @@ data class MetaExtras(
         .put("scoresAsked", scoresAsked)
         .put("scoresAt", scoresAt)
         .put("scoresFromOmdb", scoresFromOmdb)
+        .put("originalLanguage", originalLanguage.orEmpty())
+        .put("year", year ?: 0)
+        .put("providers", JSONArray(providers))
 
     companion object {
         fun fromJson(json: JSONObject): MetaExtras? = runCatching {
@@ -165,6 +178,9 @@ data class MetaExtras(
                 scoresAsked = json.optBoolean("scoresAsked"),
                 scoresAt = json.optLong("scoresAt"),
                 scoresFromOmdb = json.optBoolean("scoresFromOmdb"),
+                originalLanguage = json.optString("originalLanguage").ifBlank { null },
+                year = json.optInt("year").takeIf { it > 0 },
+                providers = strings("providers"),
             )
         }.getOrNull()
     }
@@ -217,6 +233,27 @@ object MetaRules {
 
     /** The viewer's region: the device's country, or the US where it has none. */
     fun region(tag: String = deviceLocaleTag()): String = tag.replace('_', '-').split('-').drop(1).firstOrNull { it.length == 2 && it.all(Char::isLetter) }?.uppercase() ?: "US"
+
+    /**
+     * A TMDB watch provider's name turned into the platform name the app uses everywhere
+     * (the owner's dictionary, 2026-11-06: the same names the file name tags give). A
+     * provider outside the dictionary names no OTT row and is left out.
+     */
+    fun tmdbProviderLabel(name: String): String? = when (name.trim()) {
+        "Netflix" -> "Netflix"
+        "Amazon Prime Video" -> "Prime Video"
+        "Disney Plus Hotstar", "Hotstar", "JioHotstar" -> "Disney+ Hotstar"
+        "Zee5" -> "ZEE5"
+        "Sony Liv" -> "SonyLIV"
+        "Sun Nxt" -> "SunNXT"
+        "JioCinema" -> "Jio"
+        "aha" -> "Aha"
+        "ManoramaMAX" -> "ManoramaMAX"
+        "Simply South" -> "Simply South"
+        "iQIYI" -> "iQIYI"
+        "Rakuten Viki" -> "Rakuten Viki"
+        else -> null
+    }
 
     /** The age rating for [region], else the US one, else none. Blank ratings are none. */
     fun certification(byRegion: Map<String, String>, region: String): String? {

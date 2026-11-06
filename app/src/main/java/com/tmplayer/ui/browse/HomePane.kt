@@ -75,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -258,8 +259,36 @@ internal fun HomePane(
     // below it moves when it fills, and given up (the rows moving up) once its fill finds no
     // complete page, a moment after the row is in at most ([HomeFeatured.FILL_WAIT_MS]).
     val recent = rows.firstNotNullOfOrNull { it as? HomeRow.Recent }
+    // The banner's way (owner, 2026-11-06): auto is the newest titles as always; pinned
+    // shows the viewer's own titles, found across Home's rows by their progress keys;
+    // off hides the banner. The chats it draws from are the same chats Home reads.
+    val bannerSettings = remember { SettingsStore(LocalContext.current) }
+    val bannerMode by remember(bannerSettings) { bannerSettings.homeBannerMode }.collectAsState(initial = "auto")
+    val bannerPins by remember(bannerSettings) { bannerSettings.homeBannerPins }.collectAsState(initial = emptyList())
+    val bannerRecent = when {
+        bannerMode == "off" -> null
+        bannerMode == "pinned" && bannerPins.isNotEmpty() -> {
+            val pins = bannerPins.toSet()
+            val entries = rows.flatMap { row ->
+                when (row) {
+                    is HomeRow.Catalog -> row.all
+                    is HomeRow.Chat -> row.entries
+                    is HomeRow.Recent -> row.entries
+                    else -> emptyList()
+                }
+            }.filter { entry ->
+                val lead = when (entry) {
+                    is ShelfEntry.File -> entry.item
+                    is ShelfEntry.Show -> entry.series.cover
+                }
+                lead.progressKey in pins
+            }
+            if (entries.isEmpty()) recent else HomeRow.Recent(entries, loaded = true, starredOnly = false)
+        }
+        else -> recent
+    }
     // Off in Settings, nothing is picked or turned over for it either.
-    val featured = rememberFeatured(recent.takeIf { carouselOn })
+    val featured = rememberFeatured(bannerRecent.takeIf { carouselOn })
     val carousel = carouselOn && recent != null && featured?.isEmpty() != true
     // With no carousel the rows are the whole first screen; with one, its first picture tells
     // HomeFirstPaint (through the carousel), so the loader lifts over a finished Home.
@@ -280,6 +309,9 @@ internal fun HomePane(
     val opened = rememberOpenSeries { key, chatId -> HomeLaunch.find(key, chatId, rows) }
     // Recently added's See all page, by the row's key, so a turn of the phone keeps it open.
     var seeAllKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    // A catalog shelf's See all page, by the shelf's key (owner, 2026-11-06).
+    var catalogKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val catalogRow = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
     // Open link (v1.0.11): an address pasted on Home, played through the same stream mode
     // the built-in channel's posts use.
     var openLink by remember { mutableStateOf(false) }
@@ -686,14 +718,48 @@ internal fun HomePane(
                                 }
                             }
                             SharePlayerPill()
+                            // Open link joins the same row (owner, 2026-11-06): one row
+                            // of actions, not a row of its own underneath.
+                            OpenLinkPill { openLink = true }
                         }
                     }
-                }
-                // Open link stands under the action pills on both shapes (v1.0.11): a pasted
-                // address plays in the player, with no trip through a chat to carry it.
-                item(key = OPEN_LINK_KEY, contentType = OPEN_LINK_KEY) {
-                    Row(Modifier.padding(start = start, end = end, top = 2.dp, bottom = 2.dp)) {
-                        OpenLinkPill { openLink = true }
+                    // Quick chips (owner, 2026-11-06): a jump to the Movies, Shows,
+                    // Genres and Languages rows, for the rows Home has this time.
+                    val chipTargets = listOfNotNull(
+                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "movies" }
+                            .takeIf { it >= 0 }?.let { s.homeRowMovies to it },
+                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "series" }
+                            .takeIf { it >= 0 }?.let { s.homeRowShows to it },
+                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind.startsWith("genre-") }
+                            .takeIf { it >= 0 }?.let { s.settingsCatGenre to it },
+                        listed.indexOfFirst {
+                            it is HomeRow.Catalog && (it.kind.startsWith("lang-") || it.kind.startsWith("series-lang-"))
+                        }.takeIf { it >= 0 }?.let { s.settingsCatLang to it },
+                    )
+                    if (chipTargets.isNotEmpty()) {
+                        item(key = CHIPS_KEY, contentType = CHIPS_KEY) {
+                            Row(
+                                Modifier.padding(start = start, end = end, top = 2.dp, bottom = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                chipTargets.forEach { (label, rowIndex) ->
+                                    Row(
+                                        Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .background(Tone.surface)
+                                            .clickable {
+                                                // The rows start after the brand, built-in,
+                                                // pills and chips items on a phone.
+                                                scope.launch { listState.animateScrollToItem(rowIndex + 4) }
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        M3Text(label, style = M3MaterialTheme.typography.labelLarge, color = Tone.text)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 items(listed, key = { it.key }, contentType = { it::class }) { row ->
@@ -710,7 +776,7 @@ internal fun HomePane(
                         is HomeRow.Chat -> { { onOpenChat(row.chatId) } }
                         is HomeRow.Recent -> { { seeAllKey = row.key } }
                         is HomeRow.NewEpisodes -> null
-                        is HomeRow.Catalog -> null
+                        is HomeRow.Catalog -> { { catalogKey = row.key } }
                     }?.takeIf { row.hasMore }
                     // On a television "See all" is the row's last tile, where Right past the last
                     // video lands, as a television's rows end (user, 2026-10-28); a phone keeps it
@@ -822,7 +888,7 @@ internal fun HomePane(
                                 }
                             }
                             is HomeRow.Chat -> ShelfRows(row.entries, watch, touch, isFirst, first, { row.title }, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
-                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
+                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd, ranked = row.kind == "top10") { opened.open(it) }
                             is HomeRow.Recent -> if (row.noneChosen) {
                                 com.tmplayer.ui.browse.HomeNoneChosenCard(
                                     start = start,
@@ -1070,6 +1136,24 @@ internal fun HomePane(
             },
         )
     }
+    catalogRow?.let { row ->
+        CatalogSeeAll(
+            row = row,
+            title = homeRowTitle(row, LocalStrings.current),
+            watch = watch,
+            start = start,
+            end = end,
+            bottom = bottom,
+            chatTitle = chatTitle,
+            onPlay = onPlay,
+            onHold = onHoldMedia,
+            onOpenSeries = { opened.open(it) },
+            onClose = {
+                returnTo = row.key
+                catalogKey = null
+            },
+        )
+    }
     opened.series?.let { series ->
         SeriesOpened(
             series = series,
@@ -1104,11 +1188,13 @@ private fun ShelfRows(
     modifier: Modifier,
     /** A television's See all tile at the row's end; null on a phone and for a row that holds everything. */
     seeAll: SeeAllEnd? = null,
+    /** The Top 10 row: each tile stands beside its big rank number (owner, 2026-11-06). */
+    ranked: Boolean = false,
     onOpenSeries: (Series) -> Unit,
 ) {
     val poster = remember(entries) { SeriesShelf.posterKeys(entries).isNotEmpty() }
     TileRow(start, end, modifier, seeAll = seeAll?.copy(width = if (poster) posterWidth(touch) else wideWidth(touch), poster = poster)) {
-        entries(entries, poster, watch, touch, if (isFirstRow) entries.firstOrNull() else null, first, chatTitle, onPlay, onHold, onOpenSeries)
+        entries(entries, poster, watch, touch, if (isFirstRow) entries.firstOrNull() else null, first, chatTitle, onPlay, onHold, onOpenSeries, ranked)
     }
 }
 
@@ -1123,11 +1209,27 @@ private fun LazyListScope.entries(
     onPlay: (MediaItem, String) -> Unit,
     onHold: (MediaItem, String) -> Unit,
     onOpenSeries: (Series) -> Unit,
+    ranked: Boolean = false,
 ) {
-    items(entries, key = { it.key }, contentType = { if (poster) "poster-${it::class.simpleName}" else it::class }) { entry ->
+    items(entries.size, key = { entries[it].key }, contentType = { if (poster) "poster-${entries[it]::class.simpleName}" else entries[it]::class }) { index ->
+        val entry = entries[index]
         val focus = if (entry === lead) Modifier.focusRequester(first) else Modifier
         val width = if (poster) posterWidth(touch) else wideWidth(touch)
-        ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width).then(focus))
+        if (ranked) {
+            Row(Modifier.width(width + 46.dp).then(focus), verticalAlignment = Alignment.Bottom) {
+                M3Text(
+                    "${index + 1}",
+                    style = androidx.compose.ui.text.TextStyle(
+                        fontSize = 64.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Tone.accent.copy(alpha = 0.85f),
+                    ),
+                )
+                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width))
+            }
+        } else {
+            ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width).then(focus))
+        }
     }
 }
 
@@ -1245,6 +1347,96 @@ private fun RowSeeAll(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A catalog shelf's See all page (owner, 2026-11-06): the shelf's whole list as a grid,
+ * the same shell as Recently added's page, with nothing to read on for: the shelf's list
+ * is already whole in memory ([HomeRow.Catalog.all]).
+ */
+@Composable
+private fun CatalogSeeAll(
+    row: HomeRow.Catalog,
+    title: String,
+    watch: SeriesWatch,
+    start: Dp,
+    end: Dp,
+    bottom: Dp,
+    chatTitle: (Long) -> String,
+    onPlay: (MediaItem, String) -> Unit,
+    onHold: (MediaItem, String) -> Unit,
+    onOpenSeries: (Series) -> Unit,
+    onClose: () -> Unit,
+) {
+    val s = LocalStrings.current
+    val touch = isTouch()
+    com.tmplayer.ui.nav.BackHandler { onClose() }
+    val entries = row.all
+    val poster = remember(entries) { SeriesShelf.posterKeys(entries).isNotEmpty() }
+    val grid = com.tmplayer.ui.components.rememberAheadGridState()
+    val firstTile = remember { FocusRequester() }
+    if (!touch) LaunchedEffect(Unit) {
+        withFrameNanos {}
+        runCatching { firstTile.requestFocus() }
+    }
+    val gap = if (touch) TILE_GAP_TOUCH else TILE_GAP_TV
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Tone.background)
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+            .then(if (touch) Modifier.statusBarsPadding() else Modifier.padding(top = TV_BAR_HEIGHT)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = if (touch) 4.dp else start, end = end).heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (touch) {
+                androidx.compose.material3.IconButton(onClick = onClose) {
+                    androidx.compose.material3.Icon(TmIcons.ArrowBack, contentDescription = s.commonBack, tint = Tone.text)
+                }
+                M3Text(
+                    title,
+                    style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = Tone.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            } else {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Tone.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(if (poster) posterWidth(touch) else wideWidth(touch)),
+            state = grid,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = start,
+                end = end,
+                top = if (touch) 4.dp else Tv.FocusClearance,
+                bottom = bottom + if (touch) 24.dp else Tv.FocusClearance,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalArrangement = Arrangement.spacedBy(if (touch) 16.dp else gap + Tv.FocusClearance),
+        ) {
+            items(
+                entries.size,
+                key = { entries[it].key },
+                contentType = { if (poster) "poster-${entries[it]::class.simpleName}" else entries[it]::class },
+            ) { index ->
+                val entry = entries[index]
+                val focus = if (index == 0) Modifier.focusRequester(firstTile) else Modifier
+                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus))
             }
         }
     }
@@ -1774,7 +1966,7 @@ private val STRIP_GAP = 12.dp
 /** The lazy key of the phone's featured carousel at the top of Home. */
 private const val FEATURED_KEY = "featured"
 private const val SURPRISE_KEY = "surprise"
-private const val OPEN_LINK_KEY = "open-link"
+private const val CHIPS_KEY = "chips"
 private const val BUILT_IN_KEY = "built-in"
 
 /** How far Home moves down on a television when Down finds no row on screen below the remote. */

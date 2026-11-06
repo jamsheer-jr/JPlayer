@@ -167,6 +167,12 @@ object Backups {
         "hold_speed" to Kind.FLOAT,
         "home_carousel" to Kind.BOOL,
         "home_catalog" to Kind.BOOL,
+        // The Home banner's way (auto, pinned, off) and the titles pinned to it, and the
+        // catalog categories the viewer hid or reordered (HomeLayout): their own choices.
+        "home_banner_mode" to Kind.TEXT,
+        "home_banner_pins" to Kind.TEXT,
+        "home_catalog_order" to Kind.TEXT,
+        "home_hidden_catalog" to Kind.TEXT,
         "home_continue" to Kind.BOOL,
         "home_recent" to Kind.BOOL,
         "home_starred_rows" to Kind.BOOL,

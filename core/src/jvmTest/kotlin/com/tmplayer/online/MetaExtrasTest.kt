@@ -401,4 +401,22 @@ class MetaExtrasTest {
         assertNull(online.matched(longer, name, film))
         assertEquals(1, http.requests.size)
     }
+
+    @Test
+    fun extrasKeepLanguageYearAndProviders() {
+        val extras = MetaExtras(
+            genres = listOf("Drama"),
+            originalLanguage = "ml",
+            year = 2026,
+            providers = listOf("Netflix", "Disney+ Hotstar"),
+        )
+        val back = MetaExtras.fromJson(extras.toJson())
+        assertEquals("ml", back?.originalLanguage)
+        assertEquals(2026, back?.year)
+        assertEquals(listOf("Netflix", "Disney+ Hotstar"), back?.providers)
+        assertEquals("Disney+ Hotstar", MetaRules.tmdbProviderLabel("Disney Plus Hotstar"))
+        assertEquals("Prime Video", MetaRules.tmdbProviderLabel("Amazon Prime Video"))
+        assertEquals("ZEE5", MetaRules.tmdbProviderLabel("Zee5"))
+        assertNull(MetaRules.tmdbProviderLabel("Some Other Service"))
+    }
 }
