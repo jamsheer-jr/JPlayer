@@ -66,7 +66,7 @@ class FeedbackTest {
         assertTrue(mail.startsWith("mailto:hello@tmplayer.org?subject="))
         assertFalse(mail.contains('+'))
         val q = query(mail.replaceFirst("mailto:", "mailto://x/"))
-        assertEquals("TMPlayer 1.23.0: a problem", q["subject"])
+        assertEquals("J Player 1.23.0: a problem", q["subject"])
         val body = q.getValue("body")
         assertTrue(body.contains("Platform: Android phone or tablet"))
         assertTrue(body.contains("App version: 1.23.0"))

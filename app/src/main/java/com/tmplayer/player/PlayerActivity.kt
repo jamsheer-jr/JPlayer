@@ -1081,7 +1081,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * error underneath, plain text a report or a forum post can carry. Nothing about the account.
      */
     private fun errorDetails(): String = buildString {
-        appendLine("TMPlayer ${com.tmplayer.BuildConfig.VERSION_NAME} (${com.tmplayer.BuildConfig.VERSION_CODE})")
+        appendLine("J Player ${com.tmplayer.BuildConfig.VERSION_NAME} (${com.tmplayer.BuildConfig.VERSION_CODE})")
         appendLine("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})${if (FormFactor.isTv(this@PlayerActivity)) ", TV" else ""}")
         appendLine("${statusTitle.text}: ${statusText.text}")
         appendLine("File: ${mediaFileName.ifBlank { "?" }}, ${mediaMime.ifBlank { "?" }}, ${fileSizeBytes} bytes, ${durationSec} s, ${if (downloadedVideo != null) "downloaded" else "streamed"}")

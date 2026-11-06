@@ -37,7 +37,7 @@ object LogExport {
     ): String {
         val scrubber = LogScrubber(known)
         return buildString {
-            appendLine("TMPlayer logs")
+            appendLine("J Player logs")
             appendLine("App version: ${facts.version}")
             appendLine("Platform: ${facts.platform.option.ifEmpty { "other" }}")
             appendLine("Device: ${facts.device}")

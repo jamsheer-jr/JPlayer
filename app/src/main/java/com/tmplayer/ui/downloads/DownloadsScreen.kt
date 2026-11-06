@@ -390,7 +390,7 @@ fun DownloadsScreen(
         touch && android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
             .resolveActivity(context.packageManager) != null
     }
-    // Save to gallery: Movies/TMPlayer through MediaStore, Android 10 and later, on a phone or
+    // Save to gallery: Movies/J Player through MediaStore, Android 10 and later, on a phone or
     // tablet (a television has no gallery anyone looks at).
     val canSaveToGallery = touch && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
     var explainingNoFolder by remember { mutableStateOf(false) }

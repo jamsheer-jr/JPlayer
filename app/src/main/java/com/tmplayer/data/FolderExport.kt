@@ -47,7 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * notification; and the outcome waits in [state] for the Downloads screen to show. The folder's
  * grant is held from the pick to the end of the run and given back after.
  *
- * Save to gallery runs the same way into Movies/TMPlayer through MediaStore (Android 10 and
+ * Save to gallery runs the same way into Movies/J Player through MediaStore (Android 10 and
  * later, no permission needed for the app's own files): no picker, so [prepare] is called with no
  * tree. From a video's page it starts at once with no confirmation ([saveToGalleryNow]), its
  * progress on the page's button and in the notification, and its end said in a toast and the shade.
@@ -379,14 +379,14 @@ object FolderExport {
     private const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
 
     /** Where Save to gallery puts its copies, as MediaStore's relative path and as the viewer reads it. */
-    private val GALLERY_PATH = Environment.DIRECTORY_MOVIES + "/TMPlayer"
+    private val GALLERY_PATH = Environment.DIRECTORY_MOVIES + "/J Player"
     private val GALLERY_LABEL = GALLERY_PATH
 
     @Suppress("DEPRECATION")
     private fun galleryPath(): File = File(Environment.getExternalStorageDirectory(), GALLERY_PATH)
 
     /**
-     * Movies/TMPlayer through MediaStore. Each copy is added hidden (IS_PENDING) so the gallery
+     * Movies/J Player through MediaStore. Each copy is added hidden (IS_PENDING) so the gallery
      * never lists a part written file, and shown by [finish] once it is whole; one left by a
      * cancel or a failure is deleted, and MediaStore clears any a crash leaves behind.
      */

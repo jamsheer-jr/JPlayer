@@ -67,7 +67,7 @@ object FrameSaver {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, fileName(title, positionMs))
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/TMPlayer")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/J Player")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = runCatching { resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) }.getOrNull()

@@ -60,7 +60,7 @@ object Feedback {
 
     /** The same facts as an email, for somebody without a GitHub account. */
     fun mailto(facts: Facts): String {
-        val subject = "TMPlayer ${facts.version}: a problem"
+        val subject = "J Player ${facts.version}: a problem"
         val body = buildString {
             appendLine("Platform: ${facts.platform.option.ifEmpty { "other" }}")
             appendLine("App version: ${facts.version}")

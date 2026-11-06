@@ -81,7 +81,7 @@ class LogExportTest {
         val facts = Feedback.Facts("1.24.0", Feedback.Platform.AndroidTv, "Xiaomi MiBox, Android 9", "en")
         val lines = (1..LogExport.MAX_LINES + 10).map { "line $it from chat 987654321" }
         val text = LogExport.report(facts, lines, now = LocalDateTime.of(2026, 10, 13, 14, 5))
-        assertTrue(text.startsWith("TMPlayer logs\nApp version: 1.24.0\nPlatform: Android TV or Google TV\n"))
+        assertTrue(text.startsWith("J Player logs\nApp version: 1.24.0\nPlatform: Android TV or Google TV\n"))
         assertTrue("Device: Xiaomi MiBox, Android 9" in text)
         assertTrue("Saved: 2026-10-13 14:05" in text)
         assertFalse("line 10 from" in text)
