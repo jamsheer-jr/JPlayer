@@ -43,7 +43,7 @@ class TouchRoutesTest {
         assertEquals(1, barHighlightIndex(TouchDestination.Chats))
         assertNull(barHighlightIndex(null))
         // Settings is behind the picture now: Home, Chats, Search, then the picture.
-        assertEquals(3, PROFILE_SLOT)
+        assertEquals(4, PROFILE_SLOT)
         assertEquals(PROFILE_SLOT, barHighlightIndex(null, inProfile = true))
         assertEquals(0, barHighlightIndex(TouchDestination.Home, inProfile = true))
     }

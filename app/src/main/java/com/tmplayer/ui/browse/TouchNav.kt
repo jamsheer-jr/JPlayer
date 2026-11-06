@@ -134,8 +134,8 @@ import com.tmplayer.ui.theme.rememberReducedMotion
  */
 internal enum class TouchDestination { Home, Chats }
 
-/** The profile picture's place on the bar: after every [TouchDestination] and Search. */
-internal val PROFILE_SLOT = TouchDestination.entries.size + 1
+/** The profile picture's place on the bar: after every [TouchDestination], Search and Settings. */
+internal val PROFILE_SLOT = TouchDestination.entries.size + 2
 
 /**
  * Which of the bar's slots carries the sliding highlight: [current]'s button, or the picture on a
@@ -369,6 +369,7 @@ internal fun TouchNavHost(
                             onHome = retap(TouchDestination.Home, nav.onHome),
                             onChats = retap(TouchDestination.Chats, nav.onChats),
                             onSearch = nav.onSearch,
+                            onSettings = nav.onSettings,
                             onProfile = { profileOpen = true },
                             searchShared = searchShared,
                             vertical = rail,
@@ -657,6 +658,7 @@ private fun FloatingBar(
     onHome: () -> Unit,
     onChats: () -> Unit,
     onSearch: () -> Unit,
+    onSettings: () -> Unit,
     onProfile: () -> Unit,
     searchShared: Modifier,
     vertical: Boolean = false,
@@ -749,6 +751,7 @@ private fun FloatingBar(
                 BarButton(TmIcons.Home, s.browseTabHome, current == TouchDestination.Home, onHome)
                 BarButton(TmIcons.Chats, s.browseTabChats, current == TouchDestination.Chats, onChats)
                 BarButton(TmIcons.Search, s.commonSearch, false, onSearch, role = Role.Button, modifier = searchShared)
+                BarButton(TmIcons.Settings, s.navSettings, false, onSettings)
                 ProfileButton(account, inProfile, badged, onProfile)
             }
             if (vertical) {
