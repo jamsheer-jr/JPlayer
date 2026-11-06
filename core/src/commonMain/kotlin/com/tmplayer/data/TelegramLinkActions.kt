@@ -144,6 +144,53 @@ class TelegramLinkActions(private val td: TdlClient) {
         )
     }
 
+    /**
+     * Joins the chat [link] invites to, on this account, and answers its id (0 when the join
+     * went in as a request the admins have yet to approve, so there is no chat to open yet).
+     *
+     * The one place the app joins anything (v1.0.10): the built-in channel cards
+     * ([BuiltInChannels]) are the owner's own channels, offered as part of the app, and their
+     * one tap Join is the viewer's own act on their own account. The link flow proper still
+     * never joins (HX30): its preview sheet sends the viewer to Telegram, as before. The kids
+     * lock refuses here exactly as it refuses the preview.
+     */
+    suspend fun joinInvite(link: TgLink.Invite): Result<Long> = withContext(Dispatchers.IO) {
+        if (!LinkRules.mayJoin(ChatGate.awaitReady())) return@withContext Result.failure(LinkRefusal(L.linkKidsLock))
+        when (val answer = td.joinChatByInviteLink(link.url)) {
+            is TdlResult.Failure -> Result.failure(LinkRefusal(LinkRules.inviteFailure(answer.message)))
+            is TdlResult.Success -> Result.success(answer.result.id)
+        }
+    }
+
+    /**
+     * A channel's newest posts, newest first, at most [RECENT_POSTS]: what Home's built-in
+     * channel cards read for the new videos count and the Live list. The text is the post's
+     * own text or its caption. A chat the account cannot read (not a member, or gone) gives
+     * an empty list rather than an error: the card simply has nothing new to say.
+     */
+    suspend fun recentPosts(chatId: Long): List<ChannelPost> = withContext(Dispatchers.IO) {
+        if (chatId == 0L) return@withContext emptyList()
+        val history = td.getChatHistory(chatId, 0, 0, RECENT_POSTS, false).valueOrNull
+            ?: return@withContext emptyList()
+        history.messages.map { message ->
+            ChannelPost(
+                messageId = message.id,
+                text = textOf(message).orEmpty(),
+                isVideo = MediaMapper.isVideoContent(message.content),
+            )
+        }
+    }
+
+    /** A message's words: its text, or the caption its video, document or picture carries. */
+    private fun textOf(message: dev.g000sha256.tdl.dto.Message): String? = when (val content = message.content) {
+        is dev.g000sha256.tdl.dto.MessageText -> content.text.text
+        is dev.g000sha256.tdl.dto.MessageVideo -> content.caption?.text
+        is dev.g000sha256.tdl.dto.MessageDocument -> content.caption?.text
+        is dev.g000sha256.tdl.dto.MessageAnimation -> content.caption?.text
+        is dev.g000sha256.tdl.dto.MessagePhoto -> content.caption?.text
+        else -> null
+    }
+
     /** The invite's chat, or why it cannot be shown (expired, wrong, the kids lock). */
     suspend fun previewInvite(link: TgLink.Invite): Result<InvitePreview> = withContext(Dispatchers.IO) {
         if (!LinkRules.mayJoin(ChatGate.awaitReady())) return@withContext Result.failure(LinkRefusal(L.linkKidsLock))
@@ -169,6 +216,14 @@ class TelegramLinkActions(private val td: TdlClient) {
                 )
             }
         }
+    }
+
+    companion object {
+        /**
+         * The posts [recentPosts] reads: a screenful, enough for a new videos count and the
+         * newest stream links, and few enough that a Home visit stays one cheap call.
+         */
+        const val RECENT_POSTS = 30
     }
 }
 
