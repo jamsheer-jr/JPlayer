@@ -180,6 +180,40 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `series stand in language rows under the series row, fullest first, one show enough`() {
+        val seoul = (1..2).map { video(2, "Seoul.Diary.S01E%02d.Korean.mkv".format(it)) }
+        val busan = (1..2).map { video(2, "Busan.Diary.S01E%02d.Korean.mkv".format(it)) }
+        val beijing = (1..2).map { video(3, "Beijing.Diary.S01E%02d.Chinese.mkv".format(it)) }
+        val harbour = (1..2).map { video(4, "Harbour.Notes.S01E%02d.mkv".format(it)) }
+        val film = video(2, "Seoul.Film.2024.Korean.1080p.mkv")
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to listOf(video(1)), 2L to seoul + busan + film, 3L to beijing, 4L to harbour),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        val kinds = catalogs.map { it.kind }
+        // The all-series row first, then the language rows, the Korean one (two shows) ahead
+        // of the Chinese one (a single show, which is enough).
+        assertEquals(listOf("series", "series-lang-ko", "series-lang-zh"), kinds.take(3))
+        val korean = catalogs.single { it.kind == "series-lang-ko" }
+        assertEquals("K-Drama", korean.label)
+        assertEquals(2, korean.entries.size)
+        assertTrue(korean.entries.all { it is ShelfEntry.Show })
+        val chinese = catalogs.single { it.kind == "series-lang-zh" }
+        assertEquals("C-Drama", chinese.label)
+        assertEquals(1, chinese.entries.size)
+        // The show no name gives a language to stands in the all-series row and in no
+        // language row; the film stands in none of them.
+        val all = catalogs.single { it.kind == "series" }
+        assertEquals(4, all.entries.size)
+        val languageRows = catalogs.filter { it.kind.startsWith("series-lang-") }
+        assertEquals(3, languageRows.sumOf { it.entries.size })
+    }
+
+    @Test
     fun `no series row while the catalog rows are off`() {
         val episodes = (1..2).map { video(2, "Harbour.Notes.S01E%02d.mkv".format(it)) }
         val rows = HomeRows.build(

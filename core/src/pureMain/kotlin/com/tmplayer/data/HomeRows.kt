@@ -304,7 +304,11 @@ object HomeRows {
         // and their place.
         if (layout.catalogRows) {
             val seriesPool = (loaded.values.flatten() + recent.orEmpty()).distinctBy { it.id }
-            seriesRow(seriesPool, shownCopies, inContinue)?.let { add(it) }
+            val shows = seriesShows(seriesPool, shownCopies, inContinue)
+            if (shows.isNotEmpty()) {
+                add(HomeRow.Catalog("series", "", shows.take(LIMIT)))
+                addAll(seriesLanguageRows(shows))
+            }
         }
 
         val homeChats = favourites.distinctBy { it.id }
@@ -454,7 +458,7 @@ object HomeRows {
      * then Movies, a shelf per language, a shelf per genre, Top Rated, and Because you
      * watched, from [pool] arranged the way a row arranges it. (The Series row is not one of
      * them any more: it is fed wider and stands under Continue watching instead, see
-     * [seriesRow].) A title may stand in a shelf
+     * [seriesShows].) A title may stand in a shelf
      * and in its chat's row: the shelves are a second way through the same videos, the way a
      * streaming home groups them, and they leave out only what Continue watching holds. A
      * shelf with fewer than [CATALOG_MIN] tiles is left out. The genre and Top Rated shelves
@@ -529,22 +533,51 @@ object HomeRows {
     }
 
     /**
-     * The Series row, on its own (owner, 2026-11-06): every episode-detected show in
-     * [pool], and one show is enough for the row to stand, where every other shelf needs
-     * [CATALOG_MIN]. It is split from [catalogShelves] because [build] feeds it wider than
-     * the shelves (every chat whose videos Home has read, plus the search across chats:
-     * a series in a chat Home did not pick was invisible when the pool was Home's chats
-     * alone) and stands it directly under Continue watching rather than at the foot.
+     * Every episode-detected show in [pool], arranged (owner, 2026-11-06). Split from
+     * [catalogShelves] because [build] feeds it wider than the shelves (every chat whose
+     * videos Home has read, plus the search across chats: a series in a chat Home did not
+     * pick was invisible when the pool was Home's chats alone) and stands it directly under
+     * Continue watching rather than at the foot.
      */
-    private fun seriesRow(
+    private fun seriesShows(
         pool: List<MediaItem>,
         continuing: Set<String>,
         inProgress: Set<String>,
-    ): HomeRow.Catalog? {
-        if (pool.isEmpty()) return null
-        val series = arranged(pool, HashSet(inProgress), continuing, inProgress)
+    ): List<ShelfEntry.Show> {
+        if (pool.isEmpty()) return emptyList()
+        return arranged(pool, HashSet(inProgress), continuing, inProgress)
             .filterIsInstance<ShelfEntry.Show>()
-        return if (series.isEmpty()) null else HomeRow.Catalog("series", "", series.take(LIMIT))
+    }
+
+    /**
+     * The series language rows under the Series row (owner, 2026-11-06): the same shows
+     * grouped by the language their name announces ([languageOf], the source the language
+     * shelves themselves read), the fullest row first, and one show enough for a row to
+     * stand, as the Series row allows. Only shows stand here, never a film that shares the
+     * language. A show whose language no name announces stands in the Series row alone
+     * rather than nowhere.
+     */
+    private fun seriesLanguageRows(shows: List<ShelfEntry.Show>): List<HomeRow> =
+        shows.groupBy { languageOf(it) }
+            .entries
+            .filter { (code, _) -> code != null && LANGUAGE_NAMES.containsKey(code) }
+            .sortedWith(
+                compareByDescending<Map.Entry<String?, List<ShelfEntry.Show>>> { it.value.size }
+                    .thenBy { seriesLanguageTitle(it.key!!) },
+            )
+            .map { (code, entries) ->
+                HomeRow.Catalog("series-lang-$code", seriesLanguageTitle(code!!), entries.take(LIMIT))
+            }
+
+    /**
+     * A series language row's heading: the owner's own names for the Korean and Chinese
+     * rows, and the language's name with Series after it for the rest, so the row is not
+     * mistaken for the mixed language shelf of the same name at the foot.
+     */
+    private fun seriesLanguageTitle(code: String): String = when (code) {
+        "ko" -> "K-Drama"
+        "zh" -> "C-Drama"
+        else -> LANGUAGE_NAMES[code]?.let { "$it Series" } ?: code
     }
 
     /**
