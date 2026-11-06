@@ -1940,8 +1940,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             if (resumeMs <= 0 && hasMessage()) {
                 val start = com.tmplayer.data.PostStart.startMs(linkSec = startLinkSec, savedMs = 0, postSec = postItem?.startSec ?: 0, durationSec = durationSec)
                 if (start > 0) {
-                    player?.seekTo(start)
                     resumeMs = start
+                    player?.seekTo(start)
                     return@launch
                 }
             }
@@ -1961,8 +1961,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             val synced = runCatching { settings.resumeStartFor(currentItem()) }.getOrDefault(0L)
             if (synced > 0 && kotlin.math.abs(synced - local) > RESUME_SYNC_SLACK_MS) {
                 if (!movedSinceResume(local)) {
-                    player?.seekTo(synced)
                     resumeMs = synced
+                    player?.seekTo(synced)
                     showResumeFrom(synced)
                 }
                 return@launch
@@ -1972,8 +1972,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 val post = postItem ?: kotlinx.coroutines.withTimeoutOrNull(POST_READ_MS) { readPost() }
                 val start = com.tmplayer.data.PostStart.startMs(linkSec = startLinkSec, savedMs = 0, postSec = post?.startSec ?: 0, durationSec = durationSec)
                 if (start > 0 && !movedSinceResume(0L)) {
-                    player?.seekTo(start)
                     resumeMs = start
+                    player?.seekTo(start)
                 }
             }
         }
@@ -7342,7 +7342,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * offer belongs to the place the video opened at, and seeking anywhere else ends that
      * moment. It does not come back for this playback, as [startOverOffered] already stands.
      * A seek landing on the resume place itself is the opening still settling, not the viewer
-     * leaving it, and the app's own seeks never reach here (see [noteSeek]).
+     * leaving it: every opening seek (the built player's, the saved place's, the synced
+     * place's, a post's start) sets [resumeMs] before it seeks, so its landing is the resume
+     * place by construction, and the app's other own seeks never reach here (see [noteSeek]).
      */
     private fun dismissStartOverOffer(toMs: Long) {
         if (!startOverOfferUp) return
