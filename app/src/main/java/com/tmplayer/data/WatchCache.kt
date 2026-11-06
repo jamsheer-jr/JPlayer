@@ -154,4 +154,19 @@ object WatchCache {
      * @return how many bytes went, which is worth logging and nothing else.
      */
     suspend fun sweep(context: Context): Long = rules(context).sweep()
+
+    /**
+     * When the device is nearly full (owner, 2026-11-06), the cache gives up everything it
+     * can, without being asked: every cached video that is not playing, being fetched or
+     * claimed. Downloads are never the cache's to take, and the rule skips any copy a
+     * download owns, so a kept video cannot be lost to this.
+     */
+    suspend fun criticalSweep(context: Context) {
+        val free = runCatching { DiskSpace.read(context).freeBytes }.getOrDefault(Long.MAX_VALUE)
+        if (free >= CRITICAL_FREE_BYTES) return
+        runCatching { rules(context).evictAllBut(playingNow()) }
+    }
+
+    /** Under this much free space the device is critical, and the cache empties itself. */
+    private const val CRITICAL_FREE_BYTES = 500L * 1024 * 1024
 }

@@ -224,6 +224,7 @@
     "sort_name": "A to Z",
     "sort_recent": "Recent",
     "stats_chats": "Most watched chats: {chats}",
+    "stats_downloaded": "Downloaded to this device: {size}",
     "stats_genres": "Most watched genres: {genres}",
     "stats_summary": "{hours} hours watched · {watched} finished · {going} on the go",
     "stats_title": "My stats",

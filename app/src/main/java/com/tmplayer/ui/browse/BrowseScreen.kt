@@ -108,6 +108,7 @@ import com.tmplayer.data.ChatSummary
 import com.tmplayer.data.FormFactor
 import com.tmplayer.data.Updates
 import com.tmplayer.i18n.L
+import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.components.BigEmpty
 import com.tmplayer.ui.components.MediaPreview
 import com.tmplayer.ui.components.ChatListSkeleton
@@ -1563,6 +1564,16 @@ private fun WatchLaterRecord.cardText() = VideoCardText(
 @Composable
 private fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRecord>, insets: BrowseInsets) {
     val s = LocalStrings.current
+    // Data usage (owner, 2026-11-06): the bytes the viewer chose to keep on this device,
+    // counted from the download index itself, never estimated.
+    val statsContext = LocalContext.current
+    val statsSettings = remember(statsContext) { SettingsStore(statsContext) }
+    var downloadedBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(statsSettings) {
+        downloadedBytes = withContext(Dispatchers.Default) {
+            runCatching { com.tmplayer.data.LocalDownloads.indexedBytes(statsSettings) }.getOrDefault(0L)
+        }
+    }
     var stats by remember { mutableStateOf<com.tmplayer.data.WatchStats?>(null) }
     LaunchedEffect(watched, continuing) {
         stats = withContext(Dispatchers.Default) {
@@ -1611,6 +1622,13 @@ private fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRe
         if (shown.topChats.isNotEmpty()) {
             M3Text(
                 s.browseStatsChats(shown.topChats.joinToString(", ") { it.first }),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+            )
+        }
+        if (downloadedBytes > 0) {
+            M3Text(
+                s.browseStatsDownloaded(Translator.messages.formatter.bytes(downloadedBytes)),
                 style = MaterialTheme.typography.bodySmall,
                 color = Tone.muted,
             )

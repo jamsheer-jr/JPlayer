@@ -259,6 +259,9 @@ class App : Application() {
             // The videos, which the trim above cannot touch because it cannot tell a download
             // from a cache. This can. See [WatchCache.sweep].
             runCatching { WatchCache.sweep(this@App) }
+            // A nearly full device gets the stronger care: the whole cache goes, downloads
+            // never do (owner, 2026-11-06).
+            runCatching { WatchCache.criticalSweep(this@App) }
         }
     }
 

@@ -224,6 +224,7 @@
     "sort_name": "പേരനുസരിച്ച്",
     "sort_recent": "സമീപകാലം",
     "stats_chats": "ഏറ്റവും കൂടുതൽ കണ്ട ചാറ്റുകൾ: {chats}",
+    "stats_downloaded": "ഈ ഉപകരണത്തിലേക്ക് ഡൗൺലോഡ് ചെയ്തത്: {size}",
     "stats_genres": "ഏറ്റവും കൂടുതൽ കണ്ട വിഭാഗങ്ങൾ: {genres}",
     "stats_summary": "{hours} മണിക്കൂർ കണ്ടു · {watched} തീർത്തു · {going} പാതിവഴിയിൽ",
     "stats_title": "എന്റെ സ്റ്റാറ്റ്സ്",

@@ -12,7 +12,11 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.isImeVisible
@@ -2292,6 +2296,20 @@ private fun Root() {
             }
         }
 
+        // While a download runs, a round progress marker floats at the top of the phone
+        // (owner, 2026-11-06): circle, download icon and the percent done, gone the moment
+        // nothing is running. A tap opens Downloads. The television keeps its own screens.
+        if (!FormFactor.isTv(context)) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                DownloadOrb(
+                    onOpen = { screen = Screen.Downloads },
+                    modifier = androidx.compose.ui.Modifier
+                        .align(androidx.compose.ui.Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 12.dp),
+                )
+            }
+        }
+
         // Telegram links (CP79): a post, an invite or a public chat, from Search, a pinned post or
         // another app; and videos found off a chat's grid (comments, round videos, CP81).
         com.tmplayer.ui.browse.TelegramLinkHost(
@@ -2560,6 +2578,63 @@ private fun CrashQuestion(question: CrashReports.Question, settings: SettingsSto
  * shell is built as on any other start.
  */
 @Composable
+/**
+ * The running download marker (owner, 2026-11-06): one circle for the whole queue, its
+ * ring filled by the bytes landed of the bytes asked for, the download icon and the
+ * percent inside. Drawn only while something is fetching or being moved into Downloads.
+ */
+@Composable
+private fun DownloadOrb(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val active by OfflineDownloads.active.collectAsStateWithLifecycle()
+    val running = active.values.filter {
+        it.stage == OfflineDownloads.Stage.Running || it.stage == OfflineDownloads.Stage.Moving
+    }
+    if (running.isEmpty()) return
+    val total = running.sumOf { it.totalBytes }
+    val landed = running.sumOf { if (it.stage == OfflineDownloads.Stage.Moving) it.movedBytes else it.downloadedBytes }
+    val fraction = if (total > 0) (landed.toFloat() / total).coerceIn(0f, 1f) else null
+    Box(
+        modifier
+            .size(52.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(com.tmplayer.ui.theme.Tone.surfaceHigh)
+            .clickable(onClick = onOpen),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        if (fraction != null) {
+            androidx.compose.material3.CircularProgressIndicator(
+                progress = { fraction },
+                modifier = androidx.compose.ui.Modifier.size(52.dp),
+                color = com.tmplayer.ui.theme.Tone.accent,
+                trackColor = com.tmplayer.ui.theme.Tone.outline.copy(alpha = 0.4f),
+                strokeWidth = 3.dp,
+            )
+        } else {
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = androidx.compose.ui.Modifier.size(52.dp),
+                color = com.tmplayer.ui.theme.Tone.accent,
+                trackColor = com.tmplayer.ui.theme.Tone.outline.copy(alpha = 0.4f),
+                strokeWidth = 3.dp,
+            )
+        }
+        Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+            androidx.compose.material3.Icon(
+                com.tmplayer.ui.icons.TmIcons.Download,
+                contentDescription = L.navDownloads,
+                tint = com.tmplayer.ui.theme.Tone.accent,
+                modifier = androidx.compose.ui.Modifier.size(16.dp),
+            )
+            if (fraction != null) {
+                androidx.compose.material3.Text(
+                    Translator.messages.formatter.percent(fraction.toDouble()),
+                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                    color = com.tmplayer.ui.theme.Tone.text,
+                )
+            }
+        }
+    }
+}
+
 private fun StartupCrashQuestion() {
     val context = LocalContext.current
     val settings = remember { SettingsStore(context) }
