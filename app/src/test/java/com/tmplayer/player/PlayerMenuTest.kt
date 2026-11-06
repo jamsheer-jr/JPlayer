@@ -186,6 +186,7 @@ class PlayerMenuTest {
                 PhoneMenuEntry.SaveFrame,
                 PhoneMenuEntry.AddBookmark,
                 PhoneMenuEntry.Bookmarks,
+                PhoneMenuEntry.WatchParty,
                 PhoneMenuEntry.OpenInAnotherApp,
                 PhoneMenuEntry.SaveToDownloads,
                 PhoneMenuEntry.MarkWatched,
@@ -200,9 +201,10 @@ class PlayerMenuTest {
                 bookmarks = true,
                 chapters = true,
                 saveFrame = true,
+                watchParty = true,
             ),
         )
-        assertEquals(PhoneMenuEntry.entries.toSet(), PlayerMenu.phoneEntries(true, true, true, true, paused = true, bookmarks = true, chapters = true, saveFrame = true, pictureShape = true, stereo = true, zoomed = true).toSet())
+        assertEquals(PhoneMenuEntry.entries.toSet(), PlayerMenu.phoneEntries(true, true, true, true, paused = true, bookmarks = true, chapters = true, saveFrame = true, pictureShape = true, stereo = true, zoomed = true, watchParty = true).toSet())
     }
 
     @Test
