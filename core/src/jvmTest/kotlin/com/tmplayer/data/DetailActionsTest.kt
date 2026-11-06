@@ -15,6 +15,7 @@ import com.tmplayer.data.DetailAction.RemoveWatchLater
 import com.tmplayer.data.DetailAction.Resume
 import com.tmplayer.data.DetailAction.SaveToDownloads
 import com.tmplayer.data.DetailAction.Share
+import com.tmplayer.data.DetailAction.SharePoster
 import com.tmplayer.data.DetailAction.StartOver
 import com.tmplayer.data.DetailAction.JoinCopies
 import com.tmplayer.data.DetailAction.Rename
@@ -47,6 +48,20 @@ class DetailActionsTest {
         // Nothing is copied by it, so a protected chat keeps the offer.
         assertTrue(AddToCollection in DetailActions.of(phoneGrid.copy(canBeSaved = false, canCollect = true)))
         assertFalse(DetailActions.keepsACopy(AddToCollection))
+    }
+
+    @Test
+    fun `a poster card is offered only where the panel can share one`() {
+        assertFalse(SharePoster in DetailActions.of(phoneGrid))
+        // No whole file is needed: a fresh video with a poster offers it, after the download line.
+        assertEquals(
+            listOf(Play, MarkWatched, Download, SharePoster),
+            DetailActions.of(phoneGrid.copy(canSharePoster = true)),
+        )
+        // Beside Share when the file is whole, and a protected chat keeps it: the card is the
+        // provider's picture and the title's name, not the chat's file.
+        assertTrue(SharePoster in DetailActions.of(phoneGrid.copy(canBeSaved = false, canSharePoster = true)))
+        assertFalse(DetailActions.keepsACopy(SharePoster))
     }
 
     @Test

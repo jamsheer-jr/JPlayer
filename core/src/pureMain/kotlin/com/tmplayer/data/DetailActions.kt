@@ -46,6 +46,13 @@ enum class DetailAction {
     /** Starts picking several videos at once, which is for downloading them. */
     SelectVideos,
     Share,
+
+    /**
+     * Shares a card drawn from the title's poster and its name (v1.0.10): the provider's
+     * picture and the words the panel already shows, as one image. Nothing of the chat's
+     * file is in it, so it is not a copy the way [Share] is.
+     */
+    SharePoster,
     OpenElsewhere,
     CopyLink,
 
@@ -86,6 +93,11 @@ data class DetailContext(
     val watchLater: Boolean? = null,
     /** The panel can offer the viewer's own collections ([DetailAction.AddToCollection]). */
     val canCollect: Boolean = false,
+    /**
+     * The panel can share a poster card ([DetailAction.SharePoster]): the platform can draw
+     * and hand over an image, and a matched poster is there to draw. Set only then.
+     */
+    val canSharePoster: Boolean = false,
     /** In the Downloads folder. */
     val inDownloads: Boolean = false,
     /**
@@ -162,6 +174,10 @@ object DetailActions {
             add(DetailAction.Share)
             add(DetailAction.OpenElsewhere)
         }
+        // The poster card is the provider's picture and the title's name, both already on
+        // this panel: nothing of the chat's file is copied, so a restricted chat keeps the
+        // offer, and no whole file is needed the way Share needs one.
+        if (context.canSharePoster) add(DetailAction.SharePoster)
         if (context.canExport && KeepRules.mayExport(context.canBeSaved, context.inDownloads)) add(DetailAction.ExportCopy)
         if (context.comments > 0) add(DetailAction.CommentVideos)
         if (context.outsideChat) add(DetailAction.OpenChat)
