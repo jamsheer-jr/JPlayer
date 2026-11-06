@@ -160,6 +160,8 @@ import com.tmplayer.ui.components.AppMark
 import com.tmplayer.ui.i18n.LocalStrings
 import com.tmplayer.ui.components.pressScale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.tmplayer.ui.components.isTouch
 import com.tmplayer.ui.components.TvConfirm
 import com.tmplayer.ui.components.TvMenu
@@ -782,6 +784,9 @@ internal fun BrowseScreen(
                             if (watchedHistory.isEmpty()) {
                                 EmptyTab(tab, query = "", history = HistoryTab.Watched, onGoToChats = goToChats)
                             } else {
+                                Column(Modifier.fillMaxSize()) {
+                                    StatsSummary(watchedHistory, continueWatching, insets)
+                                    Box(Modifier.weight(1f)) {
                                 // Read once per visit rather than ticking: "5 minutes ago" going
                                 // stale while the tab is open is harmless, and a clock here would
                                 // recompose every card each minute for it.
@@ -802,6 +807,8 @@ internal fun BrowseScreen(
                                     onTick = { tick(it.key) },
                                     refocusSignal = listRefocus,
                                 )
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -1522,6 +1529,72 @@ private fun WatchLaterRecord.cardText() = VideoCardText(
 )
 
 @Composable
+/**
+ * "My stats" over the Watched list (J Player, 2026-11-06): the hours watched, the finished and
+ * on the go counts, and the fullest genres and chats, added up from the same records the tab
+ * lists by [com.tmplayer.data.WatchStats]. Genres are read from the metadata the app already
+ * holds, the way Home's genre shelves read it: the cache is asked, never the network, and the
+ * sums are worked out off the main thread. Nothing here can take focus, so the remote still
+ * lands on the first card below, as it always has.
+ */
+@Composable
+private fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRecord>, insets: BrowseInsets) {
+    val s = LocalStrings.current
+    var stats by remember { mutableStateOf<com.tmplayer.data.WatchStats?>(null) }
+    LaunchedEffect(watched, continuing) {
+        stats = withContext(Dispatchers.Default) {
+            val online = com.tmplayer.online.OnlineMetadata.current
+            val genresByKey = HashMap<String, List<String>>()
+            com.tmplayer.data.WatchStats.of(watched, continuing) { item ->
+                if (online == null || !online.settings.value.enabled) {
+                    emptyList()
+                } else {
+                    val query = item.metaQuery?.showOnly()
+                    if (query == null) {
+                        emptyList()
+                    } else {
+                        genresByKey.getOrPut(query.cacheKey(online.tmdbLanguage())) {
+                            val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info
+                            info?.let { online.storedExtras(it) }?.genres.orEmpty()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    val shown = stats ?: return
+    if (shown.isEmpty) return
+    Column(
+        Modifier
+            .padding(start = insets.start, end = insets.end, top = 8.dp, bottom = 4.dp)
+            .clip(RoundedCornerShape(Corner.Medium))
+            .background(Tone.surfaceHigh)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        M3Text(s.browseStatsTitle, style = MaterialTheme.typography.titleMedium, color = Tone.text)
+        Spacer(Modifier.height(4.dp))
+        M3Text(
+            s.browseStatsSummary(shown.watchedMs / 3_600_000L, shown.finishedCount, shown.goingCount),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Tone.text,
+        )
+        if (shown.topGenres.isNotEmpty()) {
+            M3Text(
+                s.browseStatsGenres(shown.topGenres.joinToString(", ") { it.first }),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+            )
+        }
+        if (shown.topChats.isNotEmpty()) {
+            M3Text(
+                s.browseStatsChats(shown.topChats.joinToString(", ") { it.first }),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+            )
+        }
+    }
+}
+
 private fun <T : Any> ContinueSection(
     records: List<T>,
     text: (T) -> VideoCardText,
