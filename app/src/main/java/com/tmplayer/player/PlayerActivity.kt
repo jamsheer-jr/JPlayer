@@ -2301,6 +2301,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 durationMs = { player?.duration?.takeIf { it > 0 } ?: 0L },
                 onSeekTo = { at -> if (!refuseSeek()) player?.seekTo(at) },
                 onHold = ::holdFastForward,
+                // v1.0.13 hold gate: a hold on a paused picture does nothing (see PlayerGestures).
+                isPlaying = { player?.playWhenReady == true },
                 onTapControls = ::toggleControls,
                 onTogglePlay = ::togglePlaybackFromPicture,
                 isOnChrome = { x, y ->
@@ -3051,7 +3053,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val frame = zoomFrame() ?: return
         zoom = zoom.panBy(dx, dy, frame)
         renderZoom()
-        showZoom(live = false)
+        // v1.0.13: no showZoom here. The figure is for the pinch itself (live, then once as it
+        // ends) and for a reset; a pan moves the picture at a level the viewer already chose,
+        // and raising the chip on every pan move is the bug the owner reported on v1.0.12.
     }
 
     private fun showZoom(live: Boolean) {

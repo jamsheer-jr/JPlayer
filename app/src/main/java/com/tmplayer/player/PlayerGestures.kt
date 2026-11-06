@@ -20,11 +20,13 @@ import kotlin.math.roundToInt
  * the controls (or plays and pauses, if the viewer chose that); a double tap plays or pauses, or,
  * where the viewer has put it back to jumping in Settings, a double tap on a side jumps and every
  * further tap on the same side adds another jump with a running total, while one in the middle
- * plays and pauses; a held finger plays fast until it lifts; a sideways drag scrubs; a
- * vertical drag on the left is brightness and on the right volume; a pinch zooms the picture
- * freely around the fingers' centre, without the fingers' travel dragging the picture sideways
- * with it; enlarged, a mostly vertical drag moves the picture about, while a mostly sideways
- * drag still scrubs, as in MX Player, so zooming never takes seeking away (on Android 6, where
+ * plays and pauses; a held finger on a playing video plays fast until it lifts; a sideways
+ * drag scrubs; a vertical drag on the left is brightness and on the right volume; a pinch
+ * zooms the picture freely around the fingers' centre, without the fingers' travel dragging
+ * the picture sideways with it; enlarged, a mostly vertical drag in the middle moves it about, while
+ * one starting in the left or right edge strip is brightness or volume just as unzoomed, and a
+ * mostly sideways drag still scrubs, as in MX Player, so zooming never takes seeking or the
+ * level drags away (on Android 6, where
  * the video surface cannot follow a zoom, a pinch steps the fitting instead). A drag that starts
  * on the subtitle lines and reads mostly up or down moves the lines instead, and a pinch centred
  * on them sizes their text: both write the subtitle style the panel's own controls write.
@@ -68,7 +70,7 @@ class PlayerGestures(
     private val onZoom: (factor: Float, focusX: Float, focusY: Float) -> Unit = { _, _, _ -> },
     /** The fingers of a free pinch lifted, or the pinch was cut short. */
     private val onZoomEnd: () -> Unit = {},
-    /** A one finger drag on the enlarged picture, in pixels. */
+    /** A one finger drag in the enlarged picture's middle region, in pixels. */
     private val onPan: (dx: Float, dy: Float) -> Unit = { _, _ -> },
     /**
      * Whether a point, in the frame the events arrive in, lands on the subtitle lines as they
@@ -87,6 +89,12 @@ class PlayerGestures(
     private val onSeekTo: (Long) -> Unit = {},
     /** Held down for a fast-forward that lasts as long as the finger does. */
     private val onHold: (holding: Boolean) -> Unit = {},
+    /**
+     * True while the viewer means the video to be playing (v1.0.13): a hold on a paused picture
+     * does nothing at all, so the hold is only filed while this reads true. Buffering with the
+     * intent to play still counts, so a hold filed in a stall applies as the picture returns.
+     */
+    private val isPlaying: () -> Boolean = { true },
     /** A single tap on the picture, which raises or drops the controls. */
     private val onTapControls: () -> Unit = {},
     /** Play or pause from the picture: a double tap in the middle, or a tap under that setting. */
@@ -153,10 +161,16 @@ class PlayerGestures(
              * Hold anywhere on the picture to run it fast, let go to drop back.
              *
              * A hold rather than a toggle on purpose: there is no state left behind to notice
-             * later and wonder about.
+             * later and wonder about. The detector only reports this for a press that stayed
+             * put: a drag that starts moving files its own gesture first (its scroll sets
+             * [dragKind], or the movement cancels the long press), so a hold never steals a
+             * seek, a level drag, a pan or a subtitle drag. On a paused picture it does
+             * nothing (v1.0.13): no speed is applied, no pill is shown, and [holding] stays
+             * false, so a drag that follows the press can still file as usual.
              */
             override fun onLongPress(event: MotionEvent) {
                 if (prefs.holdSpeed <= 0f || scaling || dragKind != DRAG_NONE) return
+                if (!isPlaying()) return
                 holding = true
                 onHold(true)
             }
@@ -247,19 +261,46 @@ class PlayerGestures(
                         return true
                     }
                 }
-                // Enlarged, a mostly vertical drag moves the picture, but a mostly sideways
-                // one still scrubs (MX Player's way): zooming must not take seeking away.
-                // Until the travel is long enough to read, nothing is decided; once it reads
-                // sideways the drag falls through and begin() files it as a scrub.
+                // Enlarged, a mostly vertical drag in the middle of the picture moves it,
+                // but a mostly sideways one still scrubs (MX Player's way): zooming must not
+                // take seeking away. Until the travel is long enough to read, nothing is
+                // decided; once it reads sideways the drag falls through and begin() files
+                // it as a scrub.
+                //
+                // A vertical drag that starts in an edge strip is not a pan (v1.0.13, the
+                // owner's zoom pill bug): the left strip files brightness and the right
+                // strip files volume, exactly as unzoomed, so a volume attempt on a zoomed
+                // picture changes the volume instead of dragging the picture about. An edge
+                // drag only files its level once it is as steep as begin() asks of an
+                // unzoomed level drag; shallower than that it falls through and begin()
+                // reads it as a scrub, so the sideways seek escape works from the edges too.
                 if (dragKind == DRAG_NONE && zoomed()) {
                     val travelX = event.x - from.x
                     val travelY = event.y - from.y
                     val arm = viewHeight * ARM_FRACTION
                     if (abs(travelX) < arm && abs(travelY) < arm) return false
                     if (abs(travelY) > abs(travelX)) {
-                        dragKind = DRAG_PAN
-                        onPan(-distanceX, -distanceY)
-                        return true
+                        when (zoomedVerticalDrag(from.x, viewWidth)) {
+                            ZoomedVerticalDrag.Pan -> {
+                                dragKind = DRAG_PAN
+                                onPan(-distanceX, -distanceY)
+                                return true
+                            }
+                            ZoomedVerticalDrag.Brightness -> {
+                                if (abs(travelY) > abs(travelX) * VERTICAL_RATIO) {
+                                    if (!prefs.brightnessGesture) return false
+                                    dragKind = DRAG_BRIGHTNESS
+                                    dragFrom = currentBrightness()
+                                }
+                            }
+                            ZoomedVerticalDrag.Volume -> {
+                                if (abs(travelY) > abs(travelX) * VERTICAL_RATIO) {
+                                    if (!prefs.volumeGesture) return false
+                                    dragKind = DRAG_VOLUME
+                                    dragFrom = currentVolume()
+                                }
+                            }
+                        }
                     }
                 }
                 // The finger left down after a pinch is still the pinch's, never a volume drag.
@@ -576,5 +617,28 @@ class PlayerGestures(
         /** How far apart the fingers have to travel before it counts as a deliberate pinch. */
         private const val PINCH_THRESHOLD = 0.15f
 
+        /**
+         * The share of the picture's width at each side that stays a level strip while the
+         * picture is enlarged (v1.0.13): the outer quarter on the left files brightness, the
+         * outer quarter on the right files volume, and only the middle half files a pan.
+         */
+        private const val ZOOM_EDGE_FRACTION = 0.25f
+
+        /**
+         * What a mostly vertical drag on the enlarged picture is for, by where the finger went
+         * down ([startX] in the picture's own frame, [width] its width): pure, so the filing
+         * can be tested without a touchscreen. A width that reads nothing files a pan, which
+         * the caller never reaches: it has already returned on an unreadable size.
+         */
+        internal fun zoomedVerticalDrag(startX: Float, width: Int): ZoomedVerticalDrag = when {
+            width <= 0 -> ZoomedVerticalDrag.Pan
+            startX < width * ZOOM_EDGE_FRACTION -> ZoomedVerticalDrag.Brightness
+            startX > width * (1f - ZOOM_EDGE_FRACTION) -> ZoomedVerticalDrag.Volume
+            else -> ZoomedVerticalDrag.Pan
+        }
+
     }
 }
+
+/** What a mostly vertical one finger drag on the enlarged picture is for, by where it started. */
+internal enum class ZoomedVerticalDrag { Brightness, Volume, Pan }

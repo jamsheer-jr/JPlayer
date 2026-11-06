@@ -67,9 +67,10 @@ class PlayerFeedback(private val root: FrameLayout, insertBelow: View?) {
     private var onZoomReset: (() -> Unit)? = null
 
     /**
-     * The free zoom's figure ("Zoom 135%"), up while a pinch or a drag moves the picture and a
-     * moment after. A tap on it puts the picture back at 100 per cent; TalkBack reads the figure
-     * as it settles and offers the same reset as the chip's action.
+     * The free zoom's figure ("Zoom 135%"), up while a pinch itself is live and a moment after
+     * it ends (and once for a reset, which is a level change too). No drag raises it: a pan at a
+     * chosen level is not news (v1.0.13). A tap on it puts the picture back at 100 per cent;
+     * TalkBack reads the figure as it settles and offers the same reset as the chip's action.
      */
     private val zoomChip = pill().apply {
         layoutParams = FrameLayout.LayoutParams(wrap, wrap, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
@@ -250,8 +251,9 @@ class PlayerFeedback(private val root: FrameLayout, insertBelow: View?) {
     }
 
     /**
-     * The zoom's figure, [text]. Held up while [live] (fingers still on the picture), then gone a
-     * moment after; [onReset] is what a tap on it does.
+     * The zoom's figure, [text]. Held up while [live] (the pinch's fingers still on the
+     * picture), then gone a moment after; [onReset] is what a tap on it does. Callers are the
+     * pinch and the reset only: no drag path calls this (v1.0.13).
      */
     fun zoom(text: String, live: Boolean, onReset: () -> Unit) {
         onZoomReset = onReset
