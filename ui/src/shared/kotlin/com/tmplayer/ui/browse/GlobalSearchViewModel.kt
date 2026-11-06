@@ -228,7 +228,7 @@ class GlobalSearchViewModel(
         val now = _state.value
         val answering = query == now.query && !query.isEmpty && asked == query.server && !now.settling &&
             now.error == null && !now.offline && now.floodWait == 0
-        if (!answering) start(text, settle = 0, force = true)
+        if (!answering) start(text, settle = 0, force = true, preserve = true)
         remember(text)
     }
 
@@ -279,7 +279,7 @@ class GlobalSearchViewModel(
     /** After a failure: the same query again, without the wait. */
     fun retry() {
         val text = _state.value.query.text
-        if (text.isNotBlank()) start(text, settle = 0, force = true)
+        if (text.isNotBlank()) start(text, settle = 0, force = true, preserve = true)
     }
 
     /** The connection came back: a search that could only list this device's videos asks Telegram. */
@@ -304,10 +304,17 @@ class GlobalSearchViewModel(
         return there != false
     }
 
-    private fun start(text: String, settle: Long, force: Boolean = false) {
+    private fun start(text: String, settle: Long, force: Boolean = false, preserve: Boolean = false) {
         val query = GlobalSearch.parse(text)
         val now = _state.value
         if (!force && query == now.query) return
+        // A re-run of the very words already on screen (the search key while the typing was
+        // still settling, Retry, the connection coming back): what is listed for those words
+        // stays listed until the re-run's own answer lands, and an empty first page of the
+        // re-run never takes its place, the way a chat's own search keeps its listing up
+        // (BrowseViewModel.search). A new query, and a filter that changes the question put
+        // to Telegram, start clean as they always have.
+        val keepShown = preserve && query == now.query
         // The kids lock and the added chats (HX27): search lists videos from the added chats alone.
         val allowed = ChatGate.browsing.value
         // Only the words around Telegram's part changed (a quality marker, a space): the answer
@@ -361,8 +368,12 @@ class GlobalSearchViewModel(
             val local = withContext(work) { GlobalSearch.localVideos(known() + alsoKnown, query, allowed, ::onlineNames) }
             localNow = local
             regroup { s ->
+                // On a re-run of the words on screen, the whole of what is shown is carried,
+                // not only the cards the local half can match again: a card Telegram found
+                // and this device has not listed since is still an answer to these words.
+                val shown = if (keepShown) s.groups else s.groups.filter { g -> g.copies.any { GlobalSearch.matchesLocally(it, query, onlineNames(it)) } }
                 val carried = GlobalSearch.order(
-                    s.groups.filter { g -> g.copies.any { GlobalSearch.matchesLocally(it, query, onlineNames(it)) } },
+                    shown,
                     query,
                     s.sort,
                 )
@@ -372,7 +383,7 @@ class GlobalSearchViewModel(
             // the kids lock and the added chats as they are now, and asked again only once stale.
             if (kept != null) {
                 kept.data.pages.forEachIndexed { index, page ->
-                    absorb(page.copy(items = page.items.filter { KidsLock.allows(allowed, it.chatId) }), keepTo = query, fresh = index == 0)
+                    absorb(page.copy(items = page.items.filter { KidsLock.allows(allowed, it.chatId) }), keepTo = query, fresh = index == 0, keepShownIfEmpty = keepShown && index == 0)
                 }
                 _state.update { it.copy(searching = false, settling = false, endReached = kept.data.cursor.done) }
                 if (!kept.stale) return@launch
@@ -382,15 +393,17 @@ class GlobalSearchViewModel(
                 // Asked only now, so only now does the screen say it is searching.
                 _state.update { it.copy(settling = false, searching = kept == null) }
             }
-            firstAnswer(query, fresh = kept == null)
+            firstAnswer(query, fresh = kept == null, keepShown = keepShown)
         }
     }
 
     /**
      * Telegram's first answer for [query]. A [fresh] one takes the place of whatever was carried
-     * over from the words before ([start]); a revalidation of kept pages merges into them.
+     * over from the words before ([start]); a revalidation of kept pages merges into them. On a
+     * re-run of the words already on screen ([keepShown], see [start]) a fresh answer that comes
+     * back empty leaves what is shown alone instead of replacing it with nothing.
      */
-    private suspend fun firstAnswer(query: SearchQuery, fresh: Boolean = true, floodRetries: Int = 0) {
+    private suspend fun firstAnswer(query: SearchQuery, fresh: Boolean = true, floodRetries: Int = 0, keepShown: Boolean = false) {
         val filters = _state.value.filters
         asked = query.server
         try {
@@ -414,7 +427,7 @@ class GlobalSearchViewModel(
             }
             cursor = page.cursor
             keepFirst(query, filters, page)
-            absorb(page, keepTo = query, fresh = fresh)
+            absorb(page, keepTo = query, fresh = fresh, keepShownIfEmpty = keepShown)
             _state.update { it.copy(searching = false, endReached = page.cursor.done) }
             while (GlobalSearch.wantsMore(_state.value.shown.size, pages, cursor.done)) {
                 _state.update { it.copy(stillSearching = true) }
@@ -447,7 +460,7 @@ class GlobalSearchViewModel(
                     delay(1_000)
                 }
                 _state.update { it.copy(floodWait = 0, searching = true) }
-                firstAnswer(query, fresh, floodRetries + 1)
+                firstAnswer(query, fresh, floodRetries + 1, keepShown)
                 return
             }
             asked = ""
@@ -460,15 +473,18 @@ class GlobalSearchViewModel(
     /**
      * A page into the cards, screened against the whole query when it was asked by a shorter
      * spelling. A [fresh] page is the first of a new answer: it starts again from the local half,
-     * dropping the cards carried over from the words typed before.
+     * dropping the cards carried over from the words typed before. With [keepShownIfEmpty] (a
+     * re-run of the words already on screen) a fresh page that would leave the list empty keeps
+     * what is shown instead: the re-run has not answered yet in any way that earns the list.
      */
-    private suspend fun absorb(page: AllChatsPage, keepTo: SearchQuery = _state.value.query, fresh: Boolean = false) {
+    private suspend fun absorb(page: AllChatsPage, keepTo: SearchQuery = _state.value.query, fresh: Boolean = false, keepShownIfEmpty: Boolean = false) {
         val fallback = serverQuery != keepTo.server
         val kept = if (!fallback) page.items else withContext(work) { page.items.filter { GlobalSearch.matchesLocally(it, keepTo, onlineNames(it)) } }
         val local = localNow
         regroup(chats = page.chats.associateBy { it.id }) { s ->
             val base = if (fresh) GlobalSearch.merge(emptyList(), local, s.query, s.sort, identity) else s.groups
-            GlobalSearch.merge(base, kept, s.query, s.sort, identity)
+            val merged = GlobalSearch.merge(base, kept, s.query, s.sort, identity)
+            if (keepShownIfEmpty && fresh && merged.isEmpty()) s.groups else merged
         }
     }
 

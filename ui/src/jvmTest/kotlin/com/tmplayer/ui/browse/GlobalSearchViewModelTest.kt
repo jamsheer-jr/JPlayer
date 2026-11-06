@@ -10,6 +10,8 @@ import com.tmplayer.data.SearchQuality
 import com.tmplayer.data.SearchSort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -218,6 +220,59 @@ class GlobalSearchViewModelTest {
         advanceUntilIdle()
         assertEquals(0, model.state.value.floodWait)
         assertTrue(model.state.value.groups.isNotEmpty())
+    }
+
+    @Test
+    fun `a re-run for the same words never takes the results away`() = runTest(dispatcher) {
+        var answerEmpty = false
+        val flaky = VideoSearchSource { query, cursor, filters ->
+            if (answerEmpty) AllChatsPage(emptyList(), done) else source.page(query, cursor, filters)
+        }
+        val model = GlobalSearchViewModel(flaky, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        val emissions = mutableListOf<GlobalSearchState>()
+        backgroundScope.launch { model.state.toList(emissions) }
+        model.type("harbour")
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.groups.map { it.lead.messageId })
+        emissions.clear()
+        // The settled search runs again for the same words (Retry, a reconnect, the search
+        // key while settling) and this time Telegram's first page comes back empty, as it
+        // does when its whole word matching or a spellings try finds nothing on a re-ask.
+        answerEmpty = true
+        model.retry()
+        advanceUntilIdle()
+        // Nothing for these words was ever replaced by an empty list in between, and what
+        // was shown is still shown once the re-run has landed.
+        assertTrue(emissions.isNotEmpty())
+        assertTrue(emissions.none { it.query.text == "harbour" && it.groups.isEmpty() })
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.groups.map { it.lead.messageId })
+        assertFalse(model.state.value.busy)
+    }
+
+    @Test
+    fun `a new query still starts clean and an empty answer empties the list`() = runTest(dispatcher) {
+        val model = GlobalSearchViewModel(source, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        model.type("harbour")
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.groups.map { it.lead.messageId })
+        model.type("nothing here")
+        advanceUntilIdle()
+        assertEquals("nothing here", model.state.value.query.text)
+        assertTrue(model.state.value.groups.isEmpty())
+        assertTrue(model.state.value.shown.isEmpty())
+        assertFalse(model.state.value.busy)
+    }
+
+    @Test
+    fun `clearing the words still clears the results`() = runTest(dispatcher) {
+        val model = GlobalSearchViewModel(source, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        model.type("harbour")
+        advanceUntilIdle()
+        assertTrue(model.state.value.groups.isNotEmpty())
+        model.type("")
+        advanceUntilIdle()
+        assertTrue(model.state.value.groups.isEmpty())
+        assertFalse(model.state.value.busy)
     }
 
     @Test

@@ -55,6 +55,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -178,6 +179,12 @@ internal fun PhoneSearchScreen(
     }
 
     val query = text.text
+    // A popup left over from the empty page (the cleared recents, with their Undo) does not
+    // follow the viewer into the results: once words are typed, it goes. While the words stay
+    // blank it stays up, and Undo works there as it always has.
+    LaunchedEffect(query) {
+        if (query.isNotBlank()) snackbar.currentSnackbarData?.dismiss()
+    }
     val byUsername = rememberUsernameChat(query)
     // Every chat's name matched off the main thread, the last answer kept up meanwhile, so the
     // field never waits for it between letters.
@@ -217,7 +224,7 @@ internal fun PhoneSearchScreen(
                         onClearAll = {
                             val before = onClearRecent()
                             scope.launch {
-                                val answer = snackbar.showSnackbar(s.searchRecentCleared, actionLabel = s.searchUndo)
+                                val answer = snackbar.showSnackbar(s.searchRecentCleared, actionLabel = s.searchUndo, duration = SnackbarDuration.Long)
                                 if (answer == SnackbarResult.ActionPerformed) onRestoreRecent(before)
                             }
                         },
