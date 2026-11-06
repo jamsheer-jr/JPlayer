@@ -20,7 +20,7 @@ object SurprisePick {
         val seen = HashSet<String>()
         val out = ArrayList<MediaItem>()
         fun offer(item: MediaItem) {
-            if (seen.add(SettingsStore.progressKey(item.chatId, item.messageId))) out += item
+            if (seen.add(ProgressKeys.of(item.chatId, item.messageId))) out += item
         }
         for (entry in entries) {
             when (entry) {

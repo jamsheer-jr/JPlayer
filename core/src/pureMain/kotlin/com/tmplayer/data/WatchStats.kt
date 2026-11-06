@@ -19,35 +19,35 @@ data class WatchStats(
     val topChats: List<Pair<String, Int>>,
 ) {
     val isEmpty: Boolean get() = finishedCount == 0 && goingCount == 0
-}
 
-object WatchStats {
+    companion object {
 
-    const val TOP = 3
+        const val TOP = 3
 
-    fun of(
-        watched: List<WatchedRecord>,
-        continuing: List<ResumeRecord>,
-        genresOf: (MediaItem) -> List<String>,
-    ): WatchStats {
-        val finished = HomeRows.foldWatched(watched)
-        val going = HomeRows.foldCopies(continuing)
-        val spent = finished.sumOf { it.durationSec.toLong().coerceAtLeast(0) * 1_000L } +
-            going.sumOf { it.positionMs.coerceAtLeast(0) }
-        val genres = HashMap<String, Int>()
-        finished.forEach { record ->
-            genresOf(record.toMediaItem()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-                .forEach { genre -> genres[genre] = (genres[genre] ?: 0) + 1 }
+        fun of(
+            watched: List<WatchedRecord>,
+            continuing: List<ResumeRecord>,
+            genresOf: (MediaItem) -> List<String>,
+        ): WatchStats {
+            val finished = HomeRows.foldWatched(watched)
+            val going = HomeRows.foldCopies(continuing)
+            val spent = finished.sumOf { it.durationSec.toLong().coerceAtLeast(0) * 1_000L } +
+                going.sumOf { it.positionMs.coerceAtLeast(0) }
+            val genres = HashMap<String, Int>()
+            finished.forEach { record ->
+                genresOf(record.toMediaItem()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                    .forEach { genre -> genres[genre] = (genres[genre] ?: 0) + 1 }
+            }
+            val chats = HashMap<String, Int>()
+            finished.forEach { record -> record.chatTitle.trim().takeIf { it.isNotEmpty() }?.let { chats[it] = (chats[it] ?: 0) + 1 } }
+            going.forEach { record -> record.chatTitle.trim().takeIf { it.isNotEmpty() }?.let { chats[it] = (chats[it] ?: 0) + 1 } }
+            return WatchStats(
+                watchedMs = spent,
+                finishedCount = finished.size,
+                goingCount = going.size,
+                topGenres = genres.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).take(TOP).map { it.key to it.value },
+                topChats = chats.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).take(TOP).map { it.key to it.value },
+            )
         }
-        val chats = HashMap<String, Int>()
-        finished.forEach { record -> record.chatTitle.trim().takeIf { it.isNotEmpty() }?.let { chats[it] = (chats[it] ?: 0) + 1 } }
-        going.forEach { record -> record.chatTitle.trim().takeIf { it.isNotEmpty() }?.let { chats[it] = (chats[it] ?: 0) + 1 } }
-        return WatchStats(
-            watchedMs = spent,
-            finishedCount = finished.size,
-            goingCount = going.size,
-            topGenres = genres.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).take(TOP).map { it.key to it.value },
-            topChats = chats.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).take(TOP).map { it.key to it.value },
-        )
     }
 }
