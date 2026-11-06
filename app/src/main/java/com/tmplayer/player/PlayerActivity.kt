@@ -470,6 +470,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** A stream address that is a DASH manifest (.mpd), so its reader is named up front too. */
     private var streamDash = false
 
+    /** Whether the viewer picked a stream quality by hand this playback: the metered default never overrides a pick. */
+    private var streamQualityTouched = false
+
+    /** Whether the metered network default has had its one chance at this stream's tracks. */
+    private var streamMeteredApplied = false
+
     /**
      * The video's file in the Downloads folder, when it is a download, and then the whole of
      * playback comes from it: no TDLib stream, no room check, no claim on the cache, no connection.
@@ -1873,6 +1879,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         itemScope.launch {
             val session = Td.awaitAuthorizedSession()
             if (!session.isCurrent()) return@launch
+            // A file link keeps its place by its address (owner, 2026-11-06), the way a
+            // Telegram video keeps its own: read before the player is built, so the build
+            // seeks there and the Start over offer belongs to that place. A live stream
+            // has no place to keep.
+            if (!streamLive) {
+                resumeMs = runCatching { settings.streamResumeNow(streamUrl.orEmpty()) }.getOrDefault(0L)
+            }
             markStart("session ready", STAGE_SESSION)
             startPlayback(session.client)
         }
@@ -2727,6 +2740,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         }
         showSheet {
             it.showStreamQuality(options) { picked ->
+                streamQualityTouched = true
                 val builder = exo.trackSelectionParameters.buildUpon()
                 if (picked <= 0) {
                     builder.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
@@ -2737,6 +2751,26 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 exo.trackSelectionParameters = builder.build()
             }
         }
+    }
+
+    /**
+     * On a metered network a stream starts at its lowest variant (owner, 2026-11-06):
+     * pinned once, when the tracks first arrive, and never over a choice the viewer made
+     * by hand. On Wi-Fi nothing is pinned and the player adapts as it always has.
+     */
+    private fun applyStreamMeteredDefault(tracks: Tracks) {
+        if (streamUrl == null || streamMeteredApplied || streamQualityTouched) return
+        streamMeteredApplied = true
+        val exo = player ?: return
+        val connectivity = getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        if (!runCatching { connectivity.isActiveNetworkMetered }.getOrDefault(false)) return
+        val lowest = tracksOfType(tracks, C.TRACK_TYPE_VIDEO)
+            .filter { (group, index) -> group.getTrackFormat(index).height > 0 }
+            .minByOrNull { (group, index) -> group.getTrackFormat(index).height } ?: return
+        val (group, index) = lowest
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+            .build()
     }
 
     /** Telegram's lighter copies of the upload playing (CP80); none for a download or a joined video. */
@@ -4343,6 +4377,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             if (pictureUnplayable(tracks)) return
             if (checkSoftwareDecode(tracks)) return
             restoreResumeTracks(tracks)
+            applyStreamMeteredDefault(tracks)
             applyOriginalAudio(tracks)
             applySettingsSubtitles(tracks)
             rememberTracks(tracks)
@@ -9172,6 +9207,16 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private fun saveResumePosition(leaving: Boolean = false): Job? {
         if (savedForHandOver) return null
         val exo = player ?: return null
+        // A file link's place is kept by its address (owner, 2026-11-06), and cleared once
+        // watched to the end, the same rule Telegram videos follow. A live stream keeps none.
+        streamUrl?.let { url ->
+            if (streamLive) return null
+            val position = exo.currentPosition
+            val watched = ResumeRules.watched(position, exo.duration)
+            return App.backgroundScope.launch {
+                runCatching { settings.setStreamResume(url, if (watched) 0L else position) }
+            }
+        }
         // While the video is on a TV, the TV's place is the one to keep.
         val castAt = cast?.positionMs
         val position = castAt ?: exo.currentPosition

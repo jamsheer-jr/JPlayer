@@ -285,6 +285,10 @@ internal fun HomePane(
     var openLink by remember { mutableStateOf(false) }
     var linkText by remember { mutableStateOf("") }
     var linkInvalid by remember { mutableStateOf(false) }
+    // The links opened before, offered back in the box (owner, 2026-11-06).
+    val linkContext = LocalContext.current
+    val linkSettings = remember { SettingsStore(linkContext) }
+    val linkHistory by remember(linkSettings) { linkSettings.linkHistory }.collectAsState(initial = emptyList())
     val seeAllRow = seeAllKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Recent }
     // The row whose tiles the remote goes back to once its page closes.
     var returnTo by remember { mutableStateOf<String?>(null) }
@@ -884,27 +888,92 @@ internal fun HomePane(
             focusConfirm = true,
             onConfirm = {
                 val link = com.tmplayer.data.StreamLinks.pasted(linkText)
-                if (link == null) {
-                    // Not a playable address: the dialog stays up and says so, in place.
-                    linkInvalid = true
-                } else {
+                val raw = Regex("""https?://\S+""").find(linkText)?.value
+                if (link != null) {
                     openLink = false
                     linkInvalid = false
-                    onPlayStream(link)
+                    // Kept for the box's history, as pasted, Drive pages included.
+                    if (raw != null) App.backgroundScope.launch { runCatching { linkSettings.addLinkHistory(raw) } }
+                    if (link.source == "drive.google.com") {
+                        // A large Drive file answers with a confirmation page first; the
+                        // playable address is read off it before the player opens.
+                        scope.launch {
+                            val resolved = com.tmplayer.data.PageLinkResolver.resolveDrive(link)
+                            onPlayStream(resolved ?: link)
+                        }
+                    } else {
+                        onPlayStream(link)
+                    }
+                } else if (raw != null && com.tmplayer.data.StreamLinks.isPageLink(raw)) {
+                    // A file host's page (GDFlix, HubCloud): read the page for the file
+                    // address inside it, best effort. Nothing found: the dialog stays up
+                    // and says so, in place, and nothing is retried.
+                    scope.launch {
+                        val resolved = com.tmplayer.data.PageLinkResolver.resolvePage(raw)
+                        if (resolved == null) {
+                            linkInvalid = true
+                        } else {
+                            openLink = false
+                            App.backgroundScope.launch { runCatching { linkSettings.addLinkHistory(raw) } }
+                            onPlayStream(resolved)
+                        }
+                    }
+                } else {
+                    // Not a playable address: the dialog stays up and says so, in place.
+                    linkInvalid = true
                 }
             },
             onDismiss = { openLink = false; linkInvalid = false },
             extra = {
-                com.tmplayer.ui.auth.PaneField(
-                    value = linkText,
-                    onValueChange = { linkText = it; linkInvalid = false },
-                    placeholder = s.homeOpenLinkHint,
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
-                        autoCorrectEnabled = false,
-                    ),
-                )
+                Column {
+                    com.tmplayer.ui.auth.PaneField(
+                        value = linkText,
+                        onValueChange = { linkText = it; linkInvalid = false },
+                        placeholder = s.homeOpenLinkHint,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                            autoCorrectEnabled = false,
+                        ),
+                    )
+                    // A file link can be saved instead of played: to the phone's own
+                    // Downloads folder, through the system's download manager.
+                    val parsed = com.tmplayer.data.StreamLinks.pasted(linkText)
+                    if (parsed != null && !parsed.live) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Tone.surfaceHigh)
+                                .clickable {
+                                    com.tmplayer.data.LinkDownloader.download(linkContext, parsed)
+                                    openLink = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(TmIcons.Download, contentDescription = null, tint = Tone.text, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            M3Text(s.downloadsSaveToDownloads, style = M3MaterialTheme.typography.labelLarge, color = Tone.text)
+                        }
+                    }
+                    if (linkHistory.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        linkHistory.take(5).forEach { past ->
+                            M3Text(
+                                past,
+                                style = M3MaterialTheme.typography.bodySmall,
+                                color = Tone.muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { linkText = past; linkInvalid = false }
+                                    .padding(vertical = 4.dp),
+                            )
+                        }
+                    }
+                }
             },
         )
     }
@@ -1379,6 +1448,9 @@ private fun BuiltInHomeSections(
     val context = LocalContext.current
     val settings = remember { SettingsStore(context) }
     val hidden by remember(settings) { settings.hiddenStreams }.collectAsState(initial = emptySet())
+    // The streams already opened once (owner, 2026-11-06): the row marks the rest new
+    // until their first opening, by the post each came from ([SeenStreams]).
+    val seen by remember(settings) { settings.seenStreams }.collectAsState(initial = emptySet())
     var menuFor by remember { mutableStateOf<StreamLink?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1411,7 +1483,15 @@ private fun BuiltInHomeSections(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(shown, key = { it.url }) { link ->
-                    StreamCard(link, onClick = { onPlayStream(link) }, onHold = { menuFor = link })
+                    StreamCard(
+                        link,
+                        isNew = !com.tmplayer.data.SeenStreams.seen(seen, link),
+                        onClick = {
+                            App.backgroundScope.launch { runCatching { settings.markStreamSeen(link) } }
+                            onPlayStream(link)
+                        },
+                        onHold = { menuFor = link },
+                    )
                 }
             }
         }
@@ -1419,7 +1499,21 @@ private fun BuiltInHomeSections(
     menuFor?.let { link ->
         TvMenu(
             title = link.name,
-            actions = listOf(
+            actions = listOfNotNull(
+                // A file link can also be saved to the phone's Downloads folder (owner,
+                // 2026-11-06); a live stream has no file to save.
+                if (!link.live) {
+                    MenuAction(
+                        label = s.downloadsDownload,
+                        icon = TmIcons.Download,
+                        detail = s.downloadsSaveToDownloads,
+                    ) {
+                        menuFor = null
+                        com.tmplayer.data.LinkDownloader.download(context, link)
+                    }
+                } else {
+                    null
+                },
                 MenuAction(
                     label = s.homeLiveRemove,
                     icon = TmIcons.Delete,
@@ -1499,7 +1593,7 @@ private fun OpenLinkPill(onClick: () -> Unit) {
  * tiles' own arrangement), whose one action takes the stream out of the row.
  */
 @Composable
-private fun StreamCard(link: StreamLink, onClick: () -> Unit, onHold: () -> Unit) {
+private fun StreamCard(link: StreamLink, isNew: Boolean = false, onClick: () -> Unit, onHold: () -> Unit) {
     val s = LocalStrings.current
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
@@ -1525,6 +1619,14 @@ private fun StreamCard(link: StreamLink, onClick: () -> Unit, onHold: () -> Unit
                 }
             } else {
                 Icon(TmIcons.Play, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
+            }
+            if (isNew) {
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(Tone.accent).padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    M3Text(s.homeNewBadge, style = M3MaterialTheme.typography.labelSmall, color = Tone.onAccent)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))

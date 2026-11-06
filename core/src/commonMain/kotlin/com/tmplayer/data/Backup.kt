@@ -173,6 +173,8 @@ object Backups {
         "language" to Kind.TEXT,
         "lighter_pictures" to Kind.BOOL,
         "low_storage_mode" to Kind.BOOL,
+        // The addresses the viewer opened from the Open link box, newest first (LinkHistory).
+        "link_history" to Kind.TEXT,
         "max_size_bytes" to Kind.LONG,
         "min_size_bytes" to Kind.LONG,
         "new_video_alerts" to Kind.BOOL,
@@ -199,9 +201,13 @@ object Backups {
         "rewind_on_resume_ms" to Kind.LONG,
         "save_mobile_data" to Kind.BOOL,
         "screen_orientation" to Kind.TEXT,
+        // The channel streams already opened, by post (SeenStreams): Home marks the rest new.
+        "seen_streams" to Kind.TEXT,
         "show_remaining_time" to Kind.BOOL,
         "skip_silence" to Kind.BOOL,
         "sponsor_reminders" to Kind.BOOL,
+        // Where each file link was left, by address (StreamResume).
+        "stream_resume" to Kind.TEXT,
         "subtitle_bold" to Kind.BOOL,
         "subtitle_box" to Kind.BOOL,
         "subtitle_box_level" to Kind.TEXT,

@@ -34,13 +34,69 @@ object StreamLinks {
 
     private val CANDIDATE = Regex("""https?://\S+""")
 
+    /**
+     * A Google Drive share address turned into the direct address the player streams
+     * (owner, 2026-11-06): a public file's /file/d/<id> page, an ?id= link, or a uc link all
+     * name the same file, and Drive serves the file itself from the uc download address.
+     * Only a public file answers there; a private one refuses, and the player says so.
+     * Null for any address that is not a Drive file address.
+     */
+    fun driveDirect(token: String): String? {
+        val cleaned = token.trimEnd(')', '.', ',', ';', ']', '>', '"', '\'')
+        val lower = cleaned.lowercase()
+        if ("drive.google.com" !in lower && "docs.google.com" !in lower) return null
+        val id = Regex("""/d/([A-Za-z0-9_-]{10,})""").find(cleaned)?.groupValues?.getOrNull(1)
+            ?: Regex("""[?&]id=([A-Za-z0-9_-]{10,})""").find(cleaned)?.groupValues?.getOrNull(1)
+            ?: return null
+        return "https://drive.google.com/uc?export=download&id=$id"
+    }
+
+    /** Hosts whose pages hide the file address behind a page of their own (GDFlix, HubCloud). */
+    private val PAGE_HOSTS = listOf("gdflix", "hubcloud")
+
+    /**
+     * Whether [url] points at a file host page the app should read through for the file
+     * address inside it, rather than play as it stands. Best effort by design: those pages
+     * are built by script and change often, so a page that yields nothing is a plain failure.
+     */
+    fun isPageLink(url: String): Boolean {
+        val host = url.substringAfter("://").substringBefore('/').substringBefore('?').lowercase()
+        return PAGE_HOSTS.any { it in host }
+    }
+
     /** The first stream link in one post's [text], or null when the post carries none. */
     fun inPost(text: String, fallbackName: String): StreamLink? {
         for (match in CANDIDATE.findAll(text)) {
+            driveDirect(match.value)?.let { direct ->
+                val lineStart = text.lastIndexOf('\n', match.range.first - 1) + 1
+                val lineEnd = text.indexOf('\n', match.range.last + 1).let { if (it < 0) text.length else it }
+                val piped = text.substring(lineStart, lineEnd).substringAfter('|', "").trim()
+                val before = text.substring(0, match.range.first)
+                    .lineSequence().firstOrNull()?.trim().orEmpty()
+                return StreamLink(
+                    url = direct,
+                    name = piped.ifBlank { before }.ifBlank { fallbackName },
+                    live = false,
+                    source = fallbackName,
+                )
+            }
             val found = streamOf(match.value, wider = false) ?: continue
-            val name = text.substring(0, match.range.first)
+            // The owner's post format (2026-11-06): "Link | Name", the name after the pipe on
+            // the link's own line wins; without a pipe, the text before the link, first line.
+            val lineStart = text.lastIndexOf('\n', match.range.first - 1) + 1
+            val lineEnd = text.indexOf('\n', match.range.last + 1).let { if (it < 0) text.length else it }
+            val line = text.substring(lineStart, lineEnd)
+            val piped = line.substringAfter('|', "").trim()
+            val before = text.substring(0, match.range.first)
                 .lineSequence().firstOrNull()?.trim().orEmpty()
-            return StreamLink(url = found.url, name = name.ifBlank { fallbackName }, live = found.live, source = fallbackName)
+            val name = piped.ifBlank { before }
+            return StreamLink(
+                url = found.url,
+                name = name.ifBlank { fallbackName },
+                live = found.live,
+                dash = found.dash,
+                source = fallbackName,
+            )
         }
         return null
     }
@@ -66,6 +122,9 @@ object StreamLinks {
      */
     fun pasted(text: String): StreamLink? {
         for (match in CANDIDATE.findAll(text)) {
+            driveDirect(match.value)?.let { direct ->
+                return StreamLink(url = direct, name = "Google Drive video", live = false, source = "drive.google.com")
+            }
             val found = streamOf(match.value, wider = true) ?: continue
             val name = found.url.substringBefore('?').substringAfterLast('/').ifBlank { found.url }
             val source = found.url.substringAfter("://").substringBefore('/').substringBefore('?')
@@ -80,14 +139,19 @@ object StreamLinks {
     /** What a stream address is when read. */
     private class Found(val url: String, val live: Boolean, val dash: Boolean)
 
-    /** The shapes a channel post may carry: live HLS, or an mp4 file. */
-    private val POST_SHAPES = listOf(Shape("m3u8", live = true), Shape("mp4"))
-
-    /** The shapes a pasted link may carry: a post's shapes, DASH, and the usual file shapes. */
-    private val PASTED_SHAPES = POST_SHAPES + listOf(
+    /** The shapes a pasted link may carry: live HLS, DASH, and the usual direct file shapes. */
+    private val PASTED_SHAPES = listOf(
+        Shape("m3u8", live = true),
         Shape("mpd", dash = true),
-        Shape("mkv"), Shape("webm"), Shape("mov"), Shape("avi"), Shape("ts"), Shape("m4v"),
+        Shape("mp4"), Shape("mkv"), Shape("webm"), Shape("mov"), Shape("avi"), Shape("ts"), Shape("m4v"),
     )
+
+    /**
+     * The shapes a channel post may carry (owner, 2026-11-06): the same reading as a pasted
+     * link. His posts carry .mkv and .mpd links as well as live and mp4 ones, and a post read
+     * narrowly left those streams off the Live row entirely.
+     */
+    private val POST_SHAPES = PASTED_SHAPES
 
     /**
      * The stream address in one candidate token, and its kind; null when the token is not a

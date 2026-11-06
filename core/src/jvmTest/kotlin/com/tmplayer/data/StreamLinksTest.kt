@@ -148,4 +148,47 @@ class ChannelNewsTest {
         assertEquals(12, ChannelNews.seenAfter(posts, seenMessageId = 12))
         assertEquals(5, ChannelNews.seenAfter(emptyList(), seenMessageId = 5))
     }
+
+    @Test
+    fun aPostCarriesMkvAndDashLinksNow() {
+        val mkv = StreamLinks.inPost("Show https://rick.example.dev/0:/Show.2026.1080p.mkv", "J MOVIES")
+        assertEquals("https://rick.example.dev/0:/Show.2026.1080p.mkv", mkv?.url)
+        assertFalse(mkv!!.live)
+        val dash = StreamLinks.inPost("Show https://cdn.example.com/v/manifest.mpd", "J MOVIES")
+        assertTrue(dash!!.dash)
+    }
+
+    @Test
+    fun theNameAfterThePipeWins() {
+        val link = StreamLinks.inPost("https://cdn.example.com/v/a.mkv | My Show Name", "J MOVIES")
+        assertEquals("My Show Name", link?.name)
+        val named = StreamLinks.inPost("Before name https://cdn.example.com/v/a.mkv | Pipe Name", "J MOVIES")
+        assertEquals("Pipe Name", named?.name)
+    }
+
+    @Test
+    fun driveLinksBecomeDirect() {
+        val share = "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUv/view?usp=sharing"
+        assertEquals(
+            "https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOpQrStUv",
+            StreamLinks.driveDirect(share),
+        )
+        assertEquals(
+            "https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOpQrStUv",
+            StreamLinks.driveDirect("https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUv"),
+        )
+        assertNull(StreamLinks.driveDirect("https://example.com/file/d/1AbCdEfGhIjKlMnOpQrStUv/view"))
+        val pasted = StreamLinks.pasted(share)
+        assertEquals("https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOpQrStUv", pasted?.url)
+        val posted = StreamLinks.inPost("$share | Drive Show", "J MOVIES")
+        assertEquals("Drive Show", posted?.name)
+        assertEquals(pasted?.url, posted?.url)
+    }
+
+    @Test
+    fun pageHostsAreKnown() {
+        assertTrue(StreamLinks.isPageLink("https://gdflix.dev/file/abc123"))
+        assertTrue(StreamLinks.isPageLink("https://hubcloud.ist/video/xyz"))
+        assertFalse(StreamLinks.isPageLink("https://cdn.example.com/v/a.mkv"))
+    }
 }

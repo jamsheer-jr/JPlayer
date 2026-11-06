@@ -93,6 +93,9 @@ private val CHAT_SORT = stringPreferencesKey("chat_sort")
 private val COLLECTIONS = stringPreferencesKey("collections")
 private val HIDDEN_STREAMS = stringPreferencesKey("hidden_streams")
 private val HIDDEN_TITLE_WORDS = stringPreferencesKey("hidden_title_words")
+private val LINK_HISTORY = stringPreferencesKey("link_history")
+private val STREAM_RESUME = stringPreferencesKey("stream_resume")
+private val SEEN_STREAMS = stringPreferencesKey("seen_streams")
 /** "Only my folders", retired: read once by [SettingsStore.takeOnlyFolders] and removed. */
 private val HIDE_DEFAULT_GROUPS = booleanPreferencesKey("hide_default_groups")
 
@@ -1983,6 +1986,34 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHiddenStreams(keys: Set<String>) {
         prefs.edit { it[HIDDEN_STREAMS] = HiddenStreams.encode(keys) }
+    }
+
+    /** The addresses the viewer opened from the Open link box, newest first: see [LinkHistory]. */
+    val linkHistory: Flow<List<String>> = read { it[LINK_HISTORY] }.map { raw -> LinkHistory.decode(raw) }
+
+    suspend fun linkHistoryNow(): List<String> = LinkHistory.decode(prefs.data.first()[LINK_HISTORY])
+
+    suspend fun addLinkHistory(url: String) {
+        prefs.edit { it[LINK_HISTORY] = LinkHistory.encode(LinkHistory.plus(LinkHistory.decode(it[LINK_HISTORY]), url)) }
+    }
+
+    /** Where file links were left, by address: see [StreamResume]. */
+    suspend fun streamResumeNow(url: String): Long =
+        StreamResume.decode(prefs.data.first()[STREAM_RESUME])[url] ?: 0L
+
+    suspend fun setStreamResume(url: String, ms: Long) {
+        prefs.edit {
+            it[STREAM_RESUME] = StreamResume.encode(StreamResume.put(StreamResume.decode(it[STREAM_RESUME]), url, ms))
+        }
+    }
+
+    /** The channel streams already opened, by post: see [SeenStreams]. */
+    val seenStreams: Flow<Set<String>> = read { it[SEEN_STREAMS] }.map { raw -> SeenStreams.decode(raw) }
+
+    suspend fun seenStreamsNow(): Set<String> = SeenStreams.decode(prefs.data.first()[SEEN_STREAMS])
+
+    suspend fun markStreamSeen(link: StreamLink) {
+        prefs.edit { it[SEEN_STREAMS] = SeenStreams.encode(SeenStreams.plus(SeenStreams.decode(it[SEEN_STREAMS]), link)) }
     }
 
     /** The viewer's own words hidden from titles beside the built in capture words: see [TitleCleaning]. */
