@@ -379,6 +379,26 @@ internal fun HomePane(
     }
     val density = LocalDensity.current
 
+    // "Surprise me", on a phone only: one press plays an unwatched film or the next unwatched
+    // episode of a show, picked from the entries Home already holds. The television never
+    // composes the pill, so its first tile and focus order stay exactly as they are. The pick
+    // is worked out at the press, not while composing: the rows' entries are all it needs.
+    val surpriseEntries = remember(rows) {
+        rows.flatMap { row ->
+            when (row) {
+                is HomeRow.Chat -> row.entries
+                is HomeRow.Recent -> row.entries
+                is HomeRow.Catalog -> row.entries
+                else -> emptyList()
+            }
+        }
+    }
+    val surpriseAvailable = touch && surpriseEntries.any { it is ShelfEntry.File || it is ShelfEntry.Show }
+    val onSurprise: () -> Unit = {
+        com.tmplayer.data.SurprisePick.pick(surpriseEntries, watch.finished) { watch.point(it)?.fraction ?: 0f }
+            ?.let { item -> onPlayNow(item, chatTitle(item.chatId)) }
+    }
+
     // On a phone Home shares a pager with Chats and stays composed beside it: only while most of
     // it is on screen does the carousel move on or the status bar take its colours from it.
     var shown by remember { mutableStateOf(true) }
@@ -605,6 +625,24 @@ internal fun HomePane(
                     // No carousel: the name heads the rows instead.
                     item(key = BRAND_KEY, contentType = BRAND_KEY) {
                         PhoneHomeBrand(Modifier.padding(start = start, top = BRAND_TOP, bottom = 4.dp), onArt = false)
+                    }
+                }
+                if (touch && surpriseAvailable) {
+                    item(key = SURPRISE_KEY, contentType = SURPRISE_KEY) {
+                        Row(Modifier.padding(start = start, end = end, top = 2.dp, bottom = 2.dp)) {
+                            Row(
+                                Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Tone.surfaceHigh)
+                                    .clickable(onClick = onSurprise)
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(TmIcons.Play, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                M3Text(s.homeSurpriseMe, style = M3MaterialTheme.typography.titleSmall, color = Tone.text)
+                            }
+                        }
                     }
                 }
                 items(listed, key = { it.key }, contentType = { it::class }) { row ->
@@ -1366,6 +1404,7 @@ private val STRIP_GAP = 12.dp
 
 /** The lazy key of the phone's featured carousel at the top of Home. */
 private const val FEATURED_KEY = "featured"
+private const val SURPRISE_KEY = "surprise"
 
 /** How far Home moves down on a television when Down finds no row on screen below the remote. */
 private val TV_DOWN_STEP = 200.dp
