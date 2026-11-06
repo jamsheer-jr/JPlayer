@@ -490,7 +490,14 @@ class GlobalSearchViewModel(
         val online = OnlineMetadata.current ?: return emptyList()
         val query = item.metaQuery ?: return emptyList()
         val found = runCatching { online.peek(query) }.getOrNull() as? MetaResult.Found ?: return emptyList()
-        return listOf(found.info.title)
+        // The title, and the people the lookups have kept for it (v1.0.10): the cast first,
+        // then whoever directed or created it, each a name of their own to match against, so
+        // searching an actor finds the titles they are in. Cache-only, like the title: extras
+        // nobody fetched (the detail page never opened) hold no cast, and nothing is asked
+        // for here, so typing never waits on a provider.
+        val extras = runCatching { online.storedExtras(found.info) }.getOrNull()
+        val people = extras?.let { it.cast.map { person -> person.name } + it.directors + it.creators }.orEmpty()
+        return listOf(found.info.title) + people
     }
 
     companion object {

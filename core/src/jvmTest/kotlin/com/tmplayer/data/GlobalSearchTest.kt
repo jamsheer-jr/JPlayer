@@ -105,6 +105,11 @@ class GlobalSearchTest {
         // An online title the file name does not carry.
         val named = GlobalSearch.localVideos(known, q("quiet harbour")) { if (it.messageId == 2L) listOf("The Quiet Harbour") else emptyList() }
         assertTrue(2L in named.map { it.messageId })
+        // A person the lookups kept for a title (its cast): searching the actor finds it.
+        val acted = GlobalSearch.localVideos(known, q("meera vasudevan")) {
+            if (it.messageId == 1L) listOf("Harbour Notes", "Meera Vasudevan", "Arjun Lal") else emptyList()
+        }
+        assertEquals(listOf(1L), acted.map { it.messageId })
     }
 
     @Test

@@ -29,6 +29,7 @@ import com.tmplayer.data.SizeFilter
 import com.tmplayer.data.Td
 import com.tmplayer.data.WatchedRecord
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -1043,11 +1044,21 @@ fun rememberHomeRows(
     // "Not the same video" pulls a copy out of its folded card at once, so the rows are built
     // again when a correction changes.
     val corrections by com.tmplayer.data.VideoCorrections.state.collectAsState()
+    // TMDB's trending this week, for the Trending now shelf: asked for once the catalog rows
+    // are on, then matched against the titles the lookups have already cached as the rows are
+    // built ([homeTrendingRanks]), never the other way round.
+    var trendingRefs by remember { mutableStateOf<List<com.tmplayer.online.MetaRef>>(emptyList()) }
+    LaunchedEffect(model, layout?.catalogRows) {
+        if (layout?.catalogRows != true) return@LaunchedEffect
+        val online = com.tmplayer.online.OnlineMetadata.current ?: return@LaunchedEffect
+        val refs = runCatching { online.trending() }.getOrDefault(emptyList())
+        if (refs.isNotEmpty()) trendingRefs = refs
+    }
     // Built off the main thread, and only once the chats' answers stop arriving for a moment: a
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1093,7 +1104,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         val built = withContext(homeBuild) {
@@ -1103,6 +1114,9 @@ fun rememberHomeRows(
                 chatsPending = chatsPending, layout = layout, recentFrom = recentFrom, noneChosen = noneChosen,
                 titleMeta = if (layout.catalogRows) homeTitleMeta(home, loaded, recent) else emptyMap(),
                 collections = collections,
+                trending = if (layout.catalogRows) homeTrendingRanks(home, loaded, recent, trendingRefs) else emptyMap(),
+                watchedGenres = if (layout.catalogRows) homeWatchedGenres(watched) else emptySet(),
+                watchedKeys = watched.mapTo(HashSet()) { it.key },
             )
         }
         homeMemo.built = inputs
@@ -1255,6 +1269,62 @@ private fun homeTitleMeta(
             found
         }
         if (meta != null) out[item.id] = meta
+    }
+    return out
+}
+
+/**
+ * The pool's titles that stand in TMDB's trending list, as [HomeRows.build] wants them: a
+ * tile's lead id to its place in the list. Cache-only, like [homeTitleMeta]: a title is
+ * ranked only when the lookups have already matched it, by the match TMDB knows it by
+ * ([com.tmplayer.online.MetaRef.matchKey]), so a title nobody matched is never ranked and
+ * the shelf holds only what the viewer's chats hold. Read off the main thread.
+ */
+private fun homeTrendingRanks(
+    home: List<ChatSummary>,
+    loaded: Map<Long, List<MediaItem>>,
+    recent: List<MediaItem>?,
+    refs: List<com.tmplayer.online.MetaRef>,
+): Map<String, Int> {
+    if (refs.isEmpty()) return emptyMap()
+    val online = com.tmplayer.online.OnlineMetadata.current ?: return emptyMap()
+    if (!online.settings.value.enabled) return emptyMap()
+    val rankByKey = refs.mapIndexed { index, ref -> ref.matchKey to index }.toMap()
+    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty()).distinctBy { it.id }
+    val lang = online.tmdbLanguage()
+    val byQuery = HashMap<String, Int?>()
+    val out = LinkedHashMap<String, Int>()
+    for (item in pool) {
+        // A show's episodes share the show's own answer, as in [homeTitleMeta].
+        val query = item.metaQuery?.showOnly() ?: continue
+        val key = query.cacheKey(lang)
+        val rank = if (key in byQuery) {
+            byQuery[key]
+        } else {
+            val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info
+            val found = info?.let { rankByKey[com.tmplayer.online.MetaRef.matchKey(it.provider, it.kind, it.id)] }
+            byQuery[key] = found
+            found
+        }
+        if (rank != null) out[item.id] = rank
+    }
+    return out
+}
+
+/**
+ * The genres of what the viewer has watched, from the same cache [homeTitleMeta] reads:
+ * the Because you watched shelf's seed. A watched title nobody matched, or whose facts
+ * were never fetched, gives nothing. Read off the main thread.
+ */
+private fun homeWatchedGenres(watched: Collection<WatchedRecord>): Set<String> {
+    if (watched.isEmpty()) return emptySet()
+    val online = com.tmplayer.online.OnlineMetadata.current ?: return emptySet()
+    if (!online.settings.value.enabled) return emptySet()
+    val out = LinkedHashSet<String>()
+    for (record in watched) {
+        val query = record.toMediaItem().metaQuery?.showOnly() ?: continue
+        val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info ?: continue
+        online.storedExtras(info)?.let { out += it.genres }
     }
     return out
 }
