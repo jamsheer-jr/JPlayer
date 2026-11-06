@@ -29,9 +29,12 @@ import kotlinx.coroutines.sync.withPermit
  *   the detail panel): a lookup sends a video's cleaned name to a provider.
  * - **Providers.** TMDB for films and shows, with the build's key (`TMDB_API_KEY`) or the
  *   viewer's own; TVmaze for shows and their episodes, with no key; AniList for anime, with no
- *   key. A show from TMDB takes its episode from TMDB too, in the UI language; one from TVmaze
- *   from TVmaze. Anime asks AniList first. A detail page with an IMDb id also asks OMDb, with the
- *   viewer's own key or the build's (`OMDB_API_KEY`), for IMDb's, Rotten Tomatoes' and
+ *   key. MyDramaList, read as pages with no key, is the last resort for a title TMDB does not
+ *   have at all: it is asked only after TMDB has answered nothing in the same lookup, and its
+ *   facts never displace a TMDB match. A show from TMDB takes its episode from TMDB too, in
+ *   the UI language; one from TVmaze from TVmaze. Anime asks AniList first. A detail page
+ *   with an IMDb id also asks OMDb, with the viewer's own key or the build's
+ *   (`OMDB_API_KEY`), for IMDb's, Rotten Tomatoes' and
  *   Metacritic's scores, and Wikidata, with no key, for Rotten Tomatoes' and Metacritic's where
  *   OMDb could not be asked or lacked them; the answer is kept 30 days.
  * - **Safe matching.** Only a title with the same words, or most of them and the same year, is
@@ -61,6 +64,7 @@ class OnlineMetadata(
     private val tmdb = TmdbApi(http, RateLimiter(TmdbApi.GAP_MS, now, sleep), userAgent)
     private val tvmaze = TvMazeApi(http, RateLimiter(TvMazeApi.GAP_MS, now, sleep), userAgent)
     private val anilist = AniListApi(http, RateLimiter(AniListApi.GAP_MS, now, sleep), userAgent)
+    private val mdl = MdlApi(http, RateLimiter(MdlApi.GAP_MS, now, sleep), userAgent)
     private val omdb = OmdbApi(http, RateLimiter(OmdbApi.GAP_MS, now, sleep), userAgent)
     private val wikidata = WikidataApi(http, RateLimiter(WikidataApi.GAP_MS, now, sleep), userAgent)
     /**
@@ -204,16 +208,21 @@ class OnlineMetadata(
             return MetaResult.Found(show.info.copy(episode = episode)) to complete
         }
         var blocked = false
+        var tmdbNothing = false
         val order = when {
-            query.kind == MetaKind.Film && query.anime -> listOf(MetaProvider.Tmdb, MetaProvider.AniList)
-            query.kind == MetaKind.Film -> listOf(MetaProvider.Tmdb)
-            query.anime -> listOf(MetaProvider.AniList, MetaProvider.Tmdb, MetaProvider.TvMaze)
-            else -> listOf(MetaProvider.Tmdb, MetaProvider.TvMaze)
+            query.kind == MetaKind.Film && query.anime -> listOf(MetaProvider.Tmdb, MetaProvider.AniList, MetaProvider.Mdl)
+            query.kind == MetaKind.Film -> listOf(MetaProvider.Tmdb, MetaProvider.Mdl)
+            query.anime -> listOf(MetaProvider.AniList, MetaProvider.Tmdb, MetaProvider.TvMaze, MetaProvider.Mdl)
+            else -> listOf(MetaProvider.Tmdb, MetaProvider.TvMaze, MetaProvider.Mdl)
         }
         for (provider in order) {
+            // MyDramaList sits last in every order and is gated besides: only a TMDB "nothing"
+            // in this same lookup opens it, so its facts can never displace a TMDB match, and
+            // a TMDB that could not be asked (no key, refused, paused, offline) never opens it.
+            if (provider == MetaProvider.Mdl && !tmdbNothing) continue
             when (val outcome = ask(provider, query, lang)) {
                 is Outcome.Found -> return MetaResult.Found(outcome.info) to true
-                Outcome.Nothing -> Unit
+                Outcome.Nothing -> if (provider == MetaProvider.Tmdb) tmdbNothing = true
                 Outcome.Blocked -> blocked = true
             }
         }
@@ -235,6 +244,7 @@ class OnlineMetadata(
             MetaProvider.Tmdb -> if (!tmdbUsable(s)) Outcome.Blocked else tmdbLookup(activeKey(s), query, lang)
             MetaProvider.TvMaze -> tvmazeLookup(query)
             MetaProvider.AniList -> anilistLookup(query)
+            MetaProvider.Mdl -> mdlLookup(query)
         }
     }
 
@@ -421,6 +431,36 @@ class OnlineMetadata(
         )
     }
 
+    /**
+     * MyDramaList's top result for the title, reached only after TMDB answered nothing (see
+     * [resolve]). [MetaMatch] still has to allow it: the same words, with the year agreeing
+     * where both sides give one, since a like-named wrong title is the known risk of a page
+     * search, and the title correction flow is the repair when one slips through. A page that
+     * cannot be read, or a block, is nothing: the title simply stays unmatched. A 429 pauses
+     * the provider like any other; the page fetches themselves are not retried.
+     */
+    private suspend fun mdlLookup(query: MetaQuery): Outcome {
+        val reply = mdl.search(query.title)
+        if (reply is MetaReply.Throttled) {
+            trouble(MetaProvider.Mdl, reply)
+            return Outcome.Blocked
+        }
+        val facts = (reply as? MetaReply.Ok)?.value ?: return Outcome.Nothing
+        val kind = facts.kind ?: query.kind
+        if (!MetaMatch.accepts(query.title, query.year, listOf(facts.title), facts.year, show = kind == MetaKind.Show)) return Outcome.Nothing
+        return Outcome.Found(
+            MetaInfo(
+                provider = MetaProvider.Mdl,
+                id = facts.path,
+                kind = kind,
+                title = facts.title,
+                year = facts.year,
+                posterUrl = facts.posterUrl,
+                language = ENGLISH,
+            ),
+        )
+    }
+
     /** The episode from the provider the show came from, and whether that answer is final. */
     private suspend fun episodeFor(show: MetaInfo, query: MetaQuery, lang: String): Pair<MetaEpisode?, Boolean> {
         val season = query.season ?: 1
@@ -453,6 +493,8 @@ class OnlineMetadata(
             }
             // AniList lists no episodes; the show's own words stand for each one.
             MetaProvider.AniList -> null to true
+            // MyDramaList's episode pages are not read; the show's own words stand for each one.
+            MetaProvider.Mdl -> null to true
         }
     }
 
@@ -509,6 +551,9 @@ class OnlineMetadata(
                     val mal = providerExtras(info)?.malId ?: return@withLock emptyList()
                     skipApi.aniSkip(mal, episode ?: 1, item.durationSec.coerceAtLeast(0))
                 }
+                // MyDramaList gives no id the skip-time databases take; the fallbacks below
+                // still run, and find no IMDb id in its extras.
+                MetaProvider.Mdl -> MetaReply.Ok(emptyList())
             }
             // Only a real answer is kept; a failure is asked about again next time.
             var segments = (reply as? MetaReply.Ok)?.value ?: return@withLock emptyList()
@@ -808,6 +853,8 @@ class OnlineMetadata(
             }
             MetaProvider.TvMaze -> reply = retrying { tvmaze.extras(info.id) }
             MetaProvider.AniList -> reply = retrying { anilist.extras(info.id) }
+            // The title's page read once more for its genres and year; page fetches are not retried.
+            MetaProvider.Mdl -> reply = mdl.extras(info.id)
         }
         return when (trouble(info.provider, reply, key)) {
             null -> (reply as MetaReply.Ok).value
@@ -884,6 +931,8 @@ class OnlineMetadata(
                     found
                 }
                 MetaProvider.AniList -> null
+                // MyDramaList's episode lists are not read.
+                MetaProvider.Mdl -> null
             }
         }
     }
@@ -1127,7 +1176,7 @@ class OnlineMetadata(
         private const val CARD_SCORE_ENTRIES = 4_096
 
         /** Where posters may come from. Nothing else is fetched, whatever an answer says. */
-        val IMAGE_HOSTS = setOf("image.tmdb.org", "static.tvmaze.com", "s4.anilist.co", "img.anili.st")
+        val IMAGE_HOSTS = setOf("image.tmdb.org", "static.tvmaze.com", "s4.anilist.co", "img.anili.st", "i.mydramalist.com")
 
         /** Lookups are on, in a build that set the feature up. */
         val enabled: Boolean get() = current?.store?.now?.enabled == true

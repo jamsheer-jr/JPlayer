@@ -9,6 +9,7 @@ enum class MetaProvider(val label: String) {
     Tmdb("TMDB"),
     TvMaze("TVmaze"),
     AniList("AniList"),
+    Mdl("MyDramaList"),
 }
 
 /** A film or a show. Anime is either; [MetaQuery.anime] says which provider to ask first. */

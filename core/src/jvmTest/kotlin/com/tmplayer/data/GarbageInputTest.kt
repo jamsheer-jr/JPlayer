@@ -19,6 +19,8 @@ import com.tmplayer.online.HttpResponse
 import com.tmplayer.online.HttpTransport
 import com.tmplayer.online.MetaExtras
 import com.tmplayer.online.MetaInfo
+import com.tmplayer.online.MdlApi
+import com.tmplayer.online.MdlPage
 import com.tmplayer.online.MsoneApi
 import com.tmplayer.online.OmdbApi
 import com.tmplayer.online.RateLimiter
@@ -378,6 +380,9 @@ class GarbageInputTest {
             survive("WikidataApi", shown) { runBlocking { WikidataApi(http, limiter, "t").scores("tt1") } }
             val ani = AniListApi(http, limiter, "t")
             survive("AniListApi", shown) { runBlocking { ani.search("q"); ani.extras("1") } }
+            val mdl = MdlApi(http, limiter, "t")
+            survive("MdlApi", shown) { runBlocking { mdl.search("q"); mdl.page("/1-x"); mdl.extras("/1-x") } }
+            survive("MdlPage", shown) { MdlPage.topResultPath(shown); MdlPage.facts(shown, "/1-x") }
             val msone = MsoneApi(http, limiter, "t")
             survive("MsoneApi", shown) {
                 runBlocking {

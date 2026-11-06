@@ -778,6 +778,78 @@ class AniListApi(
     }
 }
 
+/**
+ * MyDramaList, read as pages: it has no API and no key, so this is its search page and then
+ * the top result's page, read as HTML and parsed by [MdlPage]. Asked only for a title TMDB
+ * does not know (see [OnlineMetadata]): one search fetch and one page fetch, and no retries
+ * of its own. Any other answer than a page (a block, a server error) is a failed reply,
+ * which the resolver reads as no match. https://mydramalist.com
+ */
+class MdlApi(
+    private val http: HttpTransport,
+    private val limiter: RateLimiter,
+    private val userAgent: String,
+) {
+    /** The top search result's facts for [query], or Ok(null) when the site lists nothing usable. */
+    suspend fun search(query: String): MetaReply<MdlFacts?> {
+        val html = when (val reply = get("$BASE/search?q=${enc(query)}")) {
+            is MetaReply.Ok -> reply.value
+            is MetaReply.Throttled -> return reply
+            MetaReply.Refused -> return MetaReply.Refused
+            is MetaReply.Failed -> return reply
+        }
+        val path = MdlPage.topResultPath(html) ?: return MetaReply.Ok(null)
+        return page(path)
+    }
+
+    /** The facts of the title page at [path] (a path [MdlPage.topResultPath] gave), or Ok(null). */
+    suspend fun page(path: String): MetaReply<MdlFacts?> {
+        if (!path.startsWith("/") || ".." in path) return MetaReply.Ok(null)
+        val html = when (val reply = get(BASE + path)) {
+            is MetaReply.Ok -> reply.value
+            is MetaReply.Throttled -> return reply
+            MetaReply.Refused -> return MetaReply.Refused
+            is MetaReply.Failed -> return reply
+        }
+        return MetaReply.Ok(MdlPage.facts(html, path))
+    }
+
+    /**
+     * A title's genres and year as [MetaExtras], for the detail page: the page read once more,
+     * then kept by the caller's extras cache like any other provider's.
+     */
+    suspend fun extras(path: String): MetaReply<MetaExtras> = when (val reply = page(path)) {
+        is MetaReply.Ok -> MetaReply.Ok(reply.value?.let { MetaExtras(genres = it.genres, year = it.year) } ?: MetaExtras())
+        is MetaReply.Throttled -> reply
+        MetaReply.Refused -> MetaReply.Refused
+        is MetaReply.Failed -> reply
+    }
+
+    /** One page, whole: the transport's text is the HTML, since these answers are not JSON. */
+    private suspend fun get(url: String): MetaReply<String> {
+        limiter.acquire()
+        val request = HttpRequest("GET", url, mapOf("Accept" to "text/html", "User-Agent" to userAgent))
+        val response = try {
+            http.send(request)
+        } catch (e: IOException) {
+            return MetaReply.Failed(0)
+        }
+        return when (response.code) {
+            in 200..299 -> MetaReply.Ok(response.text)
+            429 -> MetaReply.Throttled(retryAfter(response) ?: DEFAULT_WAIT_MS)
+            else -> MetaReply.Failed(response.code)
+        }
+    }
+
+    companion object {
+        const val BASE = "https://mydramalist.com"
+
+        /** The site publishes no rate; one fetch a second is polite, and it is only asked on a TMDB miss. */
+        const val GAP_MS = 1_000L
+        const val DEFAULT_WAIT_MS = 10_000L
+    }
+}
+
 private val TAGS = Regex("<[^>]+>")
 private val SPACES = Regex("""[ \t]+""")
 

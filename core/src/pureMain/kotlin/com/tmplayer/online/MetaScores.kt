@@ -63,6 +63,8 @@ fun MetaExtras.withProviderScore(provider: MetaProvider): MetaExtras {
         MetaProvider.Tmdb -> MetaScore(ScoreSource.Tmdb, rating)
         MetaProvider.TvMaze -> MetaScore(ScoreSource.TvMaze, rating)
         MetaProvider.AniList -> MetaScore(ScoreSource.AniList, kotlin.math.round(rating * 10))
+        // MyDramaList's facts carry no rating of their own here, so there is no score to add.
+        MetaProvider.Mdl -> return this
     }
     if (scores.any { it.source == score.source }) return this
     return copy(scores = MetaScore.merge(scores, listOf(score)))
