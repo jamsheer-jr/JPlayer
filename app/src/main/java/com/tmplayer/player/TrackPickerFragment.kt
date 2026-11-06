@@ -96,10 +96,13 @@ import java.util.Locale
  * The audio and subtitle chooser, and the subtitles' "Search online" results, drawn as the
  * language picker's modal ([ChoiceSheet]) over the dimmed video on a phone and a television alike.
  *
- * Choosing a track acts on the one tap or press and closes. Below the tracks sit the timing lines
+ * Choosing a track acts on the one tap or press and closes. With the tracks sit the timing lines
  * (earlier, later, reset) and, for subtitles, their look. Those act in place and leave the picker
  * open where it was scrolled to, so a line can be nudged a tenth at a time while it plays behind
- * the dimmed list, and the look changes on the subtitles as they are chosen.
+ * the dimmed list, and the look changes on the subtitles as they are chosen. On a touch screen
+ * the panel is ordered as a list of jobs first (open a file or a link, search online, translate),
+ * then synchronization, then customization, then the tracks; on a television the one column
+ * keeps its order, tracks first.
  *
  * For subtitles, "Search online" sits under the tracks and turns the panel into what OpenSubtitles
  * (and SubDL, with the viewer's key) has for the video. Downloads work without signing in; what
@@ -535,6 +538,14 @@ class TrackPickerFragment : Fragment() {
      *
      * Each group after the first opens with its heading (Timing, Look), or, for the one line
      * that needs no heading (Search online, Try again), with the same room and no words.
+     *
+     * On a touch screen the tracks page ([onInPlace] given, which only it passes) is one
+     * scrolling column in the order a subtitle or audio job is done (J Player, 2026-11-06):
+     * the opening rows first (a file or a link of the viewer's own, Search online, the other
+     * search, Translate), then synchronization as one stepper, then customization (the size
+     * and position as segments, the lift as a slider, the colours as swatches), then the track
+     * list itself. On a television nothing here changes: the one column keeps its order, the
+     * tracks first and the timing and look as lines under them.
      */
     @Composable
     private fun androidx.compose.foundation.layout.ColumnScope.Lines(
@@ -549,22 +560,42 @@ class TrackPickerFragment : Fragment() {
         // On a touch screen the timing and the look are controls rather than lines: one stepper
         // for Earlier and Later, the size and position as segments, the box as a switch. Six
         // look-alike lines that each nudged or cycled something read as a puzzle under a finger.
-        val touchAdjust: (@Composable () -> Unit)? = if (isTouch() && onInPlace != null && adjust.isNotEmpty()) {
-            { TouchAdjust(timing = adjust.any { it.group == Group.Timing }, look = adjust.any { it.group == Group.Look }, version, onInPlace) }
-        } else {
-            null
-        }
-        // One column on every screen (J Player, 2026-11-06): the tracks and Search online first,
-        // then the timing and the look under them. The panel used to split a landscape phone into
-        // two half columns, which read as clutter; a single scrolling column keeps every control
-        // and is simpler to walk, by finger and by remote alike.
-        if (touchAdjust != null) {
+        if (isTouch() && onInPlace != null) {
+            val (functions, tracks) = choose.partition { it.group == Group.Online }
             ChoiceList {
-                LineRows(choose, firstFocus, focusKey)
-                touchAdjust()
+                val opening = openLines() + functions
+                if (opening.isNotEmpty()) LineRows(opening, firstFocus, focusKey)
+                if (adjust.isNotEmpty()) {
+                    TouchAdjust(
+                        timing = adjust.any { it.group == Group.Timing },
+                        look = adjust.any { it.group == Group.Look },
+                        version,
+                        onInPlace,
+                    )
+                }
+                LineRows(tracks, firstFocus, focusKey)
             }
         } else {
             ChoiceList { LineRows(lines, firstFocus, focusKey) }
+        }
+    }
+
+    /**
+     * The opening rows of the touch subtitle panel: a subtitle file, or the same by link, the
+     * host's own ways on (null where a build or a screen offers neither, as on a television).
+     * Choosing one closes the picker first, as the online page's own file and link lines do.
+     * Subtitles only: the audio panel has nothing to open.
+     */
+    private fun openLines(): List<Line> {
+        if (trackType != C.TRACK_TYPE_TEXT) return emptyList()
+        val host = host ?: return emptyList()
+        return buildList {
+            host.pickSubtitleFile?.let { pick ->
+                add(Line("open_file", L.playerLoadSubtitleFile, icon = TmIcons.Folder, group = Group.Online) { close(); pick() })
+            }
+            host.loadSubtitleUrl?.let { byLink ->
+                add(Line("open_url", L.playerLoadSubtitleUrl, icon = TmIcons.Download, group = Group.Online) { close(); byLink() })
+            }
         }
     }
 
@@ -580,7 +611,9 @@ class TrackPickerFragment : Fragment() {
         @Suppress("UNUSED_EXPRESSION") version
         val subtitles = trackType == C.TRACK_TYPE_TEXT
         if (timing) {
-            ChoiceSection(L.tracksSectionTiming)
+            // The touch panel names this job as the More panel does for subtitles; the sound's
+            // own panel keeps the plain heading, since its sync is of the sound, not the lines.
+            ChoiceSection(if (subtitles) L.playerSubtitleSync else L.tracksSectionTiming)
             val delays = host.syncDelaysNow()
             val ms = if (subtitles) delays.subtitleMs else delays.audioMs
             fun nudge(direction: Int) {
@@ -621,7 +654,7 @@ class TrackPickerFragment : Fragment() {
                 host.changeSubtitleStyle(next)
                 onInPlace()
             }
-            ChoiceSection(L.tracksSectionLook)
+            ChoiceSection(L.tracksSectionCustomization)
             SegmentsLabel(L.tracksSubtitleSize)
             Segments(SubtitleSize.entries.map { it.label }, SubtitleSize.entries.indexOf(style.size)) {
                 change(host.subtitleStyleNow().copy(size = SubtitleSize.entries[it]))
