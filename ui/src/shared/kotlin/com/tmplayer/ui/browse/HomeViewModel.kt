@@ -1135,6 +1135,8 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
+        // Read here, in composition: the build below runs off it, where the form cannot be asked.
+        val phoneOrder = com.tmplayer.ui.components.isTouch()
         val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
@@ -1150,7 +1152,7 @@ fun rememberHomeRows(
                 watchedKeys = watched.mapTo(HashSet()) { it.key },
                 // A phone's order (owner, 2026-11-06): Watch later and the starred chats
                 // directly under Continue watching; a television keeps its arrangement.
-                phoneOrder = com.tmplayer.ui.components.isTouch(),
+                phoneOrder = phoneOrder,
                 nowMs = System.currentTimeMillis(),
             )
         }
