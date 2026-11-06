@@ -210,6 +210,10 @@ class GarbageInputTest {
             }
             survive("Backups.decode", text) { Backups.decode(text) }
             survive("PartyLinks.parse", text) { PartyLinks.parse(text) }
+            survive("StreamLinks.inPost", text) { StreamLinks.inPost(text, text) }
+            survive("StreamLinks.inPosts", text) {
+                StreamLinks.inPosts(listOf(ChannelPost(1, text, true), ChannelPost(2, text, false)), text)
+            }
             survive("AccountBook.decode", text) { AccountBook.decode(text) }
             survive("WebVtt.parseSrt", text) { WebVtt.parseSrt(text) }
             survive("WebVtt.parseAss", text) { WebVtt.parseAss(text) }
