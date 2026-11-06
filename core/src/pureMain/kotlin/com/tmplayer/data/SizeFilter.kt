@@ -23,23 +23,28 @@ object SizeFilter {
     const val STEP = 100 * MB
 
     /**
-     * High enough to keep trailers, samples and clips out of a chat full of full length videos.
-     *
-     * Was 400 MB with a 2.5 GB top until 1.21, then 50 MB: viewers saw a series with episodes 9
-     * and 30 missing, the ones encoded a little smaller than the rest, and nothing said why. Back
-     * to 400 MB since 1.28.2, now that a chat says how many it hides ("n hidden") and changes the
-     * minimum from there ([QUICK_MINIMUMS]).
+     * No minimum at all: a fresh install hides nothing by size (the owner asked for this on
+     * 2026-11-06, J Player 1.0.12). The history ran the other way: 400 MB with a 2.5 GB top until
+     * 1.21, then 50 MB, when viewers saw a series with episodes 9 and 30 missing, the ones encoded
+     * a little smaller than the rest, and nothing said why; back to 400 MB in 1.28.2 once a chat
+     * said how many it hides ("n hidden"). The floor is now the viewer's own choice instead: the
+     * slider, the quick picks ([QUICK_MINIMUMS]) and Search's "hide small clips" (which keeps its
+     * own floor, [CLIP_MIN]) are all still there for anyone who wants one.
      */
-    const val DEFAULT_MIN = 400 * MB
+    const val DEFAULT_MIN = FLOOR
 
     /**
-     * The old default, kept as a stop on the slider: off the step grid, and the minimum a viewer
-     * who wants short episodes but no clips is most likely to pick.
+     * Off the step grid, and the minimum a viewer who wants short episodes but no clips is most
+     * likely to pick. Also the floor Search's "hide small clips" uses, now that the shipped
+     * default no longer keeps clips out on its own.
      */
     const val CLIP_MIN = 50 * MB
 
+    /** The old 400 MB default, kept as a stop on the slider and a quick pick. */
+    const val OLD_DEFAULT_MIN = 400 * MB
+
     /** The choices a chat's "n hidden" chip offers, smallest first; the current one is added when off the list. */
-    val QUICK_MINIMUMS: List<Long> = listOf(FLOOR, CLIP_MIN, 100 * MB, 200 * MB, DEFAULT_MIN, GB)
+    val QUICK_MINIMUMS: List<Long> = listOf(FLOOR, CLIP_MIN, 100 * MB, 200 * MB, OLD_DEFAULT_MIN, GB)
 
     /** [QUICK_MINIMUMS] with [current] in its place, so the picker always has the one that is on. */
     fun quickMinimums(current: Long): List<Long> =

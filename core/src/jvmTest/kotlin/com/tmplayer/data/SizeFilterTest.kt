@@ -17,18 +17,18 @@ class SizeFilterTest {
     private val max = 2560 * MB
 
     @Test
-    fun `defaults are 400 MB and no upper bound`() {
-        assertEquals(400 * MB, SizeFilter.DEFAULT_MIN)
+    fun `defaults are no minimum and no upper bound`() {
+        assertEquals(FLOOR, SizeFilter.DEFAULT_MIN)
         assertEquals(CEILING, SizeFilter.DEFAULT_MAX)
         assertEquals(8 * GB, CEILING)
     }
 
     @Test
-    fun `the defaults keep a trailer and a clip out and a full length video in`() {
+    fun `the defaults keep everything in, clips included`() {
         val lo = SizeFilter.DEFAULT_MIN
         val hi = SizeFilter.DEFAULT_MAX
-        assertFalse(SizeFilter.matches(30 * MB, lo, hi))
-        assertFalse(SizeFilter.matches(180 * MB, lo, hi))
+        assertTrue(SizeFilter.matches(30 * MB, lo, hi))
+        assertTrue(SizeFilter.matches(180 * MB, lo, hi))
         assertTrue(SizeFilter.matches(450 * MB, lo, hi))
         assertTrue(SizeFilter.matches(6 * GB, lo, hi))
         assertTrue(SizeFilter.matches(20 * GB, lo, hi))
@@ -238,13 +238,14 @@ class SizeFilterTest {
         val min = SizeFilter.DEFAULT_MIN
         val max = SizeFilter.DEFAULT_MAX
         assertTrue(SizeFilter.isDefault(min, max))
-        assertEquals("400 MB", SizeFilter.label(SizeFilter.snap(min)))
+        assertEquals("No minimum", SizeFilter.label(SizeFilter.snap(min)))
         assertEquals("No limit", SizeFilter.label(SizeFilter.snap(max)))
-        assertEquals("You'll see videos from 400 MB upwards.", SizeFilter.describe(min, max))
+        assertEquals("You'll see every video in the chat, whatever its size.", SizeFilter.describe(min, max))
         // What the note promises is what the filter does.
-        assertFalse(SizeFilter.matches(300 * MB, min, max))
+        assertTrue(SizeFilter.matches(300 * MB, min, max))
         assertTrue(SizeFilter.matches(450 * MB, min, max))
-        assertFalse(SizeFilter.isDefault(FLOOR, CEILING))
+        assertTrue(SizeFilter.isDefault(FLOOR, CEILING))
+        assertFalse(SizeFilter.isDefault(SizeFilter.OLD_DEFAULT_MIN, CEILING))
         assertFalse(SizeFilter.isDefault(min, 2 * GB))
     }
 

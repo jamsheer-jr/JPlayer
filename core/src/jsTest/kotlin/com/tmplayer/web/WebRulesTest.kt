@@ -199,7 +199,7 @@ class WebRulesTest {
         assertEquals(60_000.0, resumeKept(60_000.0, 57_200.0, 3_000.0))
         assertEquals(3_000.0, rewindSetting(7.0))
         val limits = sizeLimits()
-        assertEquals(400 * mb, limits.defaultMin)
+        assertEquals(0.0, limits.defaultMin)
         assertEquals(listOf(0.0, 50 * mb, 100 * mb, 200 * mb, 400 * mb, 1024 * mb), limits.quick.toList())
         assertEquals(100 * mb, sizeStep(50 * mb, 1))
         assertEquals(0.05, sizeFraction(50 * mb), 0.0001)
