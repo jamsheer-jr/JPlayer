@@ -1594,6 +1594,7 @@ private fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRe
     }
 }
 
+@Composable
 private fun <T : Any> ContinueSection(
     records: List<T>,
     text: (T) -> VideoCardText,
