@@ -100,9 +100,10 @@ import java.util.Locale
  * (earlier, later, reset) and, for subtitles, their look. Those act in place and leave the picker
  * open where it was scrolled to, so a line can be nudged a tenth at a time while it plays behind
  * the dimmed list, and the look changes on the subtitles as they are chosen. On a touch screen
- * the panel is ordered as a list of jobs first (open a file or a link, search online, translate),
- * then synchronization, then customization, then the tracks; on a television the one column
- * keeps its order, tracks first.
+ * the panel opens on the track list itself, the video's own embedded tracks first among them,
+ * with the jobs (open a file or a link, search online, translate), the synchronization and the
+ * customization as compact rows and controls under it; on a television the one column keeps
+ * its order, tracks first.
  *
  * For subtitles, "Search online" sits under the tracks and turns the panel into what OpenSubtitles
  * (and SubDL, with the viewer's key) has for the video. Downloads work without signing in; what
@@ -223,6 +224,14 @@ class TrackPickerFragment : Fragment() {
                     add(Option(group, index, describe(group, index, number - 1), tags(format).ifEmpty { null }?.joinToString("  ·  ")))
                 }
             }
+        }.let { built ->
+            // The video's own tracks first (owner, 2026-11-06): a subtitle the file itself
+            // carries stands above the ones loaded onto it from a file, a link or a search,
+            // which keep the player's order among themselves. Off stays at the head, where
+            // it has always been. Sound has no loaded tracks, so its order is untouched.
+            if (trackType != C.TRACK_TYPE_TEXT) return@let built
+            val (off, tracks) = built.partition { it.group == null }
+            off + tracks.sortedBy { option -> if (isLoadedTrack(option)) 1 else 0 }
         }.let(::numberNamesakes)
         return buildList {
             val none = options.isEmpty() || (trackType == C.TRACK_TYPE_TEXT && options.size == 1)
@@ -540,12 +549,13 @@ class TrackPickerFragment : Fragment() {
      * that needs no heading (Search online, Try again), with the same room and no words.
      *
      * On a touch screen the tracks page ([onInPlace] given, which only it passes) is one
-     * scrolling column in the order a subtitle or audio job is done (J Player, 2026-11-06):
-     * the opening rows first (a file or a link of the viewer's own, Search online, the other
-     * search, Translate), then synchronization as one stepper, then customization (the size
-     * and position as segments, the lift as a slider, the colours as swatches), then the track
-     * list itself. On a television nothing here changes: the one column keeps its order, the
-     * tracks first and the timing and look as lines under them.
+     * scrolling column with the track list itself first (owner, 2026-11-06), the video's own
+     * embedded tracks at its head, then the opening rows (a file or a link of the viewer's
+     * own, Search online, the other search, Translate) as plain rows under it, then
+     * synchronization as one stepper, then customization (the size and position as segments,
+     * the lift as a slider, the colours as swatches). On a television nothing here changes:
+     * the one column keeps its order, the tracks first and the timing and look as lines
+     * under them.
      */
     @Composable
     private fun androidx.compose.foundation.layout.ColumnScope.Lines(
@@ -563,6 +573,11 @@ class TrackPickerFragment : Fragment() {
         if (isTouch() && onInPlace != null) {
             val (functions, tracks) = choose.partition { it.group == Group.Online }
             ChoiceList {
+                // The tracks themselves first (owner, 2026-11-06): choosing one is the job
+                // the panel is opened for, and it was the last thing in it. The ways to add
+                // a track and the timing and look controls stand under the list, compact
+                // as they were, and nothing they offered is gone.
+                LineRows(tracks, firstFocus, focusKey)
                 val opening = openLines() + functions
                 if (opening.isNotEmpty()) LineRows(opening, firstFocus, focusKey)
                 if (adjust.isNotEmpty()) {
@@ -573,7 +588,6 @@ class TrackPickerFragment : Fragment() {
                         onInPlace,
                     )
                 }
-                LineRows(tracks, firstFocus, focusKey)
             }
         } else {
             ChoiceList { LineRows(lines, firstFocus, focusKey) }
@@ -581,10 +595,11 @@ class TrackPickerFragment : Fragment() {
     }
 
     /**
-     * The opening rows of the touch subtitle panel: a subtitle file, or the same by link, the
-     * host's own ways on (null where a build or a screen offers neither, as on a television).
-     * Choosing one closes the picker first, as the online page's own file and link lines do.
-     * Subtitles only: the audio panel has nothing to open.
+     * The file and link rows of the touch subtitle panel, which stand under the track list:
+     * a subtitle file, or the same by link, the host's own ways on (null where a build or a
+     * screen offers neither, as on a television). Choosing one closes the picker first, as
+     * the online page's own file and link lines do. Subtitles only: the audio panel has
+     * nothing to open.
      */
     private fun openLines(): List<Line> {
         if (trackType != C.TRACK_TYPE_TEXT) return emptyList()
@@ -800,6 +815,16 @@ class TrackPickerFragment : Fragment() {
 
     // ---- naming the tracks --------------------------------------------------------------------
 
+    /**
+     * Whether [option] is a track loaded onto the video rather than one the file carries:
+     * a loaded subtitle file's format id carries its "external-N" name (see
+     * [ExternalSubtitle] and the player's own check), an embedded track's never does.
+     */
+    private fun isLoadedTrack(option: Option): Boolean {
+        val group = option.group ?: return false
+        return EXTERNAL_ID.containsMatchIn(group.getTrackFormat(option.trackIndex).id.orEmpty())
+    }
+
     private fun isSelected(tracks: Tracks, option: Option): Boolean {
         if (option.group == null) {
             return tracks.groups.none { it.type == trackType && it.isSelected }
@@ -900,6 +925,9 @@ class TrackPickerFragment : Fragment() {
 
         /** The room that opens a group without a heading: about what a heading's top takes. */
         private val GROUP_GAP = 8.dp
+
+        /** A loaded subtitle file's mark in its format id: "external-1", "external-2", and so on. */
+        private val EXTERNAL_ID = Regex("""external-\d+""")
 
         /** The touch controls' inset, the same 24 dp the lines carry, so they line up with the radios. */
         private val ADJUST_PAD = 24.dp
