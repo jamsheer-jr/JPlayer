@@ -20,8 +20,18 @@ data class MediaFacts(
     val pixels: String? = null,
     /** "HEVC", "H.264", "AV1", "VP9", "XviD". */
     val videoCodec: String? = null,
-    /** "Dolby Vision", "HDR10+", "HDR10", "HDR". */
+    /** "Dolby Vision", "HDR10+", "HDR10", "HDR", "SDR", or "HDR DV" when both are named. */
     val dynamicRange: String? = null,
+    /**
+     * The OTT service the release came from, when its name carries one of the owner's tags
+     * ("Netflix", "Disney+ Hotstar", "ZEE5", ...): what the Home OTT rows group by, with
+     * TMDB's watch providers as the other source. See [PLATFORMS].
+     */
+    val platform: String? = null,
+    /** The name carries the AI token in the owner's exact shapes: an AI enhanced upscale. */
+    val aiEnhanced: Boolean = false,
+    /** The name says the release is a remaster, in any of its common misspellings. */
+    val remastered: Boolean = false,
     /** "E-AC3 5.1", "AAC 2.0", "TrueHD Atmos": codec, then the channel layout when named. */
     val audio: String? = null,
     /** What the name says about the tracks inside, beyond the first audio. */
@@ -48,7 +58,10 @@ data class MediaFacts(
                 resolution = resolutionOf(width, height) ?: MediaText.qualityTags(fileName).firstOrNull(),
                 pixels = if (width > 0 && height > 0) "$width × $height" else null,
                 videoCodec = first(name, VIDEO_CODECS),
-                dynamicRange = first(name, DYNAMIC_RANGE),
+                dynamicRange = dynamicRangeOf(name),
+                platform = first(name, PLATFORMS),
+                aiEnhanced = AI_ENHANCED.containsMatchIn(fileName),
+                remastered = REMASTERED.containsMatchIn(name),
                 audio = audioOf(name),
                 tracks = TRACKS.filter { (_, pattern) -> pattern.containsMatchIn(name) }.map { it.first },
                 source = first(name, SOURCES),
@@ -111,7 +124,59 @@ data class MediaFacts(
             "HDR10+" to Regex("""(?<![a-z0-9])hdr10(?:\+|plus)"""),
             "HDR10" to word("hdr10"),
             "HDR" to word("hdr"),
+            "SDR" to word("sdr"),
         )
+
+        /** Any HDR family marker at all, for the HDR DV combination below. */
+        private val ANY_HDR = word("""hdr10(?:\+|plus)?|hdr""")
+
+        /**
+         * The dynamic range as the owner groups it (2026-11-06): HDR and Dolby Vision named
+         * together, in either spelling ("HDRDV", "HDR.DV", "DV HDR"), read as the one kind
+         * "HDR DV" rather than whichever of the two the table would have met first. Otherwise
+         * the table order stands: Dolby Vision, then HDR10+, HDR10, HDR, SDR.
+         */
+        private fun dynamicRangeOf(name: String): String? {
+            val base = first(name, DYNAMIC_RANGE)
+            if (base == "Dolby Vision" && ANY_HDR.containsMatchIn(name)) return "HDR DV"
+            return base
+        }
+
+        /**
+         * The owner's OTT tag dictionary (2026-11-06), first match wins. His words, not the
+         * services' marketing: the Hotstar family in India is HS, JHS and DSNP (Disney+ goes
+         * out through Hotstar there), JC and JIO are Jio, and SONYLIV is one word, no space.
+         * Matching is whole word by [word], so a tag inside a title never fires.
+         */
+        private val PLATFORMS = listOf(
+            "Netflix" to word("nf|netflix"),
+            "Prime Video" to word("amzn|amazon|prime[ ._-]?video"),
+            "Disney+ Hotstar" to word("hs|jhs|dsnp|hotstar|disney[ ._-]?plus"),
+            "ZEE5" to word("z5|zee5"),
+            "SonyLIV" to word("sliv|sonyliv"),
+            "SunNXT" to word("sunxt|snxt|sunnext|sunnxt"),
+            "ManoramaMAX" to word("mmax|manorama[ ._-]?max"),
+            "Simply South" to word("ss|simply[ ._-]?south"),
+            "Jio" to word("jc|jio|jiocinema"),
+            "Aha" to word("aha"),
+            "iQIYI" to word("iq|iqiyi"),
+            "Rakuten Viki" to word("viki"),
+        )
+
+        /**
+         * The owner's AI rule, exactly as he stated it (2026-11-06): AI counts ONLY as
+         * "space AI space" or "dot AI dot", delimited on both sides. No brackets, no string
+         * edges, and nothing inside a longer word (Chennai and Airlift are safe, DS4K alone
+         * does not count). Case as written in the name: scene tags are upper case, titles are
+         * not, so the match is case sensitive on purpose.
+         */
+        private val AI_ENHANCED = Regex("""(?<=[ .])AI(?=[ .])""")
+
+        /**
+         * Remastered and the spellings uploaders actually type (owner, 2026-11-06):
+         * REMASTERED, REAMSTER, RMASTRD, REMASTERD all read as the one kind.
+         */
+        private val REMASTERED = word("""remaster(?:ed)?|reamster|rmastrd|remasterd""")
 
         /** A codec may run straight into its channels ("DDP5.1", "AAC2.0"), so only the left is bounded. */
         private fun audio(body: String) = Regex("""(?<![a-z0-9])(?:$body)(?![a-z])""")

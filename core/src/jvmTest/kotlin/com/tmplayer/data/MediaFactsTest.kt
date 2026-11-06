@@ -76,3 +76,57 @@ class MediaFactsTest {
         assertNull(MediaFacts.read("savvy.dtsomething.mkv").audio)
     }
 }
+
+    @Test
+    fun `the owner's platform tags read as their services`() {
+        assertEquals("Disney+ Hotstar", MediaFacts.read("Im.Game.2026.720p.DS4K.HS.WEBRip.mkv").platform)
+        assertEquals("Disney+ Hotstar", MediaFacts.read("Show.2025.JHS.WEB-DL.mkv").platform)
+        assertEquals("Netflix", MediaFacts.read("Show.2025.NF.WEB-DL.mkv").platform)
+        assertEquals("Prime Video", MediaFacts.read("Film.2026.AMZN.WEB-DL.mkv").platform)
+        assertEquals("ZEE5", MediaFacts.read("Film.2026.Z5.WEB-DL.mkv").platform)
+        assertEquals("ZEE5", MediaFacts.read("Film.2026.ZEE5.WEB-DL.mkv").platform)
+        assertEquals("SonyLIV", MediaFacts.read("Film.2026.SLIV.WEB-DL.mkv").platform)
+        assertEquals("SonyLIV", MediaFacts.read("Film.2026.SONYLIV.WEB-DL.mkv").platform)
+        assertEquals("SunNXT", MediaFacts.read("Film.2026.SNXT.WEB-DL.mkv").platform)
+        assertEquals("SunNXT", MediaFacts.read("Film.2026.SUNXT.WEB-DL.mkv").platform)
+        assertEquals("ManoramaMAX", MediaFacts.read("Film.2026.MMAX.WEB-DL.mkv").platform)
+        assertEquals("Simply South", MediaFacts.read("Film.2026.SS.WEB-DL.mkv").platform)
+        assertEquals("Jio", MediaFacts.read("Film.2026.JC.WEB-DL.mkv").platform)
+        assertEquals("Jio", MediaFacts.read("Film.2026.JIO.WEB-DL.mkv").platform)
+        assertEquals("Aha", MediaFacts.read("Film.2026.AHA.WEB-DL.mkv").platform)
+        assertEquals("iQIYI", MediaFacts.read("Drama.2026.IQ.WEB-DL.mkv").platform)
+        assertEquals("Rakuten Viki", MediaFacts.read("Drama.2026.VIKI.WEB-DL.mkv").platform)
+        assertNull(MediaFacts.read("Chennai.Story.2026.WEB-DL.mkv").platform)
+        assertNull(MediaFacts.read("Harbour.Notes.S01E04.1080p.WEB-DL.mkv").platform)
+    }
+
+    @Test
+    fun `AI counts only as space AI space or dot AI dot`() {
+        assertTrue(MediaFacts.read("Film.2026.1080p.AI.WEB-DL.mkv").aiEnhanced)
+        assertTrue(MediaFacts.read("Film 2026 1080p AI Upscaled.mkv").aiEnhanced)
+        assertTrue(MediaFacts.read("Film.1080p.DS4K.AI.HS.WEBRip.mkv").aiEnhanced)
+        assertTrue(!MediaFacts.read("Film.1080p.DS4K.HS.WEBRip.mkv").aiEnhanced)
+        assertTrue(!MediaFacts.read("Chennai.Express.2013.BluRay.mkv").aiEnhanced)
+        assertTrue(!MediaFacts.read("Airlift.2016.BluRay.mkv").aiEnhanced)
+        assertTrue(!MediaFacts.read("Film.[AI].1080p.mkv").aiEnhanced)
+        assertTrue(!MediaFacts.read("AI.Film.2026.mkv").aiEnhanced)
+    }
+
+    @Test
+    fun `remastered in every spelling uploaders type`() {
+        assertTrue(MediaFacts.read("Classic.1975.Remastered.BluRay.mkv").remastered)
+        assertTrue(MediaFacts.read("Classic.1975.Reamster.BluRay.mkv").remastered)
+        assertTrue(MediaFacts.read("Classic.1975.Rmastrd.BluRay.mkv").remastered)
+        assertTrue(MediaFacts.read("Classic.1975.Remasterd.BluRay.mkv").remastered)
+        assertTrue(!MediaFacts.read("Film.2026.BluRay.mkv").remastered)
+    }
+
+    @Test
+    fun `HDR and Dolby Vision together read as HDR DV`() {
+        assertEquals("HDR DV", MediaFacts.read("Film.2160p.HDRDV.WEB-DL.mkv").dynamicRange)
+        assertEquals("HDR DV", MediaFacts.read("Film.2160p.HDR.DV.WEB-DL.mkv").dynamicRange)
+        assertEquals("HDR DV", MediaFacts.read("Film.2160p.DV.HDR.WEB-DL.mkv").dynamicRange)
+        assertEquals("Dolby Vision", MediaFacts.read("Film.2160p.DV.WEB-DL.mkv").dynamicRange)
+        assertEquals("SDR", MediaFacts.read("Film.1080p.SDR.WEB-DL.mkv").dynamicRange)
+        assertEquals("HDR", MediaFacts.read("Film.2160p.HDR.WEB-DL.mkv").dynamicRange)
+    }
