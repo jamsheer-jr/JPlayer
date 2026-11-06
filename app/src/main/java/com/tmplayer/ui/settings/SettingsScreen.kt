@@ -132,11 +132,15 @@ import com.tmplayer.data.Notice
 import com.tmplayer.data.OfflineDownloads
 import com.tmplayer.data.RestorePlan
 import com.tmplayer.data.ResumeRewind
+import com.tmplayer.data.AccountBook
+import com.tmplayer.data.AccountEntry
+import com.tmplayer.data.Accounts
 import com.tmplayer.data.SettingsStore
 import com.tmplayer.data.SizeFilter
 import com.tmplayer.data.StorageSplit
 import com.tmplayer.data.SupportReminder
 import com.tmplayer.data.Td
+import com.tmplayer.data.switchAccount
 import com.tmplayer.data.ThemeChoice
 import com.tmplayer.data.UiScale
 import com.tmplayer.data.UpdateWords
@@ -223,6 +227,9 @@ private sealed interface Prompt {
     data object ClearHistory : Prompt
     data object ClearFavorites : Prompt
     data object SignOut : Prompt
+
+    /** Switching to another account on this device: its client closes and the other starts. */
+    data class SwitchAccount(val slot: Int, val name: String) : Prompt
 
     /** A backup file picked, with what restoring it would change. */
     data class Restore(val plan: RestorePlan) : Prompt
@@ -407,6 +414,8 @@ fun SettingsScreen(
     var disk by remember { mutableStateOf(DiskInfo.EMPTY) }
     var busy by remember { mutableStateOf<String?>(null) }
     var prompt by remember { mutableStateOf<Prompt?>(null) }
+    // The accounts on this device (Account page), read again whenever that page is opened.
+    var accountEntries by remember { mutableStateOf(Accounts.entries(context)) }
     val backup = rememberBackupActions(onPlan = { prompt = Prompt.Restore(it) }, say = { toast(it) })
     val saveLogs = rememberSaveLogs(say = { toast(it) })
     val saveNameCheck = rememberSaveNameCheck(say = { toast(it) })
@@ -505,6 +514,20 @@ fun SettingsScreen(
     LaunchedEffect(cached.map { it.fileId }) { refresh() }
 
     LaunchedEffect(Unit) { refresh() }
+
+    // The Account page's list is read again each time the page opens, and the account in use is
+    // remembered first when its line has no name yet: it may have finished signing in somewhere
+    // else (a new account signs in over the whole shell, not on this page).
+    LaunchedEffect(page) {
+        if (page != SettingsPage.Account) return@LaunchedEffect
+        val slot = Accounts.activeSlot(context)
+        val live = account
+        if (live != null && Accounts.entries(context).none { it.slot == slot && it.name.isNotBlank() }) {
+            val id = runCatching { Td.myId() }.getOrDefault(0L)
+            Accounts.record(context, AccountEntry(slot, id, live.name, live.username))
+        }
+        accountEntries = Accounts.entries(context)
+    }
 
     // Nothing on a phone is driven by focus, and stealing it there would scroll the list to a
     // control the viewer never asked for.
@@ -1668,6 +1691,56 @@ fun SettingsScreen(
                         onClick = { devicesOpen = true },
                     )
                 }
+
+                sectionTitle { s.settingsAccounts }
+                // Every account on this device has its own sign in, in its own TDLib database
+                // (Accounts): a switch restarts the client onto the other account's, and nothing
+                // is signed out. The account in use is named by the live account when its list
+                // line has no name yet (it signed in before the list learned it).
+                val activeSlot = Accounts.activeSlot(context)
+                val accountRows = if (accountEntries.any { it.slot == activeSlot }) {
+                    accountEntries
+                } else {
+                    (accountEntries + AccountEntry(activeSlot, 0L, account?.name.orEmpty(), account?.username.orEmpty()))
+                        .sortedBy { it.slot }
+                }
+                for (entry in accountRows) {
+                    item {
+                        ActionRow(
+                            title = entry.name.ifBlank { s.settingsAccountUnnamed },
+                            subtitle = if (entry.slot == activeSlot) {
+                                s.settingsAccountActive
+                            } else {
+                                entry.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: s.settingsAccountSaved
+                            },
+                            icon = TmIcons.Person,
+                            onClick = {
+                                if (entry.slot != activeSlot) {
+                                    prompt = Prompt.SwitchAccount(entry.slot, entry.name.ifBlank { s.settingsAccountUnnamed })
+                                }
+                            },
+                        )
+                    }
+                }
+                if (accountEntries.size < AccountBook.MAX_ACCOUNTS) {
+                    item {
+                        ActionRow(
+                            title = s.settingsAccountAdd,
+                            subtitle = s.settingsAccountAddDetail,
+                            icon = TmIcons.Add,
+                            onClick = {
+                                scope.launch {
+                                    busy = s.settingsAccountSwitching
+                                    val slot = Accounts.addSlot(context)
+                                    switchAccount(context, slot)
+                                    accountEntries = Accounts.entries(context)
+                                    busy = null
+                                }
+                            },
+                        )
+                    }
+                }
+
                 // Last, under the cards rather than in one: the one press here that ends the
                 // session, asked first (Prompt.SignOut).
                 settingsNote {
@@ -2305,6 +2378,9 @@ fun SettingsScreen(
                     busy = s.settingsSigningOut
                     // The downloads stay unless the box was ticked (forgetAccount says the rest).
                     forgetAccount(context, settings, watchedStore, deleteDownloads)
+                    // The account is gone from the device's list too, and its slot is retired:
+                    // a later account must never be handed this one's directories.
+                    Accounts.retire(context, Accounts.activeSlot(context))
                     Td.logOut()
                     onLoggedOut()
                 }
@@ -2314,6 +2390,26 @@ fun SettingsScreen(
                 alsoDeleteDownloads = false
             },
         )
+
+        is Prompt.SwitchAccount -> {
+            val ask = prompt as Prompt.SwitchAccount
+            TvConfirm(
+                title = s.settingsAccountSwitchTitle,
+                message = s.settingsAccountSwitchMessage(ask.name),
+                confirmLabel = s.settingsAccountSwitchConfirm,
+                destructive = false,
+                onConfirm = {
+                    prompt = null
+                    scope.launch {
+                        busy = s.settingsAccountSwitching
+                        switchAccount(context, ask.slot)
+                        accountEntries = Accounts.entries(context)
+                        busy = null
+                    }
+                },
+                onDismiss = { prompt = null },
+            )
+        }
 
         is Prompt.Restore -> {
             val plan = (prompt as Prompt.Restore).plan
