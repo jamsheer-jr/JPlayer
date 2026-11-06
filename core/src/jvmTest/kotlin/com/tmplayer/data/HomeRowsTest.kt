@@ -812,6 +812,31 @@ class HomeRowsTest {
     }
 
     @Test
+    fun anAnimeCatalogueMatchCountsAsAnimeWhateverItsGenresSay() {
+        // An AniList match (v1.0.13): its genres are AniList's own (Action, Adventure) with no
+        // Animation among them and no language read, and the match alone marks the title anime.
+        val films = listOf(
+            video(1, "Paper Cranes 2024.mp4"),
+            video(1, "Paper Boats 2024.mp4"),
+            video(1, "Paper Moons 2024.mp4"),
+        )
+        val meta = HashMap<String, TitleMeta>()
+        films.forEach { meta[it.id] = TitleMeta(genres = listOf("Action", "Adventure"), anime = true) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        val anime = catalogs.single { it.kind == "anime" }
+        assertEquals(3, anime.all.size)
+        assertTrue(catalogs.none { it.kind == "movies" })
+    }
+
+    @Test
     fun anUnmatchedTitleWithAnimeInItsNameCountsAsAnime() {
         val named = listOf(
             video(1, "Star Anime Tale 2024.mp4"),

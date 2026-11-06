@@ -158,6 +158,13 @@ data class TitleMeta(
     val year: Int? = null,
     /** Where the title streams, by the app's platform names, from the online match. */
     val providers: List<String> = emptyList(),
+    /**
+     * The match itself is an anime catalogue record (an AniList match, v1.0.13): the title is
+     * anime by the fact of the match, whatever its genres and language say, since AniList
+     * catalogues animation and its records carry neither an Animation genre nor a language
+     * the genre test can read. The caller sets this from the match's provider.
+     */
+    val anime: Boolean = false,
 )
 
 /**
@@ -633,6 +640,8 @@ object HomeRows {
      */
     private fun isAnime(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): Boolean {
         val meta = metaOf(entry, titleMeta)
+        // An anime catalogue's own match settles it before any genre reading (v1.0.13).
+        if (meta?.anime == true) return true
         if (meta != null && (meta.genres.isNotEmpty() || meta.originalLanguage != null)) {
             return meta.originalLanguage?.equals("ja", ignoreCase = true) == true &&
                 meta.genres.any { it.trim().equals("Animation", ignoreCase = true) }
