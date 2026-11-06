@@ -23,6 +23,10 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -73,6 +77,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -411,6 +416,14 @@ class PlayerMorePanel(
         val lines = kinds.map { line(it, count) }
         val requesters = remember { mutableMapOf<Kind, FocusRequester>() }
         Header(title = s.playerMoreOptions, subtitle = host.title().ifBlank { null })
+        // A phone draws the same lines as a grid of icon circles (J Player, 2026-11-06): the
+        // same entries, the same choices, scanned by picture under a finger. The television
+        // never takes this branch (it is not touch), so its list, its focus order and the
+        // focus the remote returns to are exactly as they were.
+        if (touch && !host.tv) {
+            QuickGrid(lines)
+            return
+        }
         Column(Modifier.weight(1f, fill = false).fillMaxWidth().padding(horizontal = PAD)) {
             ChoiceList {
                 lines.forEachIndexed { index, line ->
@@ -433,6 +446,73 @@ class PlayerMorePanel(
         }
         val target = openedFrom?.let { requesters[it] } ?: lines.firstOrNull()?.let { requesters[it.kind] }
         if (target != null) FocusOnOpen(target, key = openedFrom)
+    }
+
+    /**
+     * The main page's lines as circles in rows of [GRID_COLUMNS], phone only: each circle is
+     * the line's own icon, its name under it and its value under that, and a tap makes the
+     * line's own choice through [choose], so a page opens, a switch flips or the panel closes
+     * exactly as the list's tap would. It scrolls as the list does when the lines outgrow the
+     * panel. Nothing here takes or moves focus: a touch screen has no remote to place, and
+     * the pages the circles open keep their own Back and focus behaviour.
+     */
+    @Composable
+    private fun ColumnScope.QuickGrid(lines: List<Line>) {
+        val scroll = rememberScrollState()
+        Column(
+            Modifier
+                .weight(1f, fill = false)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .padding(horizontal = PAD)
+                .padding(top = 4.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            lines.chunked(GRID_COLUMNS).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { line -> QuickCell(line, Modifier.weight(1f)) }
+                    repeat(GRID_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+
+    /** One circle of the [QuickGrid]: the line's icon in a filled circle, its name and value under it. */
+    @Composable
+    private fun QuickCell(line: Line, modifier: Modifier) {
+        Column(
+            modifier
+                .clip(RoundedCornerShape(Corner.Medium))
+                .clickable { choose(line.kind) }
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                Modifier.size(56.dp).clip(CircleShape).background(Tone.surfaceHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                M3Icon(line.icon, contentDescription = line.label, tint = Tone.text, modifier = Modifier.size(26.dp))
+            }
+            Text(
+                line.label,
+                style = MaterialTheme.typography.titleSmall,
+                color = Tone.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            if (line.detail != null) {
+                Text(
+                    line.detail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Tone.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 
     @Composable
@@ -745,6 +825,9 @@ class PlayerMorePanel(
 
         /** The pages' side padding, which a [ChoiceList] on a phone runs its rows through. */
         val PAD = 24.dp
+
+        /** Circles across one row of the phone's quick grid: four read at a glance in 360 dp. */
+        const val GRID_COLUMNS = 4
 
         /**
          * Lighter than a dialog's dim: the panel sits beside a video that keeps playing, which
