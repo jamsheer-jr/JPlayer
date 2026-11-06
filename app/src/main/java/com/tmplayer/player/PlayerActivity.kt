@@ -2283,7 +2283,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 onSubtitles = ::onSubtitleLines,
                 subtitleLift = { subtitleStyleNow().lift },
                 onSubtitleLift = ::dragSubtitles,
-                onSubtitleSize = ::pinchSubtitleSize,
+                onSubtitleScale = ::scaleSubtitles,
                 positionMs = { player?.currentPosition ?: 0L },
                 durationMs = { player?.duration?.takeIf { it > 0 } ?: 0L },
                 onSeekTo = { at -> if (!refuseSeek()) player?.seekTo(at) },
@@ -2653,21 +2653,90 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
-     * A tap on the quality badge (phone): climb to the next quality tier this video's
-     * copies have ([VideoCopies.nextTierCopy]), through the same switch the copies list
-     * makes, so the place carries over and the pick is remembered the same way, and the
-     * badge then names the new copy's tier as it always has. One tier only: the badge
-     * just says what is playing, and nothing changes.
+     * A tap on the quality badge (phone): the quality chooser (J Player, 2026-11-06), an
+     * MX style list of the tiers this video's copies have, each with its best copy's height
+     * and size, instead of cycling blind to the next tier. Choosing a tier switches through
+     * the same switch the copies list makes, so the place carries over and the pick is
+     * remembered the same way. One tier only, or none known: Telegram's own qualities, when
+     * there are any, open in the copies sheet; otherwise the badge just names what plays.
      */
     private fun cycleQuality() {
-        val next = VideoCopies.nextTierCopy(copies, currentItem().id)
-        if (next == null) {
+        if (streamUrl != null) {
+            openStreamQuality()
+            return
+        }
+        val choices = VideoCopies.tierChoices(copies, currentItem().id)
+        if (choices.size < 2) {
+            if (telegramQualities().isNotEmpty()) openCopies()
+            else playingBadge()?.let { showGestureFeedback(it) }
+            return
+        }
+        showSheet {
+            it.showQuality(
+                choices = choices,
+                detailOf = { choice ->
+                    listOfNotNull(
+                        VideoCopies.qualityLabel(choice.copy),
+                        choice.copy.sizeBytes.takeIf { size -> size > 0 }
+                            ?.let { size -> Translator.messages.formatter.bytes(size) },
+                    ).joinToString("  ·  ")
+                },
+                onPick = ::switchCopy,
+            )
+        }
+    }
+
+    /**
+     * A stream's own quality (J Player, 2026-11-06): the variants the stream itself carries,
+     * read from the player's video tracks, Auto first. Choosing one pins it with a track
+     * override; Auto clears the override and lets the player adapt. A stream with a single
+     * variant has nothing to choose, and the badge just names it. The stream's soundtracks
+     * are switched in the ordinary audio panel, which reads the same player's tracks.
+     */
+    private fun openStreamQuality() {
+        val exo = player ?: return
+        val variants = tracksOfType(exo.currentTracks, C.TRACK_TYPE_VIDEO)
+            .sortedByDescending { (group, index) -> group.getTrackFormat(index).height }
+        if (variants.size < 2) {
             playingBadge()?.let { showGestureFeedback(it) }
             return
         }
-        switchCopy(next)
-        val name = next.copyQuality() ?: VideoCopies.heightOf(next)?.let { VideoCopies.badgeForHeight(it) }
-        name?.let { showGestureFeedback(it) }
+        val overrides = exo.trackSelectionParameters.overrides
+        val pinned = variants.indexOfFirst { (group, index) ->
+            val indices = overrides[group.mediaTrackGroup]?.trackIndices
+            indices != null && (0 until indices.size()).any { indices.get(it) == index }
+        }
+        val options = buildList {
+            add(StreamQualityOption(L.playerQualityAuto, null, pinned < 0))
+            variants.forEachIndexed { at, (group, index) ->
+                val format = group.getTrackFormat(index)
+                val label = when {
+                    format.height >= 2000 -> "UHD"
+                    format.height >= 1080 -> "HD"
+                    format.height > 0 -> "SD"
+                    else -> null
+                } ?: format.height.takeIf { it > 0 }?.let { "${it}p" } ?: "SD"
+                val detail = listOfNotNull(
+                    if (format.width > 0 && format.height > 0) "${format.width}x${format.height}" else null,
+                    format.bitrate.takeIf { it > 0 }?.let {
+                        Translator.messages.formatter.decimal(it / 1_000_000.0, 1) + " Mbps"
+                    },
+                ).joinToString("  ·  ").ifEmpty { null }
+                add(StreamQualityOption(label, detail, at == pinned))
+            }
+        }
+        showSheet {
+            it.showStreamQuality(options) { picked ->
+                val builder = exo.trackSelectionParameters.buildUpon()
+                if (picked <= 0) {
+                    builder.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                } else {
+                    val (group, index) = variants[picked - 1]
+                    builder.setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+                }
+                exo.trackSelectionParameters = builder.build()
+            }
+        }
     }
 
     /** Telegram's lighter copies of the upload playing (CP80); none for a download or a joined video. */
@@ -5635,7 +5704,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         return maxOf(1f, minOf(root.width, root.height) * UPRIGHT_TEXT_SHARE / height)
     }
 
-    private fun subtitleTextFraction(): Float = subtitleStyle.size.fraction * subtitleTextScale()
+    private fun subtitleTextFraction(): Float = subtitleStyle.sizeFraction * subtitleTextScale()
 
     /**
      * The bottom padding, as a share of the view's height: the position setting's share, or
@@ -5722,13 +5791,19 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         showGestureFeedback(L.tracksSubtitlePosition + " " + Translator.messages.formatter.percent(next.bottomFraction.toDouble()))
     }
 
-    /** One step of a pinch on the subtitle lines: one of the panel's own size steps. */
-    private fun pinchSubtitleSize(expanding: Boolean) {
+    /**
+     * A pinch on the subtitle lines, continuously (J Player, 2026-11-06): the factor scales the
+     * style's own size scale, so the text follows the fingers to any size in the range instead
+     * of stepping through the panel's named sizes. The readout is the size as a percentage.
+     */
+    private fun scaleSubtitles(factor: Float) {
         val style = subtitleStyleNow()
-        val next = if (expanding) style.nextSize() else style.previousSize()
+        val next = style.scaledBy(factor)
         if (next == style) return
         changeSubtitleStyle(next)
-        showGestureFeedback(next.size.label)
+        showGestureFeedback(
+            next.size.label + " " + Translator.messages.formatter.percent(next.sizeScale.toDouble()),
+        )
     }
 
     /**

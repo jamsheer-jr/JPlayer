@@ -249,6 +249,27 @@ object VideoCopies {
             .maxWithOrNull(compareBy<MediaItem> { heightOf(it) ?: 0 }.thenBy { it.sizeBytes })
     }
 
+    /** One row of the quality chooser: a tier, the copy choosing it plays, and whether it is playing. */
+    data class TierChoice(val tier: String, val copy: MediaItem, val current: Boolean)
+
+    /**
+     * The quality chooser's rows (J Player, 2026-11-06: the badge tap opens a chooser instead of
+     * cycling blind): every tier [copies] actually has, lowest first, each with its own best copy
+     * by the order copies are always offered in (tallest picture, then largest file), and the tier
+     * playing marked. Copies whose height is not known take no part.
+     */
+    fun tierChoices(copies: List<MediaItem>, currentId: String): List<TierChoice> {
+        fun tierOf(item: MediaItem): String? = heightOf(item)?.let { badgeForHeight(it) }
+        val currentTier = copies.firstOrNull { it.id == currentId }?.let { tierOf(it) }
+        return TIERS.mapNotNull { tier ->
+            val best = copies
+                .filter { tierOf(it) == tier }
+                .maxWithOrNull(compareBy<MediaItem> { heightOf(it) ?: 0 }.thenBy { it.sizeBytes })
+                ?: return@mapNotNull null
+            TierChoice(tier, best, tier == currentTier)
+        }
+    }
+
     /**
      * Which of [copies] to play without asking, in this order:
      * 1. the one the viewer chose for this video before ([chosen], an [MediaItem.id]);

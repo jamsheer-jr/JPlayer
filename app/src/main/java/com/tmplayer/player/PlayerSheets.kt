@@ -84,6 +84,16 @@ class PlayerSheets(
         ) : Sheet
         class Shape(val current: VideoScale, val onPick: (VideoScale) -> Unit) : Sheet
 
+        /** The quality chooser: the badge tiers this video's copies have, each with its best copy. */
+        class Quality(
+            val choices: List<com.tmplayer.data.VideoCopies.TierChoice>,
+            val detailOf: (com.tmplayer.data.VideoCopies.TierChoice) -> String,
+            val onPick: (MediaItem) -> Unit,
+        ) : Sheet
+
+        /** A stream's own picture variants, Auto first, from a tap on the badge while a stream plays. */
+        class StreamQuality(val options: List<StreamQualityOption>, val onPick: (Int) -> Unit) : Sheet
+
         /** 3D video; [onChange] answers with what took effect, which a refusal leaves as it was. */
         class Stereo(val current: Stereo3d, val tagged: Stereo3d.Layout?, val onChange: (Stereo3d) -> Pair<String?, Stereo3d>) : Sheet
         class Sleep(val running: String?, val chosen: Int?, val onPick: (Int?) -> Unit) : Sheet
@@ -151,6 +161,20 @@ class PlayerSheets(
 
     fun showShape(current: VideoScale, onPick: (VideoScale) -> Unit) {
         sheet.value = Sheet.Shape(current, onPick)
+    }
+
+    /** The quality tiers of the copies playing, from a tap on the top bar's badge. */
+    fun showQuality(
+        choices: List<com.tmplayer.data.VideoCopies.TierChoice>,
+        detailOf: (com.tmplayer.data.VideoCopies.TierChoice) -> String,
+        onPick: (MediaItem) -> Unit,
+    ) {
+        sheet.value = Sheet.Quality(choices, detailOf, onPick)
+    }
+
+    /** The stream variant list: [options] in order, index 0 is Auto. */
+    fun showStreamQuality(options: List<StreamQualityOption>, onPick: (Int) -> Unit) {
+        sheet.value = Sheet.StreamQuality(options, onPick)
     }
 
     /**
@@ -262,6 +286,19 @@ class PlayerSheets(
             }
             is Sheet.Shape -> ShapeSheet(
                 current = shown.current,
+                onPick = { close(); shown.onPick(it) },
+                onDismiss = ::close,
+                onClose = ::close,
+            )
+            is Sheet.Quality -> QualitySheet(
+                choices = shown.choices,
+                detailOf = shown.detailOf,
+                onPick = { close(); shown.onPick(it) },
+                onDismiss = ::close,
+                onClose = ::close,
+            )
+            is Sheet.StreamQuality -> StreamQualitySheet(
+                options = shown.options,
                 onPick = { close(); shown.onPick(it) },
                 onDismiss = ::close,
                 onClose = ::close,
@@ -726,6 +763,71 @@ private val TILE_GAP = 12.dp
  * one of a few. The pinch on a phone stays as the shortcut; this is the route that can be found.
  */
 @Composable
+/**
+ * The quality chooser (J Player, 2026-11-06): the tiers the badge names, SD, HD and UHD, each
+ * with the copy choosing it would play (its height and size), the tier playing ticked. Picking
+ * the tier playing closes without a switch.
+ */
+@Composable
+internal fun QualitySheet(
+    choices: List<com.tmplayer.data.VideoCopies.TierChoice>,
+    detailOf: (com.tmplayer.data.VideoCopies.TierChoice) -> String,
+    onPick: (MediaItem) -> Unit,
+    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val s = LocalStrings.current
+    val touch = isTouch()
+    val focus = remember { FocusRequester() }
+    val current = choices.firstOrNull { it.current }
+    ChoiceSheet(title = s.seriesQuality, onDismiss = onDismiss, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
+        ChoiceList {
+            choices.forEach { choice ->
+                ChoiceLine(
+                    title = choice.tier,
+                    detail = detailOf(choice),
+                    selected = choice.current,
+                    modifier = if (choice.current) Modifier.focusRequester(focus) else Modifier,
+                ) { onPick(choice.copy) }
+            }
+        }
+        if (current != null) FocusOnOpen(focus)
+    }
+}
+
+/** One row of the stream quality list: what it is called, its size and rate, and whether it is on. */
+data class StreamQualityOption(val label: String, val detail: String?, val selected: Boolean)
+
+/**
+ * A stream's own quality list (J Player, 2026-11-06): Auto, which lets the player pick the
+ * variant the connection can carry, then each variant the stream itself offers, tallest first.
+ */
+@Composable
+internal fun StreamQualitySheet(
+    options: List<StreamQualityOption>,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val s = LocalStrings.current
+    val touch = isTouch()
+    val focus = remember { FocusRequester() }
+    val selected = options.indexOfFirst { it.selected }
+    ChoiceSheet(title = s.seriesQuality, onDismiss = onDismiss, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
+        ChoiceList {
+            options.forEachIndexed { index, option ->
+                ChoiceLine(
+                    title = option.label,
+                    detail = option.detail,
+                    selected = option.selected,
+                    modifier = if (option.selected) Modifier.focusRequester(focus) else Modifier,
+                ) { onPick(index) }
+            }
+        }
+        if (selected >= 0) FocusOnOpen(focus)
+    }
+}
+
 internal fun ShapeSheet(current: VideoScale, onPick: (VideoScale) -> Unit, onDismiss: () -> Unit, onClose: () -> Unit) {
     val s = LocalStrings.current
     val touch = isTouch()

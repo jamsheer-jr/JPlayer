@@ -212,6 +212,7 @@ object Backups {
         "subtitle_lift" to Kind.FLOAT,
         "subtitle_position" to Kind.TEXT,
         "subtitle_size" to Kind.TEXT,
+        "subtitle_size_scale" to Kind.FLOAT,
         "theme_choice" to Kind.TEXT,
         "trickplay" to Kind.BOOL,
         "tv_channels" to Kind.BOOL,

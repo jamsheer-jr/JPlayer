@@ -275,6 +275,7 @@ private val SUBTITLE_EDGE = stringPreferencesKey("subtitle_edge")
 private val SUBTITLE_FACE = stringPreferencesKey("subtitle_face")
 private val SUBTITLE_BOLD = booleanPreferencesKey("subtitle_bold")
 private val SUBTITLE_LIFT = floatPreferencesKey("subtitle_lift")
+private val SUBTITLE_SIZE_SCALE = floatPreferencesKey("subtitle_size_scale")
 
 // Android's video decoder choice. See [VideoDecoder].
 private val VIDEO_DECODER = stringPreferencesKey("video_decoder")
@@ -1635,7 +1636,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     private fun touchPrefsOf(prefs: Preferences) = TouchPrefs(
         tapPlaysPauses = prefs[TAP_PLAYS_PAUSES] ?: false,
         doubleTapMs = TouchPrefs.sanitiseDoubleTap(prefs[DOUBLE_TAP_MS]),
-        doubleTapPauses = prefs[DOUBLE_TAP_PAUSES] ?: true,
+        doubleTapPauses = prefs[DOUBLE_TAP_PAUSES] ?: false,
         holdSpeed = TouchPrefs.sanitiseHold(prefs[HOLD_SPEED]),
         controlsTimeoutMs = TouchPrefs.sanitiseTimeout(prefs[CONTROLS_TIMEOUT_MS]),
         seekGesture = prefs[GESTURE_SEEK] ?: true,
@@ -1662,6 +1663,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             it[SUBTITLE_FACE] = style.face.name
             it[SUBTITLE_BOLD] = style.bold
             it[SUBTITLE_LIFT] = style.lift
+            it[SUBTITLE_SIZE_SCALE] = style.sizeScale
         }
     }
 
@@ -1675,6 +1677,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         face = prefs[SUBTITLE_FACE],
         bold = prefs[SUBTITLE_BOLD],
         lift = prefs[SUBTITLE_LIFT],
+        sizeScale = prefs[SUBTITLE_SIZE_SCALE],
     )
 
     // ---- video decoder (Android) --------------------------------------------------------------

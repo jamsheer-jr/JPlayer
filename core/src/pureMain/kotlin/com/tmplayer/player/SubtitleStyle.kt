@@ -118,6 +118,12 @@ enum class SubtitleBox(val percent: Int) {
  */
 data class SubtitleStyle(
     val size: SubtitleSize = SubtitleSize.Medium,
+    /**
+     * A continuous multiplier over [size], written by pinching the subtitle lines themselves
+     * (J Player, 2026-11-06: the pinch must not step through the named sizes). The panel's named
+     * sizes stay as the base the pinch scales from; 1 keeps the named size exactly.
+     */
+    val sizeScale: Float = 1f,
     /** A dark box behind the text, for subtitles over a bright or busy picture, and how dark. */
     val boxLevel: SubtitleBox = SubtitleBox.Off,
     val position: SubtitlePosition = SubtitlePosition.Bottom,
@@ -144,6 +150,18 @@ data class SubtitleStyle(
     /** The position in mpv's units with the lift taken off: mpv counts down from the bottom. */
     val mpvSubPos: Int get() = (position.mpvSubPos - (lift * 100).roundToInt()).coerceIn(0, 100)
 
+    /** The size actually drawn: the named size scaled by the pinch's [sizeScale]. */
+    val sizeFraction: Float get() = (size.fraction * sizeScale).coerceIn(0.02f, 0.2f)
+
+    /** The same in mpv's units. */
+    val sizeMpv: Int get() = (size.mpvFontSize * sizeScale).roundToInt().coerceIn(10, 120)
+
+    /** This style with the pinch's scale moved by [factor], clamped to the readable range. */
+    fun scaledBy(factor: Float): SubtitleStyle {
+        if (!factor.isFinite() || factor <= 0f) return this
+        return copy(sizeScale = (sizeScale * factor).coerceIn(MIN_SIZE_SCALE, MAX_SIZE_SCALE))
+    }
+
     /** The next size up, wrapping back to the smallest: what a single remote button can drive. */
     fun nextSize(): SubtitleStyle = copy(size = SubtitleSize.entries.cycle(size))
 
@@ -168,7 +186,7 @@ data class SubtitleStyle(
      * with the box, the face and the weight named only when they are not the default.
      */
     fun summary(): String = listOfNotNull(
-        size.label,
+        if (sizeScale == 1f) size.label else size.label + " " + L.subtitlesBoxPercent((sizeScale * 100).roundToInt()),
         colour.label,
         if (box) L.subtitlesBoxSummary(boxLevel.percent) else edge.label,
         face.label.takeIf { face != SubtitleFace.Default },
@@ -187,7 +205,7 @@ data class SubtitleStyle(
      * mpv's colours are #AARRGGBB.
      */
     fun mpvProperties(font: String): List<Pair<String, String>> = buildList {
-        add("sub-font-size" to this@SubtitleStyle.size.mpvFontSize.toString())
+        add("sub-font-size" to this@SubtitleStyle.sizeMpv.toString())
         add("sub-pos" to mpvSubPos.toString())
         add("sub-color" to colour.hex)
         add("sub-font" to font)
@@ -219,6 +237,10 @@ data class SubtitleStyle(
     }
 
     companion object {
+        /** The pinch's scale range: half the named size to two and a half times it. */
+        const val MIN_SIZE_SCALE = 0.5f
+        const val MAX_SIZE_SCALE = 2.5f
+
         /** The most the position drag can add, as a share of the picture height. */
         const val MAX_LIFT = 0.42f
 
@@ -250,6 +272,7 @@ data class SubtitleStyle(
             face: String?,
             bold: Boolean?,
             lift: Float?,
+            sizeScale: Float? = null,
         ) = SubtitleStyle(
             size = SubtitleSize.entries.firstOrNull { it.name == size } ?: SubtitleSize.Medium,
             boxLevel = SubtitleBox.entries.firstOrNull { it.name == boxLevel }
@@ -260,6 +283,7 @@ data class SubtitleStyle(
             face = SubtitleFace.entries.firstOrNull { it.name == face } ?: SubtitleFace.Default,
             bold = bold ?: false,
             lift = lift?.takeIf { it.isFinite() }?.coerceIn(0f, MAX_LIFT) ?: 0f,
+            sizeScale = sizeScale?.takeIf { it.isFinite() }?.coerceIn(MIN_SIZE_SCALE, MAX_SIZE_SCALE) ?: 1f,
         )
 
         private fun <T> List<T>.cycle(current: T): T = this[(indexOf(current) + 1) % size]

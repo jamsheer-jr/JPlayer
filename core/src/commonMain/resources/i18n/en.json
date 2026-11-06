@@ -1988,6 +1988,7 @@
     "previous_episode": "Previous episode",
     "previous_episode_hint": "{episode} (Shift+P)",
     "previous_up": "Previous: {title}",
+    "quality_auto": "Auto",
     "quality_switched": "Now playing {quality}",
     "reload": "Reload",
     "reload_clearing": "Clearing the copy on this device…",

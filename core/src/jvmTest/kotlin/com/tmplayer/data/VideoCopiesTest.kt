@@ -369,6 +369,17 @@ class VideoCopiesTest {
     }
 
     @Test
+    fun `the chooser lists each tier once, lowest first, with its best copy and the playing tier marked`() {
+        val hdBig = video(2, 60, "Night.Train.2019.1080p.BluRay.mkv", size = 2_000L shl 20)
+        val choices = VideoCopies.tierChoices(listOf(uhd, hd, sd, hdBig), hd.id)
+        assertEquals(listOf("SD", "HD", "UHD"), choices.map { it.tier })
+        assertEquals(hdBig.id, choices[1].copy.id)
+        assertEquals(listOf(false, true, false), choices.map { it.current })
+        val unknown = video(1, 99, "Mystery.File.mkv")
+        assertEquals(listOf("SD"), VideoCopies.tierChoices(listOf(sd, unknown), sd.id).map { it.tier })
+    }
+
+    @Test
     fun `one tier only, or the playing copy unknown, the badge changes nothing`() {
         assertNull(VideoCopies.nextTierCopy(listOf(hd, other), hd.id))
         assertNull(VideoCopies.nextTierCopy(listOf(hd), hd.id))

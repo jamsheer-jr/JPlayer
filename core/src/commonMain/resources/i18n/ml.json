@@ -1973,6 +1973,7 @@
     "previous_episode": "മുമ്പത്തെ എപ്പിസോഡ്",
     "previous_episode_hint": "{episode} (Shift+P)",
     "previous_up": "മുമ്പത്തേത്: {title}",
+    "quality_auto": "ഓട്ടോ",
     "quality_switched": "ഇപ്പോൾ {quality} പ്ലേ ചെയ്യുന്നു",
     "reload": "വീണ്ടും ലോഡ് ചെയ്യുക",
     "reload_clearing": "ഈ ഉപകരണത്തിലെ പകർപ്പ് മായ്ക്കുന്നു…",

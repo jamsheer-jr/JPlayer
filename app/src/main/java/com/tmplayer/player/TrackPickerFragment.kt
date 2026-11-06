@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectable
@@ -577,8 +578,11 @@ class TrackPickerFragment : Fragment() {
                 // the panel is opened for, and it was the last thing in it. The ways to add
                 // a track and the timing and look controls stand under the list, compact
                 // as they were, and nothing they offered is gone.
-                LineRows(tracks, firstFocus, focusKey)
                 val opening = openLines() + functions
+                LineRows(tracks, firstFocus, focusKey)
+                // A divider under the track list (owner, 2026-11-06): the tracks are one
+                // section, everything the panel adds under them is another.
+                if (tracks.isNotEmpty() && (opening.isNotEmpty() || adjust.isNotEmpty())) PanelDivider()
                 if (opening.isNotEmpty()) LineRows(opening, firstFocus, focusKey)
                 if (adjust.isNotEmpty()) {
                     TouchAdjust(
@@ -790,6 +794,15 @@ class TrackPickerFragment : Fragment() {
         }
     }
 
+    /** The hairline under a panel's track section, in the sheets' own divider colour. */
+    @Composable
+    private fun PanelDivider() {
+        HorizontalDivider(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD, vertical = 8.dp),
+            color = Tone.outline,
+        )
+    }
+
     /** [lines] one under another, each group after the first opened by its heading or a gap. */
     @Composable
     private fun LineRows(lines: List<Line>, firstFocus: FocusRequester, focusKey: Any?) {
@@ -799,7 +812,11 @@ class TrackPickerFragment : Fragment() {
             if (index == 0 && heading != null) {
                 ChoiceSection(heading)
             } else if (index > 0 && lines[index - 1].group != line.group) {
-                if (heading != null) ChoiceSection(heading) else Spacer(Modifier.height(GROUP_GAP))
+                // The track section ends with a divider line (owner, 2026-11-06), the sections
+                // after it with their headings or the plain gap they have always had.
+                if (lines[index - 1].group == Group.Tracks) PanelDivider()
+                if (heading != null) ChoiceSection(heading)
+                else if (lines[index - 1].group != Group.Tracks) Spacer(Modifier.height(GROUP_GAP))
             }
             ChoiceLine(
                 title = line.title,

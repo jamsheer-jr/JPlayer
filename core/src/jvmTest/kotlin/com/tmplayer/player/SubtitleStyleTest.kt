@@ -19,6 +19,21 @@ class SubtitleStyleTest {
     }
 
     @Test
+    fun `the pinch scale is continuous and clamped, and reads back from storage`() {
+        val style = SubtitleStyle()
+        assertEquals(1.5f, style.scaledBy(1.5f).sizeScale, 0f)
+        assertEquals(SubtitleStyle.MAX_SIZE_SCALE, style.scaledBy(99f).sizeScale, 0f)
+        assertEquals(SubtitleStyle.MIN_SIZE_SCALE, style.scaledBy(0.01f).sizeScale, 0f)
+        assertEquals(style, style.scaledBy(Float.NaN))
+        assertEquals(0.065f * 2f, style.scaledBy(2f).sizeFraction, 0.0001f)
+        assertEquals(92, style.scaledBy(2f).sizeMpv)
+        val back = SubtitleStyle.from("Medium", null, null, null, null, null, null, null, null, 1.25f)
+        assertEquals(1.25f, back.sizeScale, 0f)
+        val wild = SubtitleStyle.from("Medium", null, null, null, null, null, null, null, null, 99f)
+        assertEquals(SubtitleStyle.MAX_SIZE_SCALE, wild.sizeScale, 0f)
+    }
+
+    @Test
     fun `medium keeps the size both players used before the setting`() {
         assertEquals(0.065f, SubtitleSize.Medium.fraction, 0f)
         assertEquals(46, SubtitleSize.Medium.mpvFontSize)

@@ -79,8 +79,8 @@ class PlayerGestures(
     private val subtitleLift: () -> Float = { 0f },
     /** A drag on the subtitle lines: the lift to set, the same share [subtitleLift] reads. */
     private val onSubtitleLift: (Float) -> Unit = {},
-    /** One step of a pinch on the subtitle lines: the text a step bigger, or a step smaller. */
-    private val onSubtitleSize: (expanding: Boolean) -> Unit = {},
+    /** A pinch on the subtitle lines: the scale factor to apply to the text, continuously. */
+    private val onSubtitleScale: (factor: Float) -> Unit = {},
     /** Where the video is now and how long it is, for the drag that scrubs. */
     private val positionMs: () -> Long = { 0L },
     private val durationMs: () -> Long = { 0L },
@@ -305,9 +305,6 @@ class PlayerGestures(
     /** True while the pinch under way is the subtitle lines' own, sizing their text. */
     private var subtitleScaling = false
 
-    /** How far the subtitle pinch has spread since its last size step, as a scale factor. */
-    private var subtitleScaleAcc = 1f
-
     private fun endZoom() {
         if (!zooming) return
         zooming = false
@@ -327,27 +324,16 @@ class PlayerGestures(
                 // lines are what they are sizing.
                 subtitleScaling = onSubtitles(detector.focusX, detector.focusY)
                 zooming = !subtitleScaling && zoomAllowed()
-                subtitleScaleAcc = 1f
                 return true
             }
 
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (subtitleScaling) {
-                    // A step of size for every quarter the fingers spread or close past
-                    // the last step, so one long pinch can climb more than one size and
-                    // the panel's steps are never skipped past in a single frame.
-                    subtitleScaleAcc *= detector.scaleFactor
-                    if (subtitleScaleAcc >= SUBTITLE_STEP_UP) {
-                        subtitleScaleAcc = 1f
-                        onSubtitleSize(true)
-                        return true
-                    }
-                    if (subtitleScaleAcc <= SUBTITLE_STEP_DOWN) {
-                        subtitleScaleAcc = 1f
-                        onSubtitleSize(false)
-                        return true
-                    }
-                    return false
+                    // Continuous (J Player, 2026-11-06): every frame's factor goes through, so
+                    // the text grows and shrinks with the fingers themselves instead of stepping
+                    // through the panel's named sizes a quarter spread at a time.
+                    if (detector.scaleFactor != 1f) onSubtitleScale(detector.scaleFactor)
+                    return true
                 }
                 if (zooming) {
                     // Every step, so the picture follows the fingers; true resets the factor.
@@ -590,10 +576,5 @@ class PlayerGestures(
         /** How far apart the fingers have to travel before it counts as a deliberate pinch. */
         private const val PINCH_THRESHOLD = 0.15f
 
-        /** How far a pinch on the subtitle lines must spread, from its last step, to size the text up. */
-        private const val SUBTITLE_STEP_UP = 1.25f
-
-        /** The same, closing, to size the text down. */
-        private const val SUBTITLE_STEP_DOWN = 0.8f
     }
 }
