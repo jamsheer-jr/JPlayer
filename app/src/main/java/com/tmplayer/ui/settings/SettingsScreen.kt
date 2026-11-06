@@ -482,6 +482,33 @@ fun SettingsScreen(
         SettingsPage.About -> s.settingsPageAbout
     }
 
+    // Settings search (v1.0.11, owner): a field at the head of the category list finds a row
+    // by its own words (SettingsSearch), and choosing a result opens its page and lands on
+    // the row, the way a Setup choices jump lands. The targets are a JumpTarget per anchored
+    // key; the rows Setup choices already jumps to share theirs, and the posters and details
+    // section's rows share its Posters target, the head of their section.
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchJump by remember { mutableStateOf<String?>(null) }
+    val searching = page == null && searchQuery.isNotBlank()
+    val searchEntries = remember(s) { settingsSearchEntries(s) }
+    val searchTargets = remember(s) {
+        val targets = HashMap<String, JumpTarget>()
+        settingsSearchAnchors.forEach { key -> targets[key] = JumpTarget() }
+        targets["appearance.lighter_pictures"] = jumps.getValue(SetupStep.Performance)
+        targets["storage.low_storage"] = jumps.getValue(SetupStep.Storage)
+        targets["storage.save_mobile_data"] = jumps.getValue(SetupStep.MobileData)
+        listOf(
+            "library.metadata_toggle", "library.metadata_skip_times", "library.metadata_key",
+            "library.metadata_omdb_key", "library.metadata_clear_cache",
+        ).forEach { key -> targets[key] = jumps.getValue(SetupStep.Posters) }
+        targets
+    }
+    val searchResults = if (searching) {
+        SettingsSearch.results(searchEntries, { target -> titleOf(target) }, searchQuery)
+    } else {
+        emptyList()
+    }
+
     // Back on a page goes to the list, not out of Settings. Composed after the caller's own
     // handler, so it is the one asked first while a page is open.
     BackHandler(enabled = page != null) { closePage() }
@@ -534,8 +561,9 @@ fun SettingsScreen(
     if (!touch) {
         LaunchedEffect(page) {
             val open = page
-            // A jump from Setup choices lands on its row instead (the effect below).
-            if (open != null && jumpTo != null && open != SettingsPage.SetupChoices) return@LaunchedEffect
+            // A jump from Setup choices lands on its row instead (the effect below), and a
+            // search result on its own (the one under it).
+            if (open != null && (jumpTo != null || searchJump != null) && open != SettingsPage.SetupChoices) return@LaunchedEffect
             if (open != null) {
                 landing.settle()
                 // Focus asks to be brought into view with room to spare, which can push the
@@ -573,6 +601,15 @@ fun SettingsScreen(
         if (page == SettingsPage.SetupChoices) return@LaunchedEffect
         jumps.getValue(step).arrive(pageState, focus = !touch)
         jumpTo = null
+    }
+
+    // A search result's landing: the same arrival, on the row the viewer picked. A key with
+    // no target never gets here (the click leaves it null and the page simply opens).
+    LaunchedEffect(page, searchJump) {
+        val key = searchJump ?: return@LaunchedEffect
+        if (page == null || page == SettingsPage.SetupChoices) return@LaunchedEffect
+        searchTargets[key]?.arrive(pageState, focus = !touch)
+        searchJump = null
     }
 
     // The PIN pad takes the whole screen, and the row that opened it is gone when it closes ("Set
@@ -666,7 +703,7 @@ fun SettingsScreen(
 
         // "Recommended for this device" (CP68), above the categories while anything recommended
         // for a device short of memory or storage is still off. It draws nothing otherwise.
-        if (page == null) {
+        if (page == null && searchQuery.isBlank()) {
             item {
                 com.tmplayer.ui.onboarding.DeviceFitSettingsCard(
                     settings,
@@ -679,7 +716,48 @@ fun SettingsScreen(
         // Each page below holds what used to be one or more sections of a single long list. A
         // page that took in more than one keeps the old headings between them.
         // Each run of rows between two headings is drawn as one card on a phone (settingsGroups).
-        settingsGroups { when (page) {
+        settingsGroups {
+            // The category list's search (v1.0.11): the field at its head, and while it holds
+            // a query the rows it finds stand in the categories' place (the category branch
+            // below holds itself back while searching). A result names its row and its page;
+            // choosing one opens the page and lands on the row where the row has a target.
+            if (page == null) {
+                item(key = "settings_search") {
+                    SettingsSearchField(query = searchQuery, onQuery = { searchQuery = it })
+                }
+                if (searching) {
+                    if (searchResults.isEmpty()) {
+                        settingsNote {
+                            Text(
+                                s.settingsSearchNone,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Tone.muted,
+                                modifier = Modifier.padding(
+                                    top = 12.dp,
+                                    start = if (touch) 16.dp else 0.dp,
+                                    end = if (touch) 16.dp else 0.dp,
+                                ),
+                            )
+                        }
+                    } else {
+                        searchResults.forEach { entry ->
+                            item(key = "settings_search_" + entry.key) {
+                                ActionRow(
+                                    title = entry.title,
+                                    subtitle = titleOf(entry.page),
+                                    icon = settingsSearchPageIcon(entry.page),
+                                    onClick = {
+                                        searchJump = if (entry.key in searchTargets) entry.key else null
+                                        searchQuery = ""
+                                        showPage(entry.page)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            when (page) {
             // The setup's answers in the setup's order, each with the page it also lives on.
             SettingsPage.SetupChoices -> {
                 settingsNote {
@@ -752,6 +830,7 @@ fun SettingsScreen(
                     com.tmplayer.ui.components.RevealUnder(themeChoice.offersPureBlack) {
                         ToggleRow(
                             title = s.settingsPureBlack,
+                            modifier = Modifier.jumpTarget(searchTargets["appearance.pure_black"]),
                             subtitle = s.themeBlackDetail,
                             icon = TmIcons.PureBlack,
                             checked = pureBlack,
@@ -776,6 +855,7 @@ fun SettingsScreen(
                 item(key = "typeface") {
                     StepperRow(
                         title = s.settingsTypeface,
+                        modifier = Modifier.jumpTarget(searchTargets["appearance.typeface"]),
                         subtitle = s.settingsTypefaceDetail,
                         value = typeface.label,
                         icon = TmIcons.TextSize,
@@ -791,6 +871,7 @@ fun SettingsScreen(
                 item(key = "high_contrast") {
                     ToggleRow(
                         title = s.settingsHighContrast,
+                        modifier = Modifier.jumpTarget(searchTargets["appearance.high_contrast"]),
                         subtitle = s.settingsHighContrastDetail,
                         icon = TmIcons.Theme,
                         checked = highContrast,
@@ -804,7 +885,7 @@ fun SettingsScreen(
                         title = s.settingsLanguage,
                         subtitle = s.languageRowDetail(language),
                         icon = TmIcons.Language,
-                        modifier = Modifier.focusRequester(landing),
+                        modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["appearance.language"]),
                         onClick = { pickingLanguage = true },
                     )
                 }
@@ -815,6 +896,7 @@ fun SettingsScreen(
                 item {
                     StepperRow(
                         title = s.interfaceSize,
+                        modifier = Modifier.jumpTarget(searchTargets["appearance.interface_size"]),
                         subtitle = s.interfaceSizeDetail,
                         value = uiScale.label,
                         icon = TmIcons.TextSize,
@@ -839,6 +921,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsReduceMotion,
+                        modifier = Modifier.jumpTarget(searchTargets["appearance.reduce_motion"]),
                         subtitle = if (reduceMotion) s.settingsReduceMotionOn else s.settingsReduceMotionOff,
                         icon = TmIcons.Frames,
                         checked = reduceMotion,
@@ -851,6 +934,7 @@ fun SettingsScreen(
                     val taken = appearanceUndo
                     ActionRow(
                         title = if (taken == null) s.settingsAppearanceDefaults else s.settingsAppearanceUndo,
+                        modifier = Modifier.jumpTarget(searchTargets["appearance.defaults"]),
                         subtitle = if (taken == null) s.settingsAppearanceDefaultsDetail else s.settingsAppearanceDefaultsDone,
                         icon = TmIcons.Refresh,
                         onClick = {
@@ -871,6 +955,7 @@ fun SettingsScreen(
                         item {
                             ToggleRow(
                                 title = s.settingsWallpaperColours,
+                                modifier = Modifier.jumpTarget(searchTargets["appearance.wallpaper_colours"]),
                                 subtitle = if (dynamicColour) {
                                     s.settingsWallpaperColoursOn
                                 } else {
@@ -889,7 +974,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsAutoplay,
-                        modifier = Modifier.focusRequester(landing),
+                        modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["playback.autoplay"]),
                         subtitle = if (autoplayNext) {
                             s.settingsAutoplayOn
                         } else {
@@ -905,6 +990,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsDecoder,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.decoder"]),
                         subtitle = videoDecoder.label,
                         icon = TmIcons.Play,
                         onClick = { pickingDecoder = true },
@@ -913,6 +999,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsDetailFirst,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.detail_first"]),
                         subtitle = if (detailFirst) s.settingsDetailFirstOn(device) else s.settingsDetailFirstOff(device),
                         icon = TmIcons.Info,
                         checked = detailFirst,
@@ -924,6 +1011,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsHideRipTags,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.hide_rip_tags"]),
                         subtitle = if (hideRipTags) s.settingsHideRipTagsOn else s.settingsHideRipTagsOff,
                         icon = TmIcons.Info,
                         checked = hideRipTags,
@@ -933,6 +1021,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsDownloadFirst,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.download_first"]),
                         subtitle = if (downloadFirst) {
                             s.settingsDownloadFirstOn
                         } else {
@@ -955,6 +1044,7 @@ fun SettingsScreen(
                     val downmix = AudioDownmix.wanted(downmixChoice, television = !touch)
                     ToggleRow(
                         title = s.settingsDownmix,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.downmix"]),
                         subtitle = if (downmix) {
                             s.settingsDownmixOn
                         } else {
@@ -969,6 +1059,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.playerEvenVolume,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.even_volume"]),
                         subtitle = if (evenVolume) s.settingsEvenVolumeOn else s.settingsEvenVolumeOff,
                         icon = ImageVector.vectorResource(R.drawable.ic_volume),
                         checked = evenVolume,
@@ -982,6 +1073,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsBackgroundAudio,
+                            modifier = Modifier.jumpTarget(searchTargets["playback.background_audio"]),
                             subtitle = if (backgroundAudio) s.settingsBackgroundAudioOn else s.settingsBackgroundAudioOff,
                             icon = TmIcons.Audio,
                             checked = backgroundAudio,
@@ -995,6 +1087,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsPictureInPictureLeave,
+                            modifier = Modifier.jumpTarget(searchTargets["playback.pip_on_leave"]),
                             subtitle = if (pipOnLeave) s.settingsPictureInPictureLeaveOn else s.settingsPictureInPictureLeaveOff,
                             icon = ImageVector.vectorResource(R.drawable.ic_pip),
                             checked = pipOnLeave,
@@ -1006,6 +1099,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsAudioLanguage,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.audio_language"]),
                         subtitle = trackPrefs.audioSummary,
                         icon = ImageVector.vectorResource(R.drawable.ic_audio_language),
                         onClick = { trackPicker = TrackLanguagePicker.Audio },
@@ -1019,6 +1113,7 @@ fun SettingsScreen(
                     val on = trickplayOn && trickplayMemory
                     ToggleRow(
                         title = s.settingsTrickplay,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.trickplay"]),
                         subtitle = when {
                             !trickplayMemory -> s.settingsTrickplayLowMemory
                             on -> s.settingsTrickplayOn
@@ -1036,6 +1131,7 @@ fun SettingsScreen(
                     val choices = TouchPrefs.TIMEOUT_CHOICES_MS
                     StepperRow(
                         title = s.settingsControlsTimeout,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.controls_timeout"]),
                         subtitle = s.settingsControlsTimeoutDetail,
                         value = TouchPrefs.timeoutLabel(touchPrefs.controlsTimeoutMs),
                         icon = TmIcons.VisibilityOff,
@@ -1055,6 +1151,7 @@ fun SettingsScreen(
                     val choices = ResumeRewind.CHOICES_MS
                     StepperRow(
                         title = s.settingsResumeRewind,
+                        modifier = Modifier.jumpTarget(searchTargets["playback.resume_rewind"]),
                         subtitle = s.settingsResumeRewindDetail,
                         value = ResumeRewind.label(resumeRewindMs),
                         icon = TmIcons.History,
@@ -1078,7 +1175,7 @@ fun SettingsScreen(
                     // says what is set, so it can be read without opening it.
                     ActionRow(
                         title = s.settingsSubtitleStyle,
-                        modifier = Modifier.focusRequester(landing),
+                        modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["subtitles.style"]),
                         subtitle = subtitleStyle.summary(),
                         icon = ImageVector.vectorResource(R.drawable.ic_subtitles),
                         onClick = { stylingSubtitles = true },
@@ -1088,6 +1185,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsSubtitleMode,
+                        modifier = Modifier.jumpTarget(searchTargets["subtitles.mode"]),
                         subtitle = trackPrefs.mode.label,
                         icon = ImageVector.vectorResource(R.drawable.ic_subtitles),
                         onClick = { trackPicker = TrackLanguagePicker.Mode },
@@ -1096,6 +1194,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsSubtitleLanguage,
+                        modifier = Modifier.jumpTarget(searchTargets["subtitles.language"]),
                         subtitle = trackPrefs.subtitleSummary,
                         icon = TmIcons.Language,
                         onClick = { trackPicker = TrackLanguagePicker.Subtitle },
@@ -1106,6 +1205,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsLearntLanguages,
+                        modifier = Modifier.jumpTarget(searchTargets["subtitles.learnt"]),
                         subtitle = if (learntLanguages.isEmpty()) {
                             s.settingsLearntLanguagesEmpty
                         } else {
@@ -1132,6 +1232,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsHaptics,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.haptics"]),
                             subtitle = s.settingsHapticsDetail,
                             icon = TmIcons.Vibration,
                             checked = touchPrefs.haptics,
@@ -1141,6 +1242,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsTapPlays,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.tap_plays"]),
                             subtitle = if (touchPrefs.tapPlaysPauses) {
                                 s.settingsTapPlaysOn
                             } else {
@@ -1155,6 +1257,7 @@ fun SettingsScreen(
                         val choices = TouchPrefs.DOUBLE_TAP_CHOICES_MS
                         StepperRow(
                             title = s.settingsDoubleTap,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.double_tap"]),
                             subtitle = s.settingsDoubleTapDetail,
                             value = s.settingsDoubleTapSeconds(touchPrefs.doubleTapMs / 1000),
                             icon = ImageVector.vectorResource(R.drawable.ic_player_forward),
@@ -1168,6 +1271,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsDoubleTapPause,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.double_tap_pause"]),
                             subtitle = if (touchPrefs.doubleTapPauses) {
                                 s.settingsDoubleTapPauseOn
                             } else {
@@ -1182,6 +1286,7 @@ fun SettingsScreen(
                         val choices = TouchPrefs.HOLD_CHOICES
                         StepperRow(
                             title = s.settingsHoldSpeed,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.hold_speed"]),
                             subtitle = s.settingsHoldSpeedDetail,
                             value = TouchPrefs.holdLabel(touchPrefs.holdSpeed),
                             icon = ImageVector.vectorResource(R.drawable.ic_speed),
@@ -1195,6 +1300,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsSeekGesture,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.seek"]),
                             subtitle = s.settingsSeekGestureDetail,
                             icon = TmIcons.ChevronRight,
                             checked = touchPrefs.seekGesture,
@@ -1204,6 +1310,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsBrightnessGesture,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.brightness"]),
                             subtitle = s.settingsBrightnessGestureDetail,
                             icon = ImageVector.vectorResource(R.drawable.ic_brightness),
                             checked = touchPrefs.brightnessGesture,
@@ -1213,6 +1320,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsVolumeGesture,
+                            modifier = Modifier.jumpTarget(searchTargets["gestures.volume"]),
                             subtitle = s.settingsVolumeGestureDetail,
                             icon = ImageVector.vectorResource(R.drawable.ic_volume),
                             checked = touchPrefs.volumeGesture,
@@ -1229,7 +1337,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsSizeLimits,
-                        modifier = Modifier.focusRequester(landing),
+                        modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["library.size_limits"]),
                         subtitle = s.formatter.sizeRange(minSize, maxSize),
                         icon = TmIcons.List,
                         onClick = { editingSizes = true },
@@ -1241,6 +1349,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsOpenLastChat,
+                        modifier = Modifier.jumpTarget(searchTargets["library.open_last_chat"]),
                         subtitle = when {
                             lastChatTitle != null -> s.settingsOpenLastChatNamed(lastChatTitle)
                             lastChatId != 0L -> s.settingsOpenLastChatUnnamed
@@ -1255,6 +1364,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.settingsForgetLastChat,
+                            modifier = Modifier.jumpTarget(searchTargets["library.forget_last_chat"]),
                             subtitle = s.settingsForgetLastChatDetail,
                             icon = TmIcons.Close,
                             // This row deletes itself on success, so it needs a toast: otherwise the
@@ -1279,6 +1389,7 @@ fun SettingsScreen(
                     // Off forgets the searches already kept, which is what switching it off is for.
                     ToggleRow(
                         title = s.settingsRememberSearches,
+                        modifier = Modifier.jumpTarget(searchTargets["library.remember_searches"]),
                         subtitle = if (rememberSearches) s.settingsRememberSearchesOn else s.settingsRememberSearchesOff,
                         icon = TmIcons.Search,
                         checked = rememberSearches,
@@ -1290,6 +1401,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.settingsResumeSync,
+                        modifier = Modifier.jumpTarget(searchTargets["library.resume_sync"]),
                         subtitle = if (resumeSync) s.settingsResumeSyncOn else s.settingsResumeSyncOff,
                         icon = TmIcons.History,
                         checked = resumeSync,
@@ -1310,6 +1422,7 @@ fun SettingsScreen(
                     val added by com.tmplayer.data.AddedChats.choice.collectAsState()
                     ActionRow(
                         title = s.pickerRowTitle,
+                        modifier = Modifier.jumpTarget(searchTargets["library.add_chats"]),
                         subtitle = com.tmplayer.ui.browse.chosenChatsDetail(added, s),
                         icon = TmIcons.ChatsMany,
                         onClick = onOpenAddChats,
@@ -1319,6 +1432,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.settingsClearFavourites,
+                            modifier = Modifier.jumpTarget(searchTargets["library.clear_favourites"]),
                             subtitle = s.settingsClearFavouritesDetail(favorites.size),
                             icon = TmIcons.Close,
                             onClick = { prompt = Prompt.ClearFavorites },
@@ -1331,6 +1445,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.browseClearHistory,
+                            modifier = Modifier.jumpTarget(searchTargets["library.clear_history"]),
                             subtitle = s.browseClearHistoryDetail,
                             icon = TmIcons.Close,
                             onClick = {
@@ -1360,7 +1475,7 @@ fun SettingsScreen(
                 item(key = "home_carousel") {
                     ToggleRow(
                         title = s.settingsHomeCarousel,
-                        modifier = Modifier.focusRequester(landing),
+                        modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["home.carousel"]),
                         subtitle = when {
                             !homeLayout.carousel -> s.settingsHomeCarouselOff
                             // Each page needs its online picture and overview: none while lookups are off.
@@ -1375,6 +1490,7 @@ fun SettingsScreen(
                 item(key = "home_continue") {
                     ToggleRow(
                         title = s.settingsHomeContinue,
+                        modifier = Modifier.jumpTarget(searchTargets["home.continue"]),
                         subtitle = if (homeLayout.continueWatching) s.settingsHomeContinueOn else s.settingsHomeContinueOff,
                         icon = TmIcons.History,
                         checked = homeLayout.continueWatching,
@@ -1384,6 +1500,7 @@ fun SettingsScreen(
                 item(key = "home_recent") {
                     ToggleRow(
                         title = s.settingsHomeRecent,
+                        modifier = Modifier.jumpTarget(searchTargets["home.recent"]),
                         subtitle = if (homeLayout.recentlyAdded) s.settingsHomeRecentOn else s.settingsHomeRecentOff,
                         icon = TmIcons.Grid,
                         checked = homeLayout.recentlyAdded,
@@ -1393,6 +1510,7 @@ fun SettingsScreen(
                 item(key = "home_starred_rows") {
                     ToggleRow(
                         title = s.settingsHomeStarredRows,
+                        modifier = Modifier.jumpTarget(searchTargets["home.starred_rows"]),
                         subtitle = if (homeLayout.starredRows) s.settingsHomeStarredRowsOn else s.settingsHomeStarredRowsOff,
                         icon = TmIcons.StarOutline,
                         checked = homeLayout.starredRows,
@@ -1402,6 +1520,7 @@ fun SettingsScreen(
                 item(key = "home_catalog") {
                     ToggleRow(
                         title = s.settingsHomeCatalog,
+                        modifier = Modifier.jumpTarget(searchTargets["home.catalog"]),
                         subtitle = if (homeLayout.catalogRows) s.settingsHomeCatalogOn else s.settingsHomeCatalogOff,
                         icon = TmIcons.Grid,
                         checked = homeLayout.catalogRows,
@@ -1421,7 +1540,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsWatchNext,
-                            modifier = Modifier.focusRequester(landing),
+                            modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["tvhome.watch_next"]),
                             subtitle = if (watchNextOn) s.settingsWatchNextOn else s.settingsWatchNextOff,
                             icon = TmIcons.History,
                             checked = watchNextOn,
@@ -1444,7 +1563,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsTvChannels,
-                            modifier = if (watchNextSupported) Modifier else Modifier.focusRequester(landing),
+                            modifier = (if (watchNextSupported) Modifier else Modifier.focusRequester(landing)).jumpTarget(searchTargets["tvhome.channels"]),
                             subtitle = if (tvChannelsOn) s.settingsTvChannelsOn else s.settingsTvChannelsOff,
                             icon = TmIcons.Home,
                             checked = tvChannelsOn,
@@ -1477,7 +1596,7 @@ fun SettingsScreen(
                             notice = notice,
                             title = title,
                             subtitle = detail,
-                            modifier = if (index == 0) Modifier.focusRequester(landing) else Modifier,
+                            modifier = (if (index == 0) Modifier.focusRequester(landing) else Modifier).jumpTarget(searchTargets[noticeSearchKey(notice)]),
                             onBlocked = { toast(s.notifyBlocked) },
                         )
                     }
@@ -1517,7 +1636,7 @@ fun SettingsScreen(
                         subtitle = s.downloadsRemoveAfterWatchingBody,
                         icon = TmIcons.Delete,
                         checked = removeAfterWatching,
-                        modifier = if (landOnFreeUp) Modifier else Modifier.focusRequester(landing),
+                        modifier = (if (landOnFreeUp) Modifier else Modifier.focusRequester(landing)).jumpTarget(searchTargets["storage.remove_after_watching"]),
                         onToggle = {
                             if (removeAfterWatching) {
                                 scope.launch { settings.setRemoveAfterWatching(false) }
@@ -1547,6 +1666,7 @@ fun SettingsScreen(
                         NoticeToggleRow(
                             notice = Notice.LowStorage,
                             title = s.settingsLowStorageAlert,
+                            modifier = Modifier.jumpTarget(searchTargets["notice.low_storage"]),
                             subtitle = s.settingsAlertLowStorageDetail,
                             onBlocked = { toast(s.notifyBlocked) },
                         )
@@ -1559,6 +1679,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsWifiOnly,
+                            modifier = Modifier.jumpTarget(searchTargets["storage.wifi_only"]),
                             subtitle = if (wifiOnly) {
                                 s.settingsWifiOnlyOn
                             } else {
@@ -1600,7 +1721,7 @@ fun SettingsScreen(
                             title = s.lockSetPin,
                             subtitle = s.lockSetPinDetail,
                             icon = TmIcons.Lock,
-                            modifier = Modifier.focusRequester(landing),
+                            modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["account.set_pin"]),
                             onClick = { pinFlow = PinFlow.Set },
                         )
                     }
@@ -1610,13 +1731,14 @@ fun SettingsScreen(
                             title = s.lockChangePin,
                             subtitle = s.lockChangePinDetail,
                             icon = TmIcons.Lock,
-                            modifier = Modifier.focusRequester(landing),
+                            modifier = Modifier.focusRequester(landing).jumpTarget(searchTargets["account.change_pin"]),
                             onClick = { pinFlow = PinFlow.ChangeCheck },
                         )
                     }
                     item {
                         ToggleRow(
                             title = s.lockOnOpen,
+                            modifier = Modifier.jumpTarget(searchTargets["account.lock_on_open"]),
                             subtitle = s.lockOnOpenDetail,
                             icon = TmIcons.Remote,
                             checked = appLock.onOpen,
@@ -1632,6 +1754,7 @@ fun SettingsScreen(
                 item {
                     ToggleRow(
                         title = s.lockKids,
+                        modifier = Modifier.jumpTarget(searchTargets["account.kids"]),
                         subtitle = AppLockWords.kidsDetail(appLock),
                         icon = TmIcons.Group,
                         checked = appLock.kids,
@@ -1651,6 +1774,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.lockAllowedChats,
+                        modifier = Modifier.jumpTarget(searchTargets["account.allowed_chats"]),
                         subtitle = s.lockAllowedChatsDetail(count = appLock.kidsChats.size),
                         icon = TmIcons.List,
                         onClick = { pickingKidsChats = true },
@@ -1660,6 +1784,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.lockRemovePin,
+                            modifier = Modifier.jumpTarget(searchTargets["account.remove_pin"]),
                             subtitle = s.lockRemovePinDetail,
                             icon = TmIcons.Close,
                             onClick = { pinFlow = PinFlow.Remove },
@@ -1687,7 +1812,7 @@ fun SettingsScreen(
                         title = s.settingsDevices,
                         subtitle = s.settingsDevicesDetail,
                         icon = TmIcons.Phone,
-                        modifier = Modifier.focusRequester(devicesFocus),
+                        modifier = Modifier.focusRequester(devicesFocus).jumpTarget(searchTargets["account.devices"]),
                         onClick = { devicesOpen = true },
                     )
                 }
@@ -1726,6 +1851,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.settingsAccountAdd,
+                            modifier = Modifier.jumpTarget(searchTargets["account.add"]),
                             subtitle = s.settingsAccountAddDetail,
                             icon = TmIcons.Add,
                             onClick = {
@@ -1774,7 +1900,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.settingsCheckUpdates,
-                            modifier = if (updateState.release == null) Modifier.focusRequester(landing) else Modifier,
+                            modifier = (if (updateState.release == null) Modifier.focusRequester(landing) else Modifier).jumpTarget(searchTargets["about.check_updates"]),
                             subtitle = s.settingsCheckUpdatesDetail(Updates.installedVersion, Updates.RELEASES_PAGE),
                             icon = TmIcons.Refresh,
                             onClick = {
@@ -1787,6 +1913,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsUpdateNotify,
+                            modifier = Modifier.jumpTarget(searchTargets["about.update_notify"]),
                             subtitle = s.settingsUpdateNotifyDetail,
                             icon = TmIcons.Bell,
                             checked = updateNotify,
@@ -1797,6 +1924,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsTestVersions,
+                            modifier = Modifier.jumpTarget(searchTargets["about.test_versions"]),
                             subtitle = if (updateTestVersions) s.settingsTestVersionsOn else s.settingsTestVersionsOff,
                             icon = TmIcons.Warning,
                             checked = updateTestVersions,
@@ -1820,6 +1948,7 @@ fun SettingsScreen(
                             val mayInstall = Updates.canInstall(context)
                             ToggleRow(
                                 title = s.settingsAutoInstall,
+                                modifier = Modifier.jumpTarget(searchTargets["about.auto_install"]),
                                 subtitle = when {
                                     !updateAutoInstall -> s.settingsAutoInstallOff
                                     !mayInstall -> s.settingsAutoInstallBlocked
@@ -1850,13 +1979,14 @@ fun SettingsScreen(
                         title = s.backupBackUp,
                         subtitle = s.backupBackUpDetail,
                         icon = TmIcons.Download,
-                        modifier = if (Updates.enabled) Modifier else Modifier.focusRequester(landing),
+                        modifier = (if (Updates.enabled) Modifier else Modifier.focusRequester(landing)).jumpTarget(searchTargets["about.backup"]),
                         onClick = backup.backUp,
                     )
                 }
                 item {
                     ActionRow(
                         title = s.backupRestore,
+                        modifier = Modifier.jumpTarget(searchTargets["about.restore"]),
                         subtitle = s.backupRestoreDetail,
                         icon = TmIcons.Refresh,
                         onClick = backup.restore,
@@ -1872,6 +2002,7 @@ fun SettingsScreen(
                     val proxyOn by com.tmplayer.data.Td.proxyOn.collectAsStateWithLifecycle()
                     ActionRow(
                         title = s.proxyTitle,
+                        modifier = Modifier.jumpTarget(searchTargets["about.proxy"]),
                         subtitle = if (proxyOn) s.proxyInUse else s.proxySettingsDetailOff,
                         icon = TmIcons.Wifi,
                         onClick = { com.tmplayer.ui.connect.ProxyScreenState.open = true },
@@ -1884,6 +2015,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.logsSave,
+                        modifier = Modifier.jumpTarget(searchTargets["about.logs"]),
                         subtitle = s.logsSaveDetail,
                         icon = TmIcons.Logs,
                         onClick = saveLogs,
@@ -1895,6 +2027,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = s.logsNameReport,
+                            modifier = Modifier.jumpTarget(searchTargets["about.name_report"]),
                             subtitle = s.logsNameReportDetail,
                             icon = TmIcons.Checklist,
                             onClick = saveNameCheck,
@@ -1909,6 +2042,7 @@ fun SettingsScreen(
                     item {
                         ToggleRow(
                             title = s.settingsCrashReports,
+                            modifier = Modifier.jumpTarget(searchTargets["about.crash_reports"]),
                             subtitle = if (crashReports) {
                                 s.settingsCrashReportsOn
                             } else {
@@ -1929,6 +2063,7 @@ fun SettingsScreen(
                     item {
                         ActionRow(
                             title = if (supportCounters.supporter) About.SUPPORT_THANKS_TITLE else About.SUPPORT_TITLE,
+                            modifier = Modifier.jumpTarget(searchTargets["about.support"]),
                             subtitle = s.settingsSupportDetail,
                             icon = TmIcons.Favorite,
                             onClick = { supporting = true },
@@ -1941,6 +2076,7 @@ fun SettingsScreen(
                 item {
                     ActionRow(
                         title = s.settingsAbout,
+                        modifier = Modifier.jumpTarget(searchTargets["about.about"]),
                         subtitle = s.settingsAboutDetail(Updates.installedVersion),
                         icon = TmIcons.Info,
                         onClick = onOpenAbout,
@@ -1968,6 +2104,9 @@ fun SettingsScreen(
             // One row per page: what the page is, and either the value that matters most in it or
             // a few words on what is inside.
             null -> {
+                // While the search holds a query its results stand above instead (drawn ahead
+                // of this branch): the categories wait for the query to clear.
+                if (!searching) {
                 // Who is signed in, first, on the page's own background: a header, not one more
                 // row to press, so it sits in line with the rows' icons rather than in a card.
                 if (account != null) {
@@ -2121,6 +2260,7 @@ fun SettingsScreen(
                             showPage(SettingsPage.SetupChoices)
                         },
                     )
+                }
                 }
             }
         } }
