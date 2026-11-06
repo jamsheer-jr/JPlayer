@@ -53,7 +53,19 @@ object VideoCopies {
             val same = groups.firstOrNull { group -> group.any { sameFile(it, copy) } }
             if (same != null) same += copy else groups += mutableListOf(copy)
         }
-        return groups.map { it.first() to it.toList() }
+        // A file the built-in channel posted leads with that channel's own post (owner,
+        // 2026-11-06): the same file in another chat never stands in its place.
+        return groups.map { group -> (builtInCopy(group) ?: group.first()) to group.toList() }
+    }
+
+    /**
+     * The copy among [copies] posted by the built-in J MOVIES channel, once its chat id is
+     * known ([BuiltInChannels.jMoviesChatId]); null before that, and where it posted none of
+     * them. Folds lead with it so the channel's copies are never the ones folded away.
+     */
+    fun builtInCopy(copies: List<MediaItem>): MediaItem? {
+        val chatId = BuiltInChannels.jMoviesChatId ?: return null
+        return copies.firstOrNull { it.chatId == chatId }
     }
 
     /** [distinctFiles], one item per file: the one [playing] where it is among a file's posts. */

@@ -1323,6 +1323,9 @@ private fun BuiltInHomeSections(
         val channel = BuiltInChannels.J_MOVIES
         val preview = actions.previewInvite(channel.invite).getOrNull() ?: return@LaunchedEffect
         if (preview.chatId == 0L) return@LaunchedEffect
+        // The resolved id is kept process wide: duplicate folding leads with this channel's
+        // own post of a file wherever copies fold (owner, 2026-11-06).
+        BuiltInChannels.jMoviesChatId = preview.chatId
         val posts = runCatching { actions.recentPosts(preview.chatId) }.getOrDefault(emptyList())
         streams = StreamLinks.inPosts(posts, preview.title.ifBlank { channel.name })
     }

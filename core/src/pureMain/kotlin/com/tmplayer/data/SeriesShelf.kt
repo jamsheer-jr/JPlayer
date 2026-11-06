@@ -627,7 +627,10 @@ object SeriesShelf {
                     apart.map { listOf(it.item) }
                 rows.filter { it.isNotEmpty() }.map { members ->
                     val sorted = members.sortedWith(compareByDescending<MediaItem> { it.date }.thenBy { it.messageId })
-                    SeriesEpisode(sorted.first(), number.first, number.second, sorted)
+                    // The episode stands for the built-in channel's own post where it posted
+                    // one (owner, 2026-11-06); the copies keep their newest first order.
+                    val lead = VideoCopies.builtInCopy(sorted) ?: sorted.first()
+                    SeriesEpisode(lead, number.first, number.second, sorted)
                 }
             }
             .let { rows -> withMultiEpisodeFiles(rows, files, defaultSeason) }

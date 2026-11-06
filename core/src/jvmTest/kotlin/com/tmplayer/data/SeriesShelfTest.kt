@@ -403,4 +403,20 @@ class SeriesShelfTest {
         assertEquals(2, entries.size)
         assertTrue(entries.filterIsInstance<ShelfEntry.File>().all { it.item.versions.isEmpty() })
     }
+
+    @Test
+    fun `an episode stands for the built-in channel's post of it`() {
+        val older = video("Harbour.Notes.S01E01.mkv", date = 10).copy(chatId = 42)
+        val newer = video("Harbour.Notes.S01E01.mkv", date = 20)
+        val second = video("Harbour.Notes.S01E02.mkv", date = 30)
+        BuiltInChannels.jMoviesChatId = 42L
+        try {
+            val show = shows(SeriesShelf.arrange(listOf(newer, second, older))).single()
+            val first = show.episodes.single { it.episode == 1 }
+            assertEquals(42L, first.item.chatId)
+            assertEquals(setOf(42L, 7L), first.copies.map { it.chatId }.toSet())
+        } finally {
+            BuiltInChannels.jMoviesChatId = null
+        }
+    }
 }

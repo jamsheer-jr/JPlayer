@@ -1,12 +1,13 @@
 package com.tmplayer.data
 
+import kotlin.concurrent.Volatile
+
 /**
- * A channel the app itself carries (v1.0.10): shown on Home as a card beside the viewer's own
- * rows, whether or not the signed-in account has joined it yet. The card resolves the invite
- * link: a member's tap opens the channel like any chat, and anyone else gets the channel's
- * name and a Join action that joins with their own account, in the app. Nothing about the
- * channel is shared between accounts: the invite link is there for anyone holding the app,
- * and joining is each account's own act, with its own sign in.
+ * A channel the app itself carries (v1.0.10): its invite link is built in, and Home reads it
+ * for the Live streams row and the Share J Player text (the Home cards the channels launched
+ * with were removed in v1.0.11; the channels themselves stayed). Nothing about the channel is
+ * shared between accounts: the invite link is there for anyone holding the app, and joining
+ * is each account's own act, with its own sign in.
  */
 data class BuiltInChannel(
     /** The name the card shows before Telegram answers, and the name a nameless post falls back to. */
@@ -32,6 +33,15 @@ object BuiltInChannels {
 
     /** Every built-in channel, in the order the Home cards show them. */
     val ALL: List<BuiltInChannel> = listOf(J_MOVIES, PRO_SEARCH)
+
+    /**
+     * The J MOVIES chat's id, once its invite has been resolved this session (Home resolves
+     * it for the Live row), or null until then. Folding reads it so that channel's own post
+     * of a file is the one a fold leads with, never the one folded away (owner, 2026-11-06):
+     * see [VideoCopies.builtInCopy].
+     */
+    @Volatile
+    var jMoviesChatId: Long? = null
 
     /** The app's release page: every release, newest first. */
     const val RELEASES_URL = "https://github.com/jamsheer-jr/JPlayer/releases"

@@ -128,4 +128,22 @@ class SameTitleTest {
         val film = (shown.first() as ShelfEntry.File).item
         assertEquals(setOf(10L, 11L, 12L), film.versions.map { it.messageId }.toSet())
     }
+
+    @Test
+    fun `a fold leads with the built-in channel's post, and keeps every copy`() {
+        BuiltInChannels.jMoviesChatId = 42L
+        try {
+            val entries = listOf(
+                ShelfEntry.File(video(7, 20, "Khalifa 2026 2160p.mkv", date = 100)),
+                ShelfEntry.File(video(42, 21, "Khalifa.mkv", caption = "Khalifa (2026)", date = 300)),
+            )
+            val folded = SameTitle.dedupe(entries, noOnline)
+            val film = (folded.single() as ShelfEntry.File).item
+            assertEquals(42L, film.chatId)
+            assertEquals(21L, film.versions.first().messageId)
+            assertEquals(setOf(20L, 21L), film.versions.map { it.messageId }.toSet())
+        } finally {
+            BuiltInChannels.jMoviesChatId = null
+        }
+    }
 }

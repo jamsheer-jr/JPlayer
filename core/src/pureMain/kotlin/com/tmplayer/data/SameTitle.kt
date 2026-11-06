@@ -145,7 +145,11 @@ object SameTitle {
     fun fold(a: MediaItem, b: MediaItem): MediaItem {
         val copies = (copiesOf(a) + copiesOf(b)).distinctBy { it.id }
         val ordered = GlobalSearch.copyOrder(copies)
-        return ordered.first().copy(versions = ordered.map { it.copy(versions = emptyList()).keptReads(it) }).keptReads(ordered.first())
+        // The built-in channel's own post leads where there is one (owner, 2026-11-06): the
+        // copies all stay in the versions, in the settled order behind it.
+        val lead = VideoCopies.builtInCopy(ordered) ?: ordered.first()
+        val sequenced = listOf(lead) + (ordered - lead)
+        return lead.copy(versions = sequenced.map { it.copy(versions = emptyList()).keptReads(it) }).keptReads(lead)
     }
 
     private fun copiesOf(item: MediaItem): List<MediaItem> = item.versions.ifEmpty { listOf(item) }

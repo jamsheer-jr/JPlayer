@@ -375,4 +375,26 @@ class VideoCopiesTest {
         assertNull(VideoCopies.nextTierCopy(emptyList(), hd.id))
         assertNull(VideoCopies.nextTierCopy(listOf(sd, hd), "no-such-copy"))
     }
+
+    // ---- the built-in channel's copies ----------------------------------------------------------
+
+    @Test
+    fun `a file the built-in channel posted leads with its own post`() {
+        val elsewhere = video(7, 90, "Night.Train.2019.1080p.WEB-DL.x265.mkv")
+        val builtIn = video(42, 91, "Night.Train.2019.1080p.WEB-DL.x265.mkv")
+        BuiltInChannels.jMoviesChatId = 42L
+        try {
+            val files = VideoCopies.distinctFiles(listOf(elsewhere, builtIn), allowed = null)
+            assertEquals(1, files.size)
+            assertEquals(builtIn.id, files.single().first.id)
+            assertEquals(listOf(elsewhere.id, builtIn.id), files.single().second.map { it.id })
+            // And the player's list offers that channel's post for the file.
+            assertEquals(
+                builtIn.id,
+                VideoCopies.oneOfEachFile(listOf(elsewhere, builtIn), playing = "none", allowed = null).single().id,
+            )
+        } finally {
+            BuiltInChannels.jMoviesChatId = null
+        }
+    }
 }
