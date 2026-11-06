@@ -211,6 +211,7 @@ class GarbageInputTest {
             survive("Backups.decode", text) { Backups.decode(text) }
             survive("PartyLinks.parse", text) { PartyLinks.parse(text) }
             survive("StreamLinks.inPost", text) { StreamLinks.inPost(text, text) }
+            survive("StreamLinks.pasted", text) { StreamLinks.pasted(text) }
             survive("StreamLinks.inPosts", text) {
                 StreamLinks.inPosts(listOf(ChannelPost(1, text, true), ChannelPost(2, text, false)), text)
             }

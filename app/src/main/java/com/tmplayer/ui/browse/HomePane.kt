@@ -273,6 +273,11 @@ internal fun HomePane(
     val opened = rememberOpenSeries { key, chatId -> HomeLaunch.find(key, chatId, rows) }
     // Recently added's See all page, by the row's key, so a turn of the phone keeps it open.
     var seeAllKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    // Open link (v1.0.11): an address pasted on Home, played through the same stream mode
+    // the built-in channel's posts use.
+    var openLink by remember { mutableStateOf(false) }
+    var linkText by remember { mutableStateOf("") }
+    var linkInvalid by remember { mutableStateOf(false) }
     val seeAllRow = seeAllKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Recent }
     // The row whose tiles the remote goes back to once its page closes.
     var returnTo by remember { mutableStateOf<String?>(null) }
@@ -673,6 +678,13 @@ internal fun HomePane(
                         }
                     }
                 }
+                // Open link stands under the action pills on both shapes (v1.0.11): a pasted
+                // address plays in the player, with no trip through a chat to carry it.
+                item(key = OPEN_LINK_KEY, contentType = OPEN_LINK_KEY) {
+                    Row(Modifier.padding(start = start, end = end, top = 2.dp, bottom = 2.dp)) {
+                        OpenLinkPill { openLink = true }
+                    }
+                }
                 items(listed, key = { it.key }, contentType = { it::class }) { row ->
                     val loaded = row.isLoaded
                     // Asked for whenever the row comes on screen: the model fetches it the first
@@ -852,6 +864,42 @@ internal fun HomePane(
         ScrollToTop(listState)
         // Home's rows are not in an order a bubble could name, so the handle carries no label.
         FastScroller(listState)
+    }
+
+    if (openLink) {
+        com.tmplayer.ui.components.TvConfirm(
+            title = s.homeOpenLink,
+            message = s.homeOpenLinkMessage,
+            detail = if (linkInvalid) s.homeOpenLinkInvalid else null,
+            confirmLabel = s.commonPlay,
+            destructive = false,
+            icon = TmIcons.OpenExternal,
+            focusConfirm = true,
+            onConfirm = {
+                val link = com.tmplayer.data.StreamLinks.pasted(linkText)
+                if (link == null) {
+                    // Not a playable address: the dialog stays up and says so, in place.
+                    linkInvalid = true
+                } else {
+                    openLink = false
+                    linkInvalid = false
+                    onPlayStream(link)
+                }
+            },
+            onDismiss = { openLink = false; linkInvalid = false },
+            extra = {
+                com.tmplayer.ui.auth.PaneField(
+                    value = linkText,
+                    onValueChange = { linkText = it; linkInvalid = false },
+                    placeholder = s.homeOpenLinkHint,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                        autoCorrectEnabled = false,
+                    ),
+                )
+            },
+        )
     }
 
     // The carousel alone on Home (every row off in Settings): the remote stands on its Play.
@@ -1388,6 +1436,24 @@ private fun SharePlayerPill() {
     }
 }
 
+/** The Open link pill (v1.0.11): asks for an address and plays it in the player. */
+@Composable
+private fun OpenLinkPill(onClick: () -> Unit) {
+    val s = LocalStrings.current
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Tone.surfaceHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TmIcons.OpenExternal, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        M3Text(s.homeOpenLink, style = M3MaterialTheme.typography.titleSmall, color = Tone.text)
+    }
+}
+
 /** One stream's card in the Live row: the name it was posted with, and its badge. */
 @Composable
 private fun StreamCard(link: StreamLink, onClick: () -> Unit) {
@@ -1556,6 +1622,7 @@ private val STRIP_GAP = 12.dp
 /** The lazy key of the phone's featured carousel at the top of Home. */
 private const val FEATURED_KEY = "featured"
 private const val SURPRISE_KEY = "surprise"
+private const val OPEN_LINK_KEY = "open-link"
 private const val BUILT_IN_KEY = "built-in"
 
 /** How far Home moves down on a television when Down finds no row on screen below the remote. */

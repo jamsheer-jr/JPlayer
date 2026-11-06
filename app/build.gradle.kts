@@ -387,6 +387,8 @@ dependencies {
     // HLS, for the built-in channel's live streams (v1.0.10): ExoPlayer reads a live .m3u8
     // only with this module, at the same pinned Media3 version as the rest.
     implementation(libs.androidx.media3.exoplayer.hls)
+    // DASH, for an .mpd link pasted into Open link (v1.0.11), at the same pinned version.
+    implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.androidx.media3.ui)
     // Only for 3D video: the anaglyph shader ([Stereo3dEffect]). Nothing goes through it otherwise.
     implementation(libs.androidx.media3.effect)

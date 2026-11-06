@@ -467,6 +467,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private var streamUrl: String? = null
     private var streamLive = false
 
+    /** A stream address that is a DASH manifest (.mpd), so its reader is named up front too. */
+    private var streamDash = false
+
     /**
      * The video's file in the Downloads folder, when it is a download, and then the whole of
      * playback comes from it: no TDLib stream, no room check, no claim on the cache, no connection.
@@ -1790,6 +1793,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         fileId = from.getIntExtra(EXTRA_FILE_ID, 0)
         streamUrl = from.getStringExtra(EXTRA_STREAM_URL)?.takeIf { it.isNotBlank() }
         streamLive = streamUrl != null && from.getBooleanExtra(EXTRA_STREAM_LIVE, false)
+        streamDash = streamUrl != null && from.getBooleanExtra(EXTRA_STREAM_DASH, false)
         pressedAt = from.getLongExtra(EXTRA_PRESSED_AT, 0L)
         openedAt = SystemClock.elapsedRealtime()
         startStages.set(0)
@@ -2177,7 +2181,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 built.setMediaItem(
                     androidx.media3.common.MediaItem.Builder()
                         .setUri(source)
-                        .apply { if (streamLive) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8) }
+                        .apply {
+                            if (streamLive) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+                            else if (streamDash) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_MPD)
+                        }
                         .build(),
                 )
             } else {
@@ -9294,6 +9301,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
         /** Whether that stream is live: an HLS address, joined at its live edge. */
         private const val EXTRA_STREAM_LIVE = "stream_live"
+        private const val EXTRA_STREAM_DASH = "stream_dash"
         /** How long the note about a missing piece stays up as the video starts. */
         private const val PIECES_NOTICE_MS = 6_000L
 
@@ -9602,16 +9610,18 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
 
         /**
-         * The player on a stream link from the built-in channel (v1.0.10): [link]'s address
-         * and the name it was posted with, and the channel it was posted in as the line
-         * under the name. No file id travels with it, because there is no Telegram file.
+         * The player on a stream link (v1.0.10): [link]'s address and the name it was posted
+         * with, and where it came from as the line under the name (the channel it was posted
+         * in, or the site a pasted link points at). No file id travels with it, because there
+         * is no Telegram file.
          */
         fun streamIntent(context: Context, link: com.tmplayer.data.StreamLink): Intent =
             Intent(context, PlayerActivity::class.java).apply {
                 putExtra(EXTRA_STREAM_URL, link.url)
                 putExtra(EXTRA_STREAM_LIVE, link.live)
+                putExtra(EXTRA_STREAM_DASH, link.dash)
                 putExtra(EXTRA_TITLE, link.name)
-                putExtra(EXTRA_CHAT_TITLE, com.tmplayer.data.BuiltInChannels.J_MOVIES.name)
+                putExtra(EXTRA_CHAT_TITLE, link.source.ifBlank { com.tmplayer.data.BuiltInChannels.J_MOVIES.name })
             }
     }
 }

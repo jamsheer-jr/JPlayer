@@ -81,6 +81,37 @@ class StreamLinksTest {
         assertEquals("Show 20", links.first().name)
         assertTrue(links.all { it.live })
     }
+
+    @Test
+    fun aPastedLiveLinkPlaysAsLive() {
+        val link = StreamLinks.pasted("  https://cdn.example.com/live/match.m3u8?token=abc  ")
+        assertEquals("https://cdn.example.com/live/match.m3u8?token=abc", link?.url)
+        assertEquals(true, link?.live)
+        assertEquals(false, link?.dash)
+        assertEquals("match.m3u8", link?.name)
+        assertEquals("cdn.example.com", link?.source)
+    }
+
+    @Test
+    fun aPastedDashLinkIsDashAndAPlainFileIsNeither() {
+        val dash = StreamLinks.pasted("https://cdn.example.com/v/movie.mpd")
+        assertEquals(true, dash?.dash)
+        assertEquals(false, dash?.live)
+        val file = StreamLinks.pasted("https://cdn.example.com/v/movie.mkv")
+        assertEquals(false, file?.dash)
+        assertEquals(false, file?.live)
+        assertEquals("movie.mkv", file?.name)
+    }
+
+    @Test
+    fun aPastedLinkThatIsNotPlayableIsRefused() {
+        assertNull(StreamLinks.pasted("https://example.com/page.html"))
+        assertNull(StreamLinks.pasted("https://example.com/movie.mp4.html"))
+        assertNull(StreamLinks.pasted("not a link at all"))
+        assertNull(StreamLinks.pasted(""))
+        // A channel post still reads only its own two shapes: no DASH from a post.
+        assertNull(StreamLinks.inPost("Show https://cdn.example.com/v/movie.mpd", "J MOVIES"))
+    }
 }
 
 class ChannelNewsTest {
