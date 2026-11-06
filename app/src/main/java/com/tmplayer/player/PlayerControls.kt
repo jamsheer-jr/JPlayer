@@ -88,7 +88,7 @@ class PlayerControls(
     private val subtitle: TextView = root.findViewById(R.id.controls_subtitle)
     private val timeBar: DefaultTimeBar = root.findViewById(R.id.controls_timebar)
     private val clock: TextView = root.findViewById(R.id.controls_clock)
-    private val decoderBadge: TextView = root.findViewById(R.id.control_decoder)
+    private val qualityBadge: TextView = root.findViewById(R.id.control_quality)
     private val rotate: ImageButton = root.findViewById(R.id.control_rotate)
     private val shapeButton: ImageButton = root.findViewById(R.id.control_shape)
 
@@ -604,6 +604,17 @@ class PlayerControls(
         // the row over this one, exactly where they were. A television never runs this: its
         // row, its pill and its shape button stay where they have always been.
         (buttons.parent as? View)?.visibility = View.GONE
+        // The copy pill belongs at the right end of its row on a phone (device feedback,
+        // 2026-11-06): the scroll view above was the row's weighted child and held the pills
+        // at the right, so with it gone the copy pill drifted to the left. A weighted spacer
+        // at the row's start takes its place and pushes the copy pill, and Episodes beside
+        // it when it shows, back to the right end, whichever of them is on the row. A
+        // television never runs this: its scroll view keeps its own weight.
+        (copyButton.parent as? android.widget.LinearLayout)?.let { copyRow ->
+            val spacer = android.widget.Space(root.context)
+            spacer.layoutParams = android.widget.LinearLayout.LayoutParams(0, 1).apply { weight = 1f }
+            copyRow.addView(spacer, 0)
+        }
         val row = transport as android.widget.LinearLayout
         (lockButton.parent as? android.view.ViewGroup)?.removeView(lockButton)
         row.addView(lockButton, 0)
@@ -659,14 +670,14 @@ class PlayerControls(
     }
 
     /**
-     * Names the decoder on the top bar: "HW" for the device's own decoder, "SW" for software,
-     * or null to take the badge away (no picture, or the decoder not known yet). There is no
-     * HW+ here: nothing in the player distinguishes a second kind of hardware decoding, and a
-     * badge that guesses would lie.
+     * Names the playing copy's quality on the top bar: "UHD", "HD" or "SD", read from the copy
+     * itself (see VideoCopies.badgeForHeight), or null to take the badge away (no picture, or
+     * the quality not known). Which decoder plays the picture is the player's own business and
+     * is not badged here.
      */
-    fun setDecoderBadge(label: String?) {
-        decoderBadge.text = label.orEmpty()
-        decoderBadge.visibility = if (label.isNullOrBlank()) View.GONE else View.VISIBLE
+    fun setQualityBadge(label: String?) {
+        qualityBadge.text = label.orEmpty()
+        qualityBadge.visibility = if (label.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
     /** Offers or takes away the picture shape button, for a video that is sound alone. */

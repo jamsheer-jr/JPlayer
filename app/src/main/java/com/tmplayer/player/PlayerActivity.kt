@@ -998,7 +998,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 watchPicture = DeviceDecode.pictureOf(format)
                 watchFormat = format
                 watchSoftware = DecoderSwitch.softwareVideoChosen(exo)
-                controls?.setDecoderBadge(if (watchSoftware) "SW" else "HW")
+                controls?.setQualityBadge(playingBadge())
             }
         }
         val playing = exo.isPlaying && !castUp()
@@ -1809,7 +1809,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         loopHandler.removeCallbacks(watchTick)
         watchPicture = null
         watchSoftware = false
-        controls?.setDecoderBadge(null)
+        controls?.setQualityBadge(null)
         stutterOffered = false
         copyHandPicked = false
         heavyLabel = null
@@ -2544,6 +2544,17 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 else -> null
             },
         )
+    }
+
+    /**
+     * The top bar's quality badge for the copy playing: Telegram's copy height while one of
+     * those plays in place of the upload (the same first choice [setCopies] makes for the copy
+     * button's words), else the playing copy's own height as the copies machinery reads it
+     * ([VideoCopies.heightOf]). Null, and no badge, when neither says what is playing.
+     */
+    private fun playingBadge(): String? {
+        val height = if (playingQuality != 0) playingQuality else VideoCopies.heightOf(currentItem())
+        return height?.let { VideoCopies.badgeForHeight(it) }
     }
 
     /** The chat a copy is in, by name, for the copies list and for the player it opens. */

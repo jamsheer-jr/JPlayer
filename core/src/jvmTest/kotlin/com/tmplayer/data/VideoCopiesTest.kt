@@ -287,6 +287,16 @@ class VideoCopiesTest {
     }
 
     @Test
+    fun `the top bar badge bands a height as UHD, HD or SD`() {
+        assertEquals("UHD", VideoCopies.badgeForHeight(2160))
+        assertEquals("HD", VideoCopies.badgeForHeight(1080))
+        assertEquals("SD", VideoCopies.badgeForHeight(720))
+        assertEquals("SD", VideoCopies.badgeForHeight(480))
+        assertEquals("SD", VideoCopies.badgeForHeight(360))
+        assertNull(VideoCopies.badgeForHeight(0))
+    }
+
+    @Test
     fun `a search card counts files as the page counts versions`() {
         val one = video(1, 80, "Night Train 2019 1080p.mkv")
         // The same file forwarded to a second chat: one version, though two posts.

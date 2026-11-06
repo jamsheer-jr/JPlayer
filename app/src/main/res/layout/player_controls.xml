@@ -169,11 +169,11 @@
             android:src="@drawable/ic_audio_language"
             android:tint="@color/player_control_icon" />
 
-        <!-- The decoder badge (J Player, 2026-11-06): HW while the device's own decoder
-             plays the picture, SW while software does, named by PlayerControls once the
-             decoder is known. -->
+        <!-- The quality badge (J Player, 2026-11-06): UHD, HD or SD for the copy playing,
+             named by PlayerControls from the copy's own height once it is known. Which
+             decoder plays the picture is not badged here. -->
         <TextView
-            android:id="@+id/control_decoder"
+            android:id="@+id/control_quality"
             android:layout_width="wrap_content"
             android:layout_height="28dp"
             android:layout_marginStart="4dp"

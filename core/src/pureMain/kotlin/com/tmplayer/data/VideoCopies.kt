@@ -200,6 +200,19 @@ object VideoCopies {
     }
 
     /**
+     * The player top bar's badge for a copy playing at [height], the height read the way this
+     * machinery reads it ([heightOf], or Telegram's copy height while one of those plays in
+     * place of the upload): "UHD" for a 2160 picture, "HD" for 1080, "SD" for 720 and anything
+     * under it. Null when the height is not known, so the badge stays away rather than guessing.
+     */
+    fun badgeForHeight(height: Int): String? = when {
+        height >= 2000 -> "UHD"
+        height >= 1080 -> "HD"
+        height > 0 -> "SD"
+        else -> null
+    }
+
+    /**
      * Which of [copies] to play without asking, in this order:
      * 1. the one the viewer chose for this video before ([chosen], an [MediaItem.id]);
      * 2. one already on this device, a download before a cached copy, so nothing is fetched;
