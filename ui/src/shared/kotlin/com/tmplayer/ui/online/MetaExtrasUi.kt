@@ -615,7 +615,7 @@ fun MoreLikeThisRow(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
-    if (onOpen == null || extras.similar.isEmpty()) return
+    if (onOpen == null || (extras.similar.isEmpty() && extras.genres.isEmpty())) return
     val online = OnlineMetadata.current ?: return
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -623,7 +623,13 @@ fun MoreLikeThisRow(
     val back = com.tmplayer.ui.browse.LocalDetailReturn.current
     var seen by remember { mutableStateOf(back != null) }
     val titles by produceState(emptyList<KnownTitle>(), self.id, extras, seen) {
-        if (seen) value = withContext(Dispatchers.IO) { online.moreLikeThis(self, extras, KnownMedia.all()) }
+        if (seen) value = withContext(Dispatchers.IO) {
+            val known = KnownMedia.all()
+            // The provider's own similar titles first; when it named none, the viewer's own
+            // titles alike by genre (J Player, 2026-11-06).
+            online.moreLikeThis(self, extras, known)
+                .ifEmpty { online.moreLikeThisByGenre(self, extras, known) }
+        }
     }
     if (titles.isEmpty()) {
         // A place holder one pixel tall, so being scrolled to is what starts the work.

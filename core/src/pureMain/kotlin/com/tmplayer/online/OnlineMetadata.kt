@@ -909,6 +909,35 @@ class OnlineMetadata(
         return MetaRules.moreLikeThis(extras.similar, self, best.values.map { it.first })
     }
 
+    /**
+     * [MetaRules.moreByGenre] over the videos the app has listed: each is matched from the
+     * cache, as [moreLikeThis] matches, and a candidate counts only when its own facts are
+     * already held and carry a genre. Nothing is fetched for this: a title whose facts were
+     * never read is simply not offered.
+     */
+    fun moreLikeThisByGenre(self: MetaInfo, extras: MetaExtras, items: Collection<MediaItem>): List<KnownTitle> {
+        if (extras.genres.isEmpty() || items.isEmpty() || !store.now.enabled) return emptyList()
+        val lang = tmdbLanguage()
+        val asked = HashMap<String, MetaInfo?>()
+        val facts = HashMap<String, MetaExtras?>()
+        val best = LinkedHashMap<String, Pair<GenreKin, Int>>()
+        for (item in items) {
+            val full = item.metaQuery ?: continue
+            val show = full.showOnly()
+            val cacheKey = show.cacheKey(lang)
+            val info = if (cacheKey in asked) asked[cacheKey] else cachedMatch(show).also { asked[cacheKey] = it }
+            info ?: continue
+            val held = if (cacheKey in facts) facts[cacheKey] else storedExtras(info).also { facts[cacheKey] = it }
+            val genres = held?.genres.orEmpty()
+            if (genres.isEmpty()) continue
+            val match = MetaRef.matchKey(info.provider, info.kind, info.id)
+            val order = (full.season ?: 0) * 10_000 + (full.episode ?: 0)
+            val kept = best[match]
+            if (kept == null || order < kept.second) best[match] = GenreKin(KnownTitle(item, info), genres, held?.rating) to order
+        }
+        return MetaRules.moreByGenre(extras.genres, self, best.values.map { it.first })
+    }
+
     // ---- pictures -----------------------------------------------------------------------------
 
     /**

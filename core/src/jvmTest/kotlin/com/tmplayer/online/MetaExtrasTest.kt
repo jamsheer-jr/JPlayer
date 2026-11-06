@@ -297,6 +297,34 @@ class MetaExtrasTest {
         assertTrue(MetaRules.moreLikeThis(extras.similar, bunnyInfo, emptyList()).isEmpty())
     }
 
+    @Test
+    fun moreByGenreRanksSharedGenresThenRatingAndSkipsItself() {
+        fun item(id: Long, name: String) = MediaItem(
+            chatId = 7, messageId = id, fileId = 0, title = name, sizeBytes = 1, durationSec = 1, mimeType = "video/mp4",
+            thumbnailFileId = 0, miniThumbnail = null, date = 0, fileName = name,
+        )
+        fun kin(id: String, title: String, genres: List<String>, rating: Double?) = GenreKin(
+            KnownTitle(item(id.toLong(), title), MetaInfo(MetaProvider.Tmdb, id, MetaKind.Film, title)),
+            genres,
+            rating,
+        )
+        val self = MetaInfo(MetaProvider.Tmdb, "1", MetaKind.Film, "Self")
+        val ranked = MetaRules.moreByGenre(
+            genres = listOf("Drama", "Comedy"),
+            self = self,
+            scored = listOf(
+                kin("1", "Self", listOf("Drama", "Comedy"), 9.0),
+                kin("2", "Both, lower rated", listOf("Drama", "Comedy"), 7.0),
+                kin("3", "Both, better rated", listOf("comedy", "drama"), 8.5),
+                kin("4", "One shared", listOf("Drama", "Horror"), 9.5),
+                kin("5", "None shared", listOf("Horror"), 9.9),
+                kin("6", "No facts", emptyList(), null),
+            ),
+        )
+        assertEquals(listOf("3", "2", "4"), ranked.map { it.info.id })
+        assertTrue(MetaRules.moreByGenre(emptyList(), self, listOf(kin("2", "X", listOf("Drama"), 1.0))).isEmpty())
+    }
+
     // ---- the cache and the switch -----------------------------------------------------------
 
     @Test

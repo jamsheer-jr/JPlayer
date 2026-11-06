@@ -173,6 +173,9 @@ data class MetaExtras(
 /** A video the viewer has, and the provider's title it was matched to: one "More like this" tile. */
 data class KnownTitle(val item: MediaItem, val info: MetaInfo)
 
+/** A title the viewer has, with the genres its own facts carry and its rating: [MetaRules.moreByGenre]. */
+data class GenreKin(val title: KnownTitle, val genres: List<String>, val rating: Double?)
+
 /** One video in a provider's list of videos for a title, before [MetaRules.trailer] picks one. */
 data class MetaVideo(
     val site: String,
@@ -350,6 +353,35 @@ object MetaRules {
             .mapNotNull { byKey[it] }
             .take(limit)
             .toList()
+    }
+
+    /**
+     * "More like this" by shared genres, for when the provider named nothing similar: the
+     * titles carrying the most of [genres] come first, the better rated ahead among equals.
+     * A title with no genre in common is not alike, and the title itself never counts.
+     */
+    fun moreByGenre(genres: List<String>, self: MetaInfo, scored: List<GenreKin>, limit: Int = 10): List<KnownTitle> {
+        val wanted = genres.mapTo(HashSet()) { it.trim().lowercase() }
+        if (wanted.isEmpty() || scored.isEmpty()) return emptyList()
+        val selfKey = MetaRef.matchKey(self.provider, self.kind, self.id)
+        val best = LinkedHashMap<String, Pair<GenreKin, Int>>()
+        for (kin in scored) {
+            val info = kin.title.info
+            val key = MetaRef.matchKey(info.provider, info.kind, info.id)
+            if (key == selfKey) continue
+            val shared = kin.genres.count { it.trim().lowercase() in wanted }
+            if (shared == 0) continue
+            val held = best[key]
+            if (held == null || shared > held.second) best[key] = kin to shared
+        }
+        return best.values
+            .sortedWith(
+                compareByDescending<Pair<GenreKin, Int>> { it.second }
+                    .thenByDescending { it.first.rating ?: Double.NEGATIVE_INFINITY }
+                    .thenBy { it.first.title.info.title },
+            )
+            .take(limit)
+            .map { it.first.title }
     }
 }
 
