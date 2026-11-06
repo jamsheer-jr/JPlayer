@@ -38,11 +38,11 @@ class TouchRoutesTest {
     }
 
     @Test
-    fun `the highlight follows the bar's order, the picture after Search`() {
+    fun `the highlight follows the bar's order, the picture last`() {
         assertEquals(0, barHighlightIndex(TouchDestination.Home))
         assertEquals(1, barHighlightIndex(TouchDestination.Chats))
         assertNull(barHighlightIndex(null))
-        // Settings is behind the picture now: Home, Chats, Search, then the picture.
+        // Home, Chats, Search and Settings, then the picture (Settings joined the bar in 1.0.12).
         assertEquals(4, PROFILE_SLOT)
         assertEquals(PROFILE_SLOT, barHighlightIndex(null, inProfile = true))
         assertEquals(0, barHighlightIndex(TouchDestination.Home, inProfile = true))
