@@ -155,6 +155,9 @@ object Backups {
         // The streams the viewer took out of Home's Live row, by the post that carried each
         // one: a choice about what Home shows, so it travels like the collections do.
         "hidden_streams" to Kind.TEXT,
+        // The viewer's own words hidden from titles (TitleCleaning): their own list, kept
+        // with their other title choices.
+        "hidden_title_words" to Kind.TEXT,
         // The chats the viewer added ([AddedChats]) and whether they answered at all: a backup
         // restored on a device that never asked is treated as the answer it carries.
         "added_chats" to Kind.TEXT,

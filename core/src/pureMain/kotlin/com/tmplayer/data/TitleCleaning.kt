@@ -22,6 +22,20 @@ object TitleCleaning {
     @Volatile
     var hideTags: Boolean = false
 
+    /**
+     * The viewer's own words on top of the built in ones (Settings, Playback, under the same
+     * switch), as typed. They are judged by exactly the rule the built in tokens are
+     * ([isJunk]'s two prongs: the bare form, then the form with its dashes taken out), and
+     * they only ever reach a title through [strip], so they hide nothing while [hideTags]
+     * is off. HDRip is still not a built in token; a viewer who types it here has chosen
+     * to hide it themselves, which is theirs to choose.
+     */
+    @Volatile
+    var customWords: Set<String> = emptySet()
+
+    /** How many of the viewer's own words are kept; past it the stored tail is dropped. */
+    const val MAX_CUSTOM_WORDS = 50
+
     /** [title] as it is shown: cleaned while [hideTags] is on, untouched while it is off. */
     fun shown(title: String): String = if (hideTags) strip(title) else title
 
@@ -33,7 +47,15 @@ object TitleCleaning {
     fun strip(title: String): String {
         if (title.isBlank()) return title
         val words = title.split(WHITESPACE)
-        val kept = words.filterNot { word -> isJunk(word) }
+        val full = HashSet<String>()
+        val squashed = HashSet<String>()
+        for (custom in customWords) {
+            val form = custom.trim { !it.isLetterOrDigit() }.uppercase()
+            if (form.isEmpty()) continue
+            full += form
+            squashed += form.replace("-", "")
+        }
+        val kept = words.filterNot { word -> isJunk(word) || isCustom(word, full, squashed) }
         if (kept.isEmpty() || kept.size == words.size) return title
         return kept.joinToString(" ").trim(' ', '-', ':', '|')
     }
@@ -43,6 +65,40 @@ object TitleCleaning {
         val bare = word.trim { !it.isLetterOrDigit() }.uppercase()
         return bare in JUNK || bare.replace("-", "") in JUNK_SQUASHED
     }
+
+    /** A viewer's word judged exactly as a built in one is: its bare form, or its squashed. */
+    private fun isCustom(word: String, full: Set<String>, squashed: Set<String>): Boolean {
+        if (full.isEmpty()) return false
+        val bare = word.trim { !it.isLetterOrDigit() }.uppercase()
+        return bare in full || bare.replace("-", "") in squashed
+    }
+
+    /**
+     * The stored text of the viewer's words read back (Settings keeps them as one value,
+     * one word a line): a line is a word once trimmed, a word already kept in another case
+     * is not kept twice, blank and damaged lines are skipped, and the tail past
+     * [MAX_CUSTOM_WORDS] falls away. The order the words were added in is the order kept.
+     */
+    fun parseCustomWords(stored: String?): Set<String> {
+        if (stored.isNullOrBlank()) return emptySet()
+        val words = LinkedHashSet<String>()
+        val seen = HashSet<String>()
+        for (line in stored.split('\n')) {
+            val word = line.trim()
+            if (word.isEmpty() || !seen.add(word.uppercase())) continue
+            words += word
+            if (words.size >= MAX_CUSTOM_WORDS) break
+        }
+        return words
+    }
+
+    /** The viewer's words as stored text: one word a line, blank and repeated ones left out. */
+    fun encodeCustomWords(words: Collection<String>): String =
+        words.map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.uppercase() }
+            .take(MAX_CUSTOM_WORDS)
+            .joinToString("\n")
 
     /** The capture tokens, as a release name writes them. HDRip is absent on purpose. */
     private val JUNK = setOf(

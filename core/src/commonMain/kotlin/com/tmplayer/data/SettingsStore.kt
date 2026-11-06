@@ -92,6 +92,7 @@ private val CHAT_FILTER = stringPreferencesKey("chat_filter")
 private val CHAT_SORT = stringPreferencesKey("chat_sort")
 private val COLLECTIONS = stringPreferencesKey("collections")
 private val HIDDEN_STREAMS = stringPreferencesKey("hidden_streams")
+private val HIDDEN_TITLE_WORDS = stringPreferencesKey("hidden_title_words")
 /** "Only my folders", retired: read once by [SettingsStore.takeOnlyFolders] and removed. */
 private val HIDE_DEFAULT_GROUPS = booleanPreferencesKey("hide_default_groups")
 
@@ -1979,6 +1980,17 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHiddenStreams(keys: Set<String>) {
         prefs.edit { it[HIDDEN_STREAMS] = HiddenStreams.encode(keys) }
+    }
+
+    /** The viewer's own words hidden from titles beside the built in capture words: see [TitleCleaning]. */
+    val hiddenTitleWords: Flow<Set<String>> =
+        read { it[HIDDEN_TITLE_WORDS] }.map { raw -> TitleCleaning.parseCustomWords(raw) }
+
+    suspend fun hiddenTitleWordsNow(): Set<String> =
+        TitleCleaning.parseCustomWords(prefs.data.first()[HIDDEN_TITLE_WORDS])
+
+    suspend fun setHiddenTitleWords(words: Set<String>) {
+        prefs.edit { it[HIDDEN_TITLE_WORDS] = TitleCleaning.encodeCustomWords(words) }
     }
 
     // ---- "Only my folders", retired ----------------------------------------------------------
