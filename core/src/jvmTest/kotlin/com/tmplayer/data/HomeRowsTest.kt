@@ -674,10 +674,13 @@ class HomeRowsTest {
             video(1, "Epsilon NF 2025.mkv", date = 1_600_000_100),
             video(1, "Zeta NF 2025.mkv", date = 1_600_000_200),
         )
+        // The same titles again in a second chat, as their own posts: presence is what
+        // the Top 10 row ranks, and one copy each of anything is no ranking at all.
+        val copies = films.map { video(2, it.fileName, it.date) }
         val rows = HomeRows.build(
             continueWatching = emptyList(),
             favourites = listOf(chat(1), chat(2)),
-            loaded = mapOf(1L to films, 2L to films),
+            loaded = mapOf(1L to films, 2L to copies),
             recent = emptyList(),
             layout = HomeLayout(catalogRows = true),
             nowMs = 1_700_000_200_000L,
