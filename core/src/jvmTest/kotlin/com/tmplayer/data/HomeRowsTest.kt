@@ -676,8 +676,8 @@ class HomeRowsTest {
         )
         val rows = HomeRows.build(
             continueWatching = emptyList(),
-            favourites = listOf(chat(1)),
-            loaded = mapOf(1L to films),
+            favourites = listOf(chat(1), chat(2)),
+            loaded = mapOf(1L to films, 2L to films),
             recent = emptyList(),
             layout = HomeLayout(catalogRows = true),
             nowMs = 1_700_000_200_000L,

@@ -127,19 +127,18 @@ data class MediaFacts(
             "SDR" to word("sdr"),
         )
 
-        /** Any HDR family marker at all, for the HDR DV combination below. */
-        private val ANY_HDR = word("""hdr10(?:\+|plus)?|hdr""")
+        /** HDR and DV named as one combined marker: "HDRDV", "HDR.DV", "DV HDR". */
+        private val HDR_DV_COMBINED = word("""hdr[ ._-]?dv|dv[ ._-]?hdr""")
 
         /**
-         * The dynamic range as the owner groups it (2026-11-06): HDR and Dolby Vision named
-         * together, in either spelling ("HDRDV", "HDR.DV", "DV HDR"), read as the one kind
-         * "HDR DV" rather than whichever of the two the table would have met first. Otherwise
+         * The dynamic range as the owner groups it (2026-11-06): the combined marker reads
+         * as the one kind "HDR DV". Separate markers are not combined: a name carrying DV
+         * and HDR10 as two facts reads Dolby Vision, as the table order gives it. Otherwise
          * the table order stands: Dolby Vision, then HDR10+, HDR10, HDR, SDR.
          */
         private fun dynamicRangeOf(name: String): String? {
-            val base = first(name, DYNAMIC_RANGE)
-            if (base == "Dolby Vision" && ANY_HDR.containsMatchIn(name)) return "HDR DV"
-            return base
+            if (HDR_DV_COMBINED.containsMatchIn(name)) return "HDR DV"
+            return first(name, DYNAMIC_RANGE)
         }
 
         /**

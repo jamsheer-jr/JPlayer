@@ -623,7 +623,9 @@ object HomeRows {
                 if (ranked.size >= CATALOG_MIN) add(HomeRow.Catalog("trending", "", ranked.take(LIMIT).map { it.first }, all = ranked.map { it.first }))
             }
             // Top 10 (owner, 2026-11-06): the titles with the most presence in the chats,
-            // a title counted once per copy of it anywhere in the pool, most first.
+            // a title counted once per copy of it anywhere in the pool, most first. Only a
+            // title present more than once is ranked: where nothing repeats, every title
+            // stands at one and a top ten would be an arbitrary first ten.
             run {
                 val presence = HashMap<String, Int>()
                 pool.forEach { item ->
@@ -632,7 +634,7 @@ object HomeRows {
                 }
                 val scored = all.map { entry ->
                     entry to itemsOf(entry).map { SameTitle.filmKey(it) ?: it.id }.distinct().sumOf { presence[it] ?: 0 }
-                }.sortedByDescending { it.second }
+                }.filter { it.second >= 2 }.sortedByDescending { it.second }
                 if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("top10", "", scored.take(10).map { it.first }, all = scored.map { it.first }))
             }
             val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null }

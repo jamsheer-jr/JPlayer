@@ -75,7 +75,6 @@ class MediaFactsTest {
         // Nor is a word that merely contains a codec's letters.
         assertNull(MediaFacts.read("savvy.dtsomething.mkv").audio)
     }
-}
 
     @Test
     fun `the owner's platform tags read as their services`() {
@@ -130,3 +129,4 @@ class MediaFactsTest {
         assertEquals("SDR", MediaFacts.read("Film.1080p.SDR.WEB-DL.mkv").dynamicRange)
         assertEquals("HDR", MediaFacts.read("Film.2160p.HDR.WEB-DL.mkv").dynamicRange)
     }
+}

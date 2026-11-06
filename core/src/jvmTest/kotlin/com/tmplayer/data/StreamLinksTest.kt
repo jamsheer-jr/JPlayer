@@ -123,8 +123,9 @@ class StreamLinksTest {
         assertNull(StreamLinks.pasted("https://example.com/movie.mp4.html"))
         assertNull(StreamLinks.pasted("not a link at all"))
         assertNull(StreamLinks.pasted(""))
-        // A channel post still reads only its own two shapes: no DASH from a post.
-        assertNull(StreamLinks.inPost("Show https://cdn.example.com/v/movie.mpd", "J MOVIES"))
+        // A channel post reads every shape a pasted link does (owner, 2026-11-06):
+        // DASH from a post included.
+        assertEquals(true, StreamLinks.inPost("Show https://cdn.example.com/v/movie.mpd", "J MOVIES")?.dash)
     }
 }
 
