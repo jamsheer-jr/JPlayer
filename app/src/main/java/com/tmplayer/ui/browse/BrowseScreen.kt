@@ -2906,7 +2906,6 @@ private fun PrefetchWhileFocused(chatId: Long, focused: Boolean) {
     }
 }
 
-@Composable
 /**
  * The owner's channel pinned at the top of the Chats list (owner, 2026-11-06): one card
  * in the app's own colours with its LIVE badge, standing apart from the chats under it.

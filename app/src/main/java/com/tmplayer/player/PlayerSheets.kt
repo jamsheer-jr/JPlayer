@@ -762,7 +762,6 @@ private val TILE_GAP = 12.dp
  * The picture shapes, one ticked: fit, crop and stretch, as the pickers' panel draws a choice of
  * one of a few. The pinch on a phone stays as the shortcut; this is the route that can be found.
  */
-@Composable
 /**
  * The quality chooser (J Player, 2026-11-06): the tiers the badge names, SD, HD and UHD, each
  * with the copy choosing it would play (its height and size), the tier playing ticked. Picking

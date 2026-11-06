@@ -2577,7 +2577,6 @@ private fun CrashQuestion(question: CrashReports.Question, settings: SettingsSto
  * answer, or once a report sent with the switch on has been flushed, the hold lets go and the
  * shell is built as on any other start.
  */
-@Composable
 /**
  * The running download marker (owner, 2026-11-06): one circle for the whole queue, its
  * ring filled by the bytes landed of the bytes asked for, the download icon and the

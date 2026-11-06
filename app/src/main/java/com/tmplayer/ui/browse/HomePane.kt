@@ -260,9 +260,10 @@ internal fun HomePane(
     // complete page, a moment after the row is in at most ([HomeFeatured.FILL_WAIT_MS]).
     val recent = rows.firstNotNullOfOrNull { it as? HomeRow.Recent }
     // The banner's way (owner, 2026-11-06): auto is the newest titles as always; pinned
-    // shows the viewer's own titles, found across Home's rows by their progress keys;
+    // shows the viewer's own titles, found across Home's rows by their copies keys;
     // off hides the banner. The chats it draws from are the same chats Home reads.
-    val bannerSettings = remember { SettingsStore(LocalContext.current) }
+    val bannerContext = LocalContext.current
+    val bannerSettings = remember(bannerContext) { SettingsStore(bannerContext) }
     val bannerMode by remember(bannerSettings) { bannerSettings.homeBannerMode }.collectAsState(initial = "auto")
     val bannerPins by remember(bannerSettings) { bannerSettings.homeBannerPins }.collectAsState(initial = emptyList())
     val bannerRecent = when {
@@ -281,7 +282,7 @@ internal fun HomePane(
                     is ShelfEntry.File -> entry.item
                     is ShelfEntry.Show -> entry.series.cover
                 }
-                lead.progressKey in pins
+                com.tmplayer.data.VideoCopies.keyOf(lead) in pins
             }
             if (entries.isEmpty()) recent else HomeRow.Recent(entries, loaded = true, starredOnly = false)
         }

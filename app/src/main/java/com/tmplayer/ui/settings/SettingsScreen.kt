@@ -2527,21 +2527,25 @@ fun SettingsScreen(
     }
     if (homeSheet == "pins") {
         val candidates = remember {
-            com.tmplayer.online.KnownMedia.all().distinctBy { it.progressKey }.takeLast(100).asReversed()
+            com.tmplayer.online.KnownMedia.all()
+                .mapNotNull { item -> com.tmplayer.data.VideoCopies.keyOf(item)?.let { key -> key to item } }
+                .distinctBy { it.first }
+                .takeLast(100)
+                .asReversed()
         }
         ChoiceSheet(title = s.settingsHomePins, note = s.settingsHomePinsDetail, onDismiss = { homeSheet = null }, onClose = { homeSheet = null }) {
             ChoiceList {
                 if (candidates.isEmpty()) {
                     ChoiceLine(title = s.settingsHomePinsEmpty, enabled = false) {}
                 }
-                candidates.forEach { item ->
-                    val ticked = item.progressKey in bannerPins
+                candidates.forEach { (key, item) ->
+                    val ticked = key in bannerPins
                     ChoiceLine(
                         title = item.title.ifBlank { item.fileName },
                         selected = if (touch) null else ticked,
                         icon = if (ticked) TmIcons.Check else null,
                     ) {
-                        val next = if (ticked) bannerPins - item.progressKey else (bannerPins + item.progressKey).takeLast(5)
+                        val next = if (ticked) bannerPins - key else (bannerPins + key).takeLast(5)
                         scope.launch { settings.setHomeBannerPins(next) }
                     }
                 }
@@ -3551,7 +3555,6 @@ private fun SignOutButton(label: String, onClick: () -> Unit) {
     }
 }
 
-@Composable
 /** A Home catalog category's name in Settings, by its group (see [com.tmplayer.data.HomeLayout.CATALOG_GROUPS]). */
 internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): String = when (group) {
     "trending" -> s.settingsCatTrending
@@ -3570,6 +3573,7 @@ internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): St
     else -> group
 }
 
+@Composable
 internal fun ActionRow(
     title: String,
     subtitle: String,

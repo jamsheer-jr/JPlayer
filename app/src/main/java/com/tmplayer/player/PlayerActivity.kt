@@ -2717,7 +2717,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val overrides = exo.trackSelectionParameters.overrides
         val pinned = variants.indexOfFirst { (group, index) ->
             val indices = overrides[group.mediaTrackGroup]?.trackIndices
-            indices != null && (0 until indices.size()).any { indices.get(it) == index }
+            indices != null && (0 until indices.size).any { indices[it] == index }
         }
         val options = buildList {
             add(StreamQualityOption(L.playerQualityAuto, null, pinned < 0))
