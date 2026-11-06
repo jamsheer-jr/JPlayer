@@ -213,8 +213,9 @@ class GarbageInputTest {
             survive("StreamLinks.inPost", text) { StreamLinks.inPost(text, text) }
             survive("StreamLinks.pasted", text) { StreamLinks.pasted(text) }
             survive("StreamLinks.inPosts", text) {
-                StreamLinks.inPosts(listOf(ChannelPost(1, text, true), ChannelPost(2, text, false)), text)
+                StreamLinks.inPosts(listOf(ChannelPost(1, text, true), ChannelPost(2, text, false)), 7, text)
             }
+            survive("HiddenStreams.decode", text) { HiddenStreams.decode(text) }
             survive("AccountBook.decode", text) { AccountBook.decode(text) }
             survive("WebVtt.parseSrt", text) { WebVtt.parseSrt(text) }
             survive("WebVtt.parseAss", text) { WebVtt.parseAss(text) }

@@ -6,6 +6,9 @@ package com.tmplayer.data
  * a LIVE badge and no saved place. A DASH link ([dash] true) is an .mpd address. A plain file
  * link plays like any other video file. [source] names where the link came from (the channel
  * it was posted in, or the site a pasted link points at), for the line under its name.
+ * [chatId] and [messageId] name the post that carried the link, where there was a post: the
+ * Live row's hidden set ([HiddenStreams]) knows a stream by its post, so a repost (a new
+ * post, a new id) shows again and the same post never comes back once removed.
  */
 data class StreamLink(
     val url: String,
@@ -13,6 +16,8 @@ data class StreamLink(
     val live: Boolean,
     val dash: Boolean = false,
     val source: String = "",
+    val chatId: Long = 0,
+    val messageId: Long = 0,
 )
 
 /**
@@ -40,9 +45,15 @@ object StreamLinks {
         return null
     }
 
-    /** The stream links in [posts] (newest first), at most [LIMIT] of them. */
-    fun inPosts(posts: List<ChannelPost>, channelName: String): List<StreamLink> =
-        posts.mapNotNull { inPost(it.text, channelName) }.take(LIMIT)
+    /**
+     * The stream links in [posts] (newest first), at most [LIMIT] of them. Each carries the
+     * post it was read from ([chatId] and the post's own message id), so the Live row can
+     * tell one post of a stream from a later repost of the same address.
+     */
+    fun inPosts(posts: List<ChannelPost>, chatId: Long, channelName: String): List<StreamLink> =
+        posts.mapNotNull { post ->
+            inPost(post.text, channelName)?.copy(chatId = chatId, messageId = post.messageId)
+        }.take(LIMIT)
 
     /**
      * The link a viewer pastes to play (v1.0.11): the first address in [text] the player can

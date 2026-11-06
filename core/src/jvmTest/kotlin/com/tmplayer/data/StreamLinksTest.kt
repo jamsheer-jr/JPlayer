@@ -76,10 +76,24 @@ class StreamLinksTest {
                 isVideo = false,
             )
         }
-        val links = StreamLinks.inPosts(posts, "J MOVIES")
+        val links = StreamLinks.inPosts(posts, 42L, "J MOVIES")
         assertEquals(StreamLinks.LIMIT, links.size)
         assertEquals("Show 20", links.first().name)
         assertTrue(links.all { it.live })
+    }
+
+    @Test
+    fun postsCarryThePostTheyWereReadFrom() {
+        val posts = listOf(
+            ChannelPost(messageId = 9L, text = "Match https://cdn.example.com/m.m3u8", isVideo = false),
+            ChannelPost(messageId = 4L, text = "Show https://cdn.example.com/s.mp4", isVideo = false),
+        )
+        val links = StreamLinks.inPosts(posts, 42L, "J MOVIES")
+        assertEquals(2, links.size)
+        assertEquals(42L, links[0].chatId)
+        assertEquals(9L, links[0].messageId)
+        assertEquals(42L, links[1].chatId)
+        assertEquals(4L, links[1].messageId)
     }
 
     @Test

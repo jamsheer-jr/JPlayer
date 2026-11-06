@@ -91,6 +91,7 @@ private val MAX_SIZE = longPreferencesKey("max_size_bytes")
 private val CHAT_FILTER = stringPreferencesKey("chat_filter")
 private val CHAT_SORT = stringPreferencesKey("chat_sort")
 private val COLLECTIONS = stringPreferencesKey("collections")
+private val HIDDEN_STREAMS = stringPreferencesKey("hidden_streams")
 /** "Only my folders", retired: read once by [SettingsStore.takeOnlyFolders] and removed. */
 private val HIDE_DEFAULT_GROUPS = booleanPreferencesKey("hide_default_groups")
 
@@ -1969,6 +1970,15 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setCollections(collections: List<VideoCollection>) {
         prefs.edit { it[COLLECTIONS] = Collections.encode(collections) }
+    }
+
+    /** The streams the viewer took out of Home's Live row, by the posts that carried them: see [HiddenStreams]. */
+    val hiddenStreams: Flow<Set<String>> = read { it[HIDDEN_STREAMS] }.map { raw -> HiddenStreams.decode(raw) }
+
+    suspend fun hiddenStreamsNow(): Set<String> = HiddenStreams.decode(prefs.data.first()[HIDDEN_STREAMS])
+
+    suspend fun setHiddenStreams(keys: Set<String>) {
+        prefs.edit { it[HIDDEN_STREAMS] = HiddenStreams.encode(keys) }
     }
 
     // ---- "Only my folders", retired ----------------------------------------------------------

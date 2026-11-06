@@ -152,6 +152,9 @@ object Backups {
         // folded into the added chats and deleted), but read back from an older backup, so the
         // next whole chat list folds it in the same way.
         "hidden_chats" to Kind.TEXT,
+        // The streams the viewer took out of Home's Live row, by the post that carried each
+        // one: a choice about what Home shows, so it travels like the collections do.
+        "hidden_streams" to Kind.TEXT,
         // The chats the viewer added ([AddedChats]) and whether they answered at all: a backup
         // restored on a device that never asked is treated as the answer it carries.
         "added_chats" to Kind.TEXT,
