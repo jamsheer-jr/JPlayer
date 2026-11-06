@@ -1,5 +1,7 @@
 package com.tmplayer.data
 
+import com.tmplayer.platform.currentYear
+
 /**
  * One row on Home: what the viewer was part way through, the newest videos in a starred chat, or
  * the newest videos across the starred chats together.
@@ -120,7 +122,11 @@ sealed interface HomeRow {
      * a shelf can also be "trending" (the titles TMDB says are trending this week, of the
      * ones in the viewer's chats, in TMDB's own order) or "because" (unwatched titles sharing
      * a genre with what the viewer has watched), both from inputs the caller hands in the
-     * same way; their headings come from the catalog too.
+     * same way; their headings come from the catalog too. Since v1.0.13 a shelf can also be
+     * "anime" (the titles the online match calls Animation in Japanese, or whose name
+     * carries the word on its own where nobody matched them), which stands apart from
+     * Movies and Series, and the year shelf's kind names the chosen year ("year-" and
+     * the year, its label the year itself).
      */
     data class Catalog(
         val kind: String,
@@ -264,6 +270,9 @@ object HomeRows {
      *   run) already has videos: Home's chats cannot be picked, so Recently added holds its place
      *   as loading. Without it a cold start drew Continue watching alone and the carousel landed
      *   over it seconds later, pushing it down (Mi TV, caches cleared, 2026-10-23).
+     * @param shelfYear the year the year shelf gathers: the current year unless the viewer
+     *   picked another (the Settings year toggle, v1.0.13). Callers that pass nothing see
+     *   the shelf they have always seen.
      */
     fun build(
         continueWatching: List<ResumeRecord>,
@@ -289,7 +298,13 @@ object HomeRows {
         phoneOrder: Boolean = false,
         /** Now, for the Weekly shelf (new arrivals this week); zero turns that shelf off. */
         nowMs: Long = 0L,
+        /** The year shelf's year; the current year unless the viewer picked another. */
+        shelfYear: Int = currentYear(),
     ): List<HomeRow> {
+        // A phone's catalog shelves, held back until Recently added stands (owner, v1.0.13):
+        // the series shelves and the foot shelves are gathered here and laid down together,
+        // in the phone's headline order, once every other row is in place.
+        val phoneCatalog = ArrayList<HomeRow.Catalog>()
         val rows = buildList<HomeRow> {
         val seen = HashSet<String>()
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
@@ -366,17 +381,20 @@ object HomeRows {
             emitChatRows()
         }
 
-        // The Series row, directly under Continue watching (owner, 2026-11-06): fed by
-        // every chat whose videos Home has read (the whole [loaded] map, not only Home's
-        // picked chats) together with the search across chats, so a series in any visible
-        // chat stands here. The shelves at the foot keep their narrower pool, their gates
-        // and their place.
+        // The Series row (owner, 2026-11-06): fed by every chat whose videos Home has read
+        // (the whole [loaded] map, not only Home's picked chats) together with the search
+        // across chats, so a series in any visible chat stands here. On a television it
+        // stands directly under Continue watching; on a phone it is held back with the
+        // other shelves until Recently added stands (owner, v1.0.13). The shelves at the
+        // foot keep their narrower pool, their gates and their place.
         if (layout.catalogRows) {
             val seriesPool = (loaded.values.flatten() + recent.orEmpty()).distinctBy { it.id }
-            val shows = seriesShows(seriesPool, shownCopies, inContinue)
+            // Anime stands in its own shelf at the foot, not among the shows (owner, v1.0.13).
+            val shows = seriesShows(seriesPool, shownCopies, inContinue).filterNot { isAnime(it, titleMeta) }
             if (shows.isNotEmpty()) {
-                add(HomeRow.Catalog("series", "", shows.take(LIMIT), all = shows))
-                addAll(seriesLanguageRows(shows, titleMeta))
+                val seriesRows = listOf(HomeRow.Catalog("series", "", shows.take(LIMIT), all = shows)) +
+                    seriesLanguageRows(shows, titleMeta)
+                if (phoneOrder) phoneCatalog += seriesRows else addAll(seriesRows)
             }
         }
 
@@ -430,7 +448,8 @@ object HomeRows {
         if (layout.catalogRows) {
             val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
                 .distinctBy { it.id }
-            catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys, nowMs).forEach { add(it) }
+            val foot = ArrayList<HomeRow.Catalog>()
+            foot += catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys, nowMs, shelfYear)
             // The viewer's own collections under the shelves (J Player, 2026-11-06): a title is
             // in a collection by its progress key, and any copy of it stands for it, the way a
             // folded tile stands for its copies everywhere else on Home. One tile is enough:
@@ -442,9 +461,18 @@ object HomeRows {
                 }
                 collections.forEachIndexed { index, collection ->
                     val all = collection.keys.mapNotNull { byKey[it] }.distinct()
-                    if (all.isNotEmpty()) add(HomeRow.Catalog("collection-$index", collection.name, all.take(LIMIT), all = all))
+                    if (all.isNotEmpty()) foot += HomeRow.Catalog("collection-$index", collection.name, all.take(LIMIT), all = all)
                 }
             }
+            if (phoneOrder) phoneCatalog += foot else foot.forEach { add(it) }
+        }
+        // A phone's shelves (owner, v1.0.13): Recently added and New episodes already stand
+        // above, and the shelves follow in the headline order, Top 10 first, then Movies,
+        // the shows with their language rows, then Anime, the rest keeping the relative
+        // order they were built in. The sort is stable, so the rest keep that order among
+        // themselves. A television never reaches this: its shelves were added as they came.
+        if (phoneOrder && phoneCatalog.isNotEmpty()) {
+            addAll(phoneCatalog.sortedBy { phoneShelfRank(it.kind) })
         }
         }
         return arrangeCatalog(rows, layout)
@@ -457,6 +485,7 @@ object HomeRows {
      */
     fun catalogGroupOf(kind: String): String = when {
         kind == "series" || kind.startsWith("series-lang-") -> "series"
+        kind == "anime" -> "anime"
         kind.startsWith("lang-") -> "lang"
         kind.startsWith("genre-") -> "genre"
         kind.startsWith("ott-") -> "ott"
@@ -464,6 +493,20 @@ object HomeRows {
         kind.startsWith("collection-") -> "collections"
         kind == "multi-lang" -> "multi"
         else -> kind
+    }
+
+    /**
+     * Where a shelf kind stands among a phone's headline shelves (owner, v1.0.13): Top 10
+     * first, then Movies, the shows (the Series row and its language rows together), then
+     * Anime. Every other kind shares the last place, so a stable sort leaves the rest in
+     * the order they were built in.
+     */
+    private fun phoneShelfRank(kind: String): Int = when {
+        kind == "top10" -> 0
+        kind == "movies" -> 1
+        kind == "series" || kind.startsWith("series-lang-") -> 2
+        kind == "anime" -> 3
+        else -> 4
     }
 
     /**
@@ -575,6 +618,28 @@ object HomeRows {
         is ShelfEntry.Show -> titleMeta[entry.series.cover.id]
     }
 
+    /** The word "anime" standing on its own in a name, the shape [isMultiLanguage] reads. */
+    private val ANIME_WORD = Regex("""(?i)(?<![A-Za-z])anime(?![A-Za-z])""")
+
+    /**
+     * Whether an entry is anime (owner, v1.0.13): the online match calls it Animation
+     * (the provider's own name, read without case) and its original language is Japanese.
+     * Where nobody matched the title, so there are no genres and no original language to
+     * read, the name it is filed under is the only word on it: a standalone "anime" there
+     * counts, and nothing else in the name does. Neither [MediaFacts] nor [MediaName]
+     * carries a reusable anime parse of its own: the fansub shapes the online lookup
+     * reads only ever name an episode, so a film would slip past them, and they are not
+     * part of the name facts this builder reads.
+     */
+    private fun isAnime(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): Boolean {
+        val meta = metaOf(entry, titleMeta)
+        if (meta != null && (meta.genres.isNotEmpty() || meta.originalLanguage != null)) {
+            return meta.originalLanguage?.equals("ja", ignoreCase = true) == true &&
+                meta.genres.any { it.trim().equals("Animation", ignoreCase = true) }
+        }
+        return ANIME_WORD.containsMatchIn(leadNameOf(entry))
+    }
+
     /** A genre's name made safe for a shelf's kind: letters and numbers, the rest as dashes. */
     private fun genreKind(genre: String): String =
         "genre-" + genre.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-')
@@ -601,7 +666,12 @@ object HomeRows {
      * (a tile's lead id to its place in TMDB's order), in that order. Because you watched
      * holds titles sharing a genre in [watchedGenres] with what was watched, most shared
      * genres first, then best rated, and leaves out anything already watched ([watchedKeys]
-     * holds the watched videos' progress keys: any copy watched keeps the tile out).
+     * holds the watched videos' progress keys: any copy watched keeps the tile out). The
+     * Anime shelf holds every anime title in the pool, films and shows together (see
+     * [isAnime]), and anime titles stand in neither Movies nor the language shelves; the
+     * discovery shelves (Trending, Top 10, the genre shelves, Top Rated, Because, the OTT
+     * rows, Multi Language, the year shelf and Weekly) keep them as they always have. The
+     * year shelf gathers [shelfYear], the current year unless the viewer picked another.
      */
     private fun catalogShelves(
         pool: List<MediaItem>,
@@ -612,6 +682,7 @@ object HomeRows {
         watchedGenres: Set<String> = emptySet(),
         watchedKeys: Set<String> = emptySet(),
         nowMs: Long = 0L,
+        shelfYear: Int = currentYear(),
     ): List<HomeRow.Catalog> {
         if (pool.isEmpty()) return emptyList()
         val all = arranged(pool, HashSet(inProgress), continuing, inProgress)
@@ -637,9 +708,14 @@ object HomeRows {
                 }.filter { it.second >= 2 }.sortedByDescending { it.second }
                 if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("top10", "", scored.take(10).map { it.first }, all = scored.map { it.first }))
             }
-            val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null }
+            val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null && !isAnime(entry, titleMeta) }
             if (movies.size >= CATALOG_MIN) add(HomeRow.Catalog("movies", "", movies.take(LIMIT), all = movies))
-            val byLanguage = all.groupBy { languageOf(it, titleMeta) }
+            // Anime (owner, v1.0.13): every anime title in the pool, films and shows
+            // together, in its own shelf; its heading comes from the catalog, so the
+            // label is empty, as Movies and Series leave theirs.
+            val anime = all.filter { entry -> isAnime(entry, titleMeta) }
+            if (anime.size >= CATALOG_MIN) add(HomeRow.Catalog("anime", "", anime.take(LIMIT), all = anime))
+            val byLanguage = all.filterNot { entry -> isAnime(entry, titleMeta) }.groupBy { languageOf(it, titleMeta) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }
                 .sortedWith(compareByDescending<Map.Entry<String?, List<ShelfEntry>>> { it.value.size }.thenBy { LANGUAGE_NAMES[it.key] })
@@ -691,10 +767,11 @@ object HomeRows {
             // soundtrack language, by name or by their copies' tracks.
             val multi = all.filter { isMultiLanguage(it) }
             if (multi.size >= CATALOG_MIN) add(HomeRow.Catalog("multi-lang", "", multi.take(LIMIT), all = multi))
-            // The 2026 row (owner, 2026-11-06): titles that came out this year, by their
+            // The year row (owner, 2026-11-06): titles that came out in the chosen year
+            // ([shelfYear], the current year unless the viewer picked another), by their
             // match's year or the year their name carries.
-            val thisYear = all.filter { yearOf(it, titleMeta) == 2026 }
-            if (thisYear.size >= CATALOG_MIN) add(HomeRow.Catalog("year-2026", "2026", thisYear.take(LIMIT), all = thisYear))
+            val chosenYear = all.filter { yearOf(it, titleMeta) == shelfYear }
+            if (chosenYear.size >= CATALOG_MIN) add(HomeRow.Catalog("year-$shelfYear", shelfYear.toString(), chosenYear.take(LIMIT), all = chosenYear))
             // Weekly (owner, 2026-11-06): what arrived in the chats in the last seven
             // days, by the posts' own dates. No clock handed in, no row.
             if (nowMs > 0) {
@@ -728,9 +805,10 @@ object HomeRows {
      * shelves themselves read), the fullest row first, and one show enough for a row to
      * stand, as the Series row allows. Only shows stand here, never a film that shares the
      * language. A show whose language no name announces stands in the Series row alone
-     * rather than nowhere.
+     * rather than nowhere. Anime shows never reach here: [build] leaves them out of the
+     * shows it hands in, so no series language row holds one (owner, v1.0.13).
      */
-    private fun seriesLanguageRows(shows: List<ShelfEntry.Show>, titleMeta: Map<String, TitleMeta> = emptyMap()): List<HomeRow> =
+    private fun seriesLanguageRows(shows: List<ShelfEntry.Show>, titleMeta: Map<String, TitleMeta> = emptyMap()): List<HomeRow.Catalog> =
         shows.groupBy { languageOf(it, titleMeta) }
             .entries
             .filter { (code, _) -> code != null && LANGUAGE_NAMES.containsKey(code) }

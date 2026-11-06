@@ -1059,6 +1059,7 @@
     "open_link_message": "Paste a direct stream or video link and it plays here. A live link plays as live.",
     "open_settings": "Home settings",
     "recent_capped": "The list stops here. Older videos are in their own chats.",
+    "row_anime": "Anime",
     "row_because": "Because you watched",
     "row_cdrama": "C-Drama",
     "row_chat_movies": "Movies in {chat}",

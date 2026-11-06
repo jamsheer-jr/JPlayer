@@ -684,6 +684,7 @@ class HomeRowsTest {
             recent = emptyList(),
             layout = HomeLayout(catalogRows = true),
             nowMs = 1_700_000_200_000L,
+            shelfYear = 2026,
         )
         val kinds = rows.filterIsInstance<HomeRow.Catalog>().map { it.kind }
         assertTrue("ott-disney-hotstar" in kinds)
@@ -709,5 +710,165 @@ class HomeRowsTest {
         val kinds = rows.filterIsInstance<HomeRow.Catalog>().map { it.kind }
         assertFalse("movies" in kinds)
         assertFalse("top10" in kinds)
+    }
+
+    @Test
+    fun phoneOrderPutsRecentAboveTop10MoviesAndTheSeriesGroup() {
+        val started = video(1, "Started Peak 2024.mp4")
+        val films = listOf(
+            video(1, "Alpha Peak 2024.mp4"),
+            video(1, "Beta Peak 2024.mp4"),
+            video(1, "Gamma Peak 2024.mp4"),
+        )
+        val copies = films.map { video(2, it.fileName) }
+        val episodes = (1..2).map { video(1, "Harbour.Notes.S01E%02d.mkv".format(it)) }
+        val seoul = (1..2).map { video(1, "Seoul.Diary.S01E%02d.Korean.mkv".format(it)) }
+        val saved = video(1, "Saved Peak 2024.mp4")
+        val loaded = mapOf(1L to listOf(started) + films + episodes + seoul, 2L to copies)
+        val phone = HomeRows.build(
+            continueWatching = listOf(resume(started)),
+            favourites = listOf(chat(1), chat(2)),
+            loaded = loaded,
+            recent = films + copies,
+            watchLater = listOf(later(saved)),
+            layout = HomeLayout(catalogRows = true),
+            phoneOrder = true,
+        )
+        // Recently added stands right after Continue watching, Watch later and the starred
+        // chats, before any shelf; Top 10 leads the shelves, then Movies, then the shows
+        // with their language row.
+        assertEquals(
+            listOf(
+                "continue", "watch-later", "chat-1", "chat-2", "recent",
+                "catalog-top10", "catalog-movies", "catalog-series", "catalog-series-lang-ko",
+            ),
+            phone.map { it.key },
+        )
+        // The same build for a television keeps the order it has always had: the series
+        // shelves above Recently added, and the foot shelves in their built order.
+        val tv = HomeRows.build(
+            continueWatching = listOf(resume(started)),
+            favourites = listOf(chat(1), chat(2)),
+            loaded = loaded,
+            recent = films + copies,
+            watchLater = listOf(later(saved)),
+            layout = HomeLayout(catalogRows = true),
+        )
+        assertEquals(
+            listOf(
+                "continue", "catalog-series", "catalog-series-lang-ko", "recent", "watch-later",
+                "chat-1", "chat-2", "catalog-top10", "catalog-movies",
+            ),
+            tv.map { it.key },
+        )
+    }
+
+    @Test
+    fun animeTitlesStandInTheirOwnShelfAndOutOfMoviesSeriesAndLanguageRows() {
+        val animeFilms = listOf(
+            video(1, "Sky Song 2024.mp4"),
+            video(1, "Sea Song 2024.mp4"),
+            video(1, "Star Song 2024.mp4"),
+        )
+        val toon = video(1, "Western Toon 2024.mp4")
+        val plain = listOf(video(1, "Plain One 2024.mp4"), video(1, "Plain Two 2024.mp4"))
+        val moon = (1..2).map { video(1, "Moon.Blade.S01E%02d.mkv".format(it)) }
+        val sun = (1..2).map { video(1, "Sun.Blade.S01E%02d.mkv".format(it)) }
+        val rain = (1..2).map { video(1, "Rain.Blade.S01E%02d.mkv".format(it)) }
+        val tokyo = (1..2).map { video(1, "Tokyo.Diary.S01E%02d.mkv".format(it)) }
+        val meta = HashMap<String, TitleMeta>()
+        animeFilms.forEach { meta[it.id] = TitleMeta(listOf("Animation"), 8.0, "ja") }
+        (moon + sun + rain).forEach { meta[it.id] = TitleMeta(listOf("Animation"), 8.0, "ja") }
+        meta[toon.id] = TitleMeta(listOf("Animation"), 8.0, "en")
+        tokyo.forEach { meta[it.id] = TitleMeta(listOf("Drama"), 8.0, "ja") }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to animeFilms + toon + plain + moon + sun + rain + tokyo),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        val anime = catalogs.single { it.kind == "anime" }
+        assertEquals("", anime.label)
+        // Films and shows together: three films and three shows.
+        assertEquals(6, anime.all.size)
+        assertTrue(animeFilms.all { it.messageId in ids(anime) })
+        assertTrue((moon + sun + rain).all { it.messageId in ids(anime) })
+        // Movies keeps the non-Japanese Animation title and the plain films, and no anime.
+        val movies = catalogs.single { it.kind == "movies" }
+        assertEquals((listOf(toon) + plain).map { it.messageId }.toSet(), ids(movies).toSet())
+        assertFalse(toon.messageId in ids(anime))
+        // The Series row and its Japanese language row hold only the drama.
+        val series = catalogs.single { it.kind == "series" }
+        assertEquals(tokyo.map { it.messageId }.toSet(), ids(series).toSet())
+        val japanese = catalogs.single { it.kind == "series-lang-ja" }
+        assertEquals(1, japanese.all.size)
+        assertEquals(tokyo.map { it.messageId }.toSet(), ids(japanese).toSet())
+        // No mixed language shelf holds an anime title either.
+        val langRows = catalogs.filter { it.kind.startsWith("lang-") }
+        assertTrue(langRows.none { row -> (animeFilms + moon + sun + rain).any { it.messageId in ids(row) } })
+    }
+
+    @Test
+    fun anUnmatchedTitleWithAnimeInItsNameCountsAsAnime() {
+        val named = listOf(
+            video(1, "Star Anime Tale 2024.mp4"),
+            video(1, "Moon Anime Tale 2024.mp4"),
+            video(1, "Rain Anime Tale 2024.mp4"),
+        )
+        val glued = video(1, "Animefest Nights 2024.mp4")
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to named + glued),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        val anime = catalogs.single { it.kind == "anime" }
+        assertEquals(named.map { it.messageId }.toSet(), ids(anime).toSet())
+        // The word glued into a longer one is no signal: that film is in no anime shelf,
+        // and with the anime titles out, Movies has too little left to stand at all.
+        assertFalse(glued.messageId in ids(anime))
+        assertTrue(catalogs.none { it.kind == "movies" })
+    }
+
+    @Test
+    fun theYearShelfGathersTheChosenYearAndDefaultsToTheCurrentOne() {
+        val older = listOf(
+            video(1, "Alpha 2024.mp4"),
+            video(1, "Beta 2024.mp4"),
+            video(1, "Gamma 2024.mp4"),
+        )
+        val chosen = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to older),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            shelfYear = 2024,
+        )
+        val yearRow = chosen.filterIsInstance<HomeRow.Catalog>().single { it.kind == "year-2024" }
+        assertEquals("2024", yearRow.label)
+        assertEquals(older.map { it.messageId }.toSet(), ids(yearRow).toSet())
+        // Nothing passed: the shelf is the current year's, as it has always been.
+        val now = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val current = listOf(
+            video(1, "Alpha $now.mp4"),
+            video(1, "Beta $now.mp4"),
+            video(1, "Gamma $now.mp4"),
+        )
+        val defaulted = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to current),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val defaultRow = defaulted.filterIsInstance<HomeRow.Catalog>().single { it.kind == "year-$now" }
+        assertEquals(now.toString(), defaultRow.label)
+        assertEquals(3, defaultRow.all.size)
     }
 }
