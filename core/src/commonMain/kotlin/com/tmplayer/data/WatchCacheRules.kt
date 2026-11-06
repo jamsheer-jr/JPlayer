@@ -218,8 +218,19 @@ class WatchCacheRules(
      */
     fun strays(knownPaths: Set<String>): List<Stray> = straysIn(filesRoot(), knownPaths)
 
-    /** Removes one stray from the disk. TDLib refetches it if the video is ever played again. */
-    fun forget(stray: Stray): Boolean = runCatching { File(stray.path).delete() }.getOrDefault(false)
+    /**
+     * Removes one stray from the disk. TDLib refetches it if the video is ever played again.
+     *
+     * True only when the file is actually gone afterwards: a delete the disk refuses (a file
+     * TDLib still holds, a folder passed by mistake) must not be counted as space freed, which is
+     * how a free up once reported success over bytes that never left.
+     */
+    fun forget(stray: Stray): Boolean {
+        val file = File(stray.path)
+        if (!file.isFile) return false
+        runCatching { file.delete() }
+        return !file.exists()
+    }
 
     /**
      * Takes the videos nothing owns, without being asked, and under [CacheRule.UnderCap] brings the
@@ -349,7 +360,11 @@ class WatchCacheRules(
             return MEDIA_DIRECTORIES
                 .map { File(root, it) }
                 .filter { it.isDirectory }
-                .flatMap { directory -> directory.walkTopDown().maxDepth(3).toList() }
+                // No depth cap: TDLib nests a video's files under folders of their own, and a
+                // cap quietly left the deep ones unlisted and undeletable while the header still
+                // counted their bytes, which is how a free up could promise gigabytes and free
+                // megabytes (owner's device, 2026-11-06).
+                .flatMap { directory -> directory.walkTopDown().toList() }
                 .filter { it.isFile && it.length() > 0 && canonical(it.absolutePath) !in known }
                 .map { Stray(it.absolutePath, it.length(), it.lastModified()) }
                 .sortedByDescending { it.bytes }

@@ -69,7 +69,12 @@ data class StorageSplit(
             val settings = SettingsStore(context)
             // TDLib's figure is its own files directory: the cache, the pictures, and the downloads
             // from before they had a folder. The Downloads folder is beside it and measured apart.
-            val total = runCatching { Td.storageUsedBytes() }.getOrDefault(0L)
+            // The fast statistics answer for the signed in account only, and answer 0 before they
+            // are first computed, so the disk itself is walked too and the larger figure wins: a
+            // header reading "uses 0 MB" over gigabytes on the disk is worse than either number
+            // being a little stale (owner's device, 2026-11-06).
+            val reported = runCatching { Td.storageUsedBytes() }.getOrDefault(0L)
+            val total = maxOf(reported, tdFilesOnDisk(context))
             val history = runCatching { settings.downloadHistory.first() }.getOrDefault(emptyList())
             val indexedBytes = LocalDownloads.indexedBytes(settings)
             val kept = history.filter { it.localPath == null }.distinctBy { it.fileId }
@@ -165,5 +170,29 @@ data class StorageSplit(
 
         /** Within half a megabyte: a whole file on the disk against the size Telegram gives for it. */
         private fun sameSize(onDisk: Long, told: Long): Boolean = kotlin.math.abs(onDisk - told) <= 512 * 1024
+
+        /**
+         * Every byte inside TDLib's files folders, all account slots, the old folder name counted
+         * once through its link. Listing only: lengths are read, nothing is opened.
+         */
+        private fun tdFilesOnDisk(context: Context): Long {
+            val app = context.applicationContext
+            val roots = buildList {
+                add(AndroidPaths.cacheDir(app))
+                app.filesDir.listFiles()?.forEach { child ->
+                    if (child.isDirectory && (child.name.startsWith("cache-") || child.name == "tdlib-files")) add(child)
+                }
+            }
+            val seen = mutableSetOf<String>()
+            var bytes = 0L
+            for (root in roots) {
+                val key = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
+                if (!seen.add(key)) continue
+                runCatching {
+                    root.walkTopDown().forEach { if (it.isFile) bytes += it.length() }
+                }
+            }
+            return bytes
+        }
     }
 }

@@ -271,6 +271,27 @@ class WatchCacheRulesTest {
     }
 
     @Test
+    fun `a stray nested deeper than three folders is still found`() {
+        val deep = root.resolve("videos").apply { mkdirs() }
+            .resolve("a/b/c/d").apply { mkdirs() }
+        deep.resolve("buried.mkv").writeText("deep")
+        val found = WatchCacheRules.straysIn(root, emptySet())
+        assertEquals(listOf("buried"), found.map { it.title })
+    }
+
+    @Test
+    fun `forget removes a stray file and refuses a folder`() {
+        val videos = root.resolve("videos").apply { mkdirs() }
+        val file = videos.resolve("gone.mkv").apply { writeText("x") }
+        val folder = videos.resolve("nested").apply { mkdirs() }
+        folder.resolve("inner.mkv").writeText("y")
+        assertTrue(cache.forget(WatchCacheRules.Stray(file.absolutePath, 1, 0)))
+        assertFalse(file.exists())
+        assertFalse(cache.forget(WatchCacheRules.Stray(folder.absolutePath, 1, 0)))
+        assertTrue(folder.exists())
+    }
+
+    @Test
     fun `strays are named from their file`() {
         val videos = root.resolve("videos").apply { mkdirs() }
         videos.resolve("Harbour_Notes.mkv").writeText("x")

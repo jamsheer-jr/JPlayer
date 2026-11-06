@@ -105,8 +105,29 @@ object WatchCache {
      * @param knownPaths the local paths of everything already on the Downloads screen, which are
      *   asked of TDLib by the caller: only it knows which records are worth resolving.
      */
-    fun strays(context: Context, knownPaths: Set<String>): List<WatchCacheRules.Stray> =
-        rules(context).strays(knownPaths)
+    fun strays(context: Context, knownPaths: Set<String>): List<WatchCacheRules.Stray> {
+        // Every account slot keeps its own cache folder (cache, cache-1, cache-2 and the old
+        // tdlib-files name, now a link to cache). Walking only the active account's folder made
+        // the other accounts' leftover videos invisible: counted by the device, listed nowhere,
+        // and impossible to free, which is how a free up could promise gigabytes and free
+        // megabytes (owner's device, 2026-11-06). The sweep stays on the active folder alone;
+        // this listing, which exists so the viewer can free space, covers them all.
+        val app = context.applicationContext
+        val roots = buildList {
+            add(AndroidPaths.cacheDir(app))
+            app.filesDir.listFiles()?.forEach { child ->
+                if (child.isDirectory && (child.name.startsWith("cache-") || child.name == "tdlib-files")) add(child)
+            }
+        }
+        val seen = mutableSetOf<String>()
+        val found = mutableListOf<WatchCacheRules.Stray>()
+        for (root in roots) {
+            val key = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
+            if (!seen.add(key)) continue
+            found += WatchCacheRules.straysIn(root, knownPaths)
+        }
+        return found.sortedByDescending { it.bytes }
+    }
 
     /** The same, against a directory rather than a device, so the rule can be tested. */
     internal fun straysIn(root: java.io.File, knownPaths: Set<String>): List<WatchCacheRules.Stray> =

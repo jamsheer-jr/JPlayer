@@ -722,7 +722,11 @@ fun DownloadsScreen(
                                 now.stage == OfflineDownloads.Stage.Running || now.stage == OfflineDownloads.Stage.Moving -> skipped++
                                 else -> {
                                     dropUnfinished(now.fileId)
-                                    freed += item.bytes
+                                    // Counted only when the bytes are verified gone, the same
+                                    // check removeOne makes: a delete TDLib shrugs off must not
+                                    // be reported as space freed.
+                                    val left = runCatching { Td.localDownloadedBytes(now.fileId) }.getOrDefault(0L)
+                                    if (left <= 0L) freed += item.bytes else skipped++
                                 }
                             }
                         }
@@ -742,8 +746,23 @@ fun DownloadsScreen(
                             if (runCatching { com.tmplayer.data.WatchCache.forget(context, stray) }.getOrDefault(false)) freed += item.bytes else skipped++
                         }
                         FreeUpReview.Group.Pictures -> if (FreeUpReview.wholePicked(picks, section)) {
-                            if (runCatching { Td.clearPicturesAndPreviews() }.isSuccess) freed += section.bytes
-                            runCatching { com.tmplayer.online.OnlineMetadata.current?.purgeImages() }
+                            // Measured, not assumed: the section figure is a remainder (everything
+                            // TDLib holds that is not a video), so what this group freed is the
+                            // drop in TDLib's own total plus the posters, capped at the section.
+                            val tdBefore = runCatching { Td.storageUsedBytes() }.getOrDefault(0L)
+                            val postersBefore = runCatching {
+                                com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L
+                            }.getOrDefault(0L)
+                            if (runCatching { Td.clearPicturesAndPreviews() }.isSuccess) {
+                                runCatching { com.tmplayer.online.OnlineMetadata.current?.purgeImages() }
+                                val tdAfter = runCatching { Td.storageUsedBytes() }.getOrDefault(tdBefore)
+                                val postersAfter = runCatching {
+                                    com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L
+                                }.getOrDefault(postersBefore)
+                                val gone = (tdBefore - tdAfter).coerceAtLeast(0L) +
+                                    (postersBefore - postersAfter).coerceAtLeast(0L)
+                                freed += gone.coerceAtMost(section.bytes)
+                            } else skipped++
                         }
                     }
                 }
