@@ -499,10 +499,21 @@ class MainActivity : ComponentActivity() {
         // the window's link flow opens it once signed in. Taken off the intent, so a rotation
         // does not open it again.
         if (intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.toString()?.let(com.tmplayer.data.TelegramLinks::parse)?.let { link ->
-                com.tmplayer.ui.browse.LinkRequests.ask(link)
+            val handed = intent.data?.toString()
+            // A Watch party link is this app's own address, not Telegram's: it names a video by
+            // the chat and post ids every account shares, and the window's link flow opens it
+            // once signed in, the same way as a post link.
+            val party = handed?.let(com.tmplayer.data.PartyLinks::parse)
+            if (party != null) {
+                com.tmplayer.ui.browse.LinkRequests.askParty(party)
                 intent.data = null
                 intent.action = Intent.ACTION_MAIN
+            } else {
+                handed?.let(com.tmplayer.data.TelegramLinks::parse)?.let { link ->
+                    com.tmplayer.ui.browse.LinkRequests.ask(link)
+                    intent.data = null
+                    intent.action = Intent.ACTION_MAIN
+                }
             }
         }
         // A new videos notification: the chat it is about, or the list (0). Taken off the intent,

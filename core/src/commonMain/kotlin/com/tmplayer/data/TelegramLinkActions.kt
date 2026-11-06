@@ -120,6 +120,30 @@ class TelegramLinkActions(private val td: TdlClient) {
         )
     }
 
+    /**
+     * A Watch party link, opened on this account: the post is read by the ids the link carries,
+     * which name the same post on every account, and [LinkRules.decide] rules on it exactly as
+     * it rules on a post link, the kids lock included. An account that is not in the chat cannot
+     * read the post, so it is refused the way a private post link is; nothing is joined here.
+     */
+    suspend fun openParty(link: PartyLink): PostOpen = withContext(Dispatchers.IO) {
+        val allowed = ChatGate.awaitReady()
+        val chat = ChatRepository(td).summary(link.chatId)
+        val message = if (chat != null) td.getMessage(link.chatId, link.messageId).valueOrNull else null
+        val chatProtected = if (chat != null) td.getChat(link.chatId).valueOrNull?.hasProtectedContent ?: false else false
+        val video = message?.let { MediaMapper.fromMessage(it, chatProtected) }
+        LinkRules.decide(
+            kidsAllowed = allowed,
+            chatId = chat?.id ?: 0L,
+            isPublic = false,
+            found = message != null,
+            video = video,
+            chat = chat,
+            linkStart = link.startSec,
+            telegramStart = 0,
+        )
+    }
+
     /** The invite's chat, or why it cannot be shown (expired, wrong, the kids lock). */
     suspend fun previewInvite(link: TgLink.Invite): Result<InvitePreview> = withContext(Dispatchers.IO) {
         if (!LinkRules.mayJoin(ChatGate.awaitReady())) return@withContext Result.failure(LinkRefusal(L.linkKidsLock))

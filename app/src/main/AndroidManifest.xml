@@ -146,6 +146,17 @@
                 <data android:scheme="tg" android:host="privatepost" />
                 <data android:scheme="tg" android:host="join" />
             </intent-filter>
+            <!--
+              Watch party links: this app's own address for one video in one chat, with the
+              place to start it at. Whoever opens one watches with their own Telegram account;
+              the link carries no session and no copy of the video.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jplayer" android:host="party" />
+            </intent-filter>
         </activity>
 
         <!--

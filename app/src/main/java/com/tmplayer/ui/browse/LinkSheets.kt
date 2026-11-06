@@ -79,6 +79,11 @@ internal fun TelegramLinkHost(onPlay: (MediaItem, String) -> Unit, onOpenChat: (
         if (plays == null) return@LaunchedEffect
         LinkRequests.takePlay()?.let(flow::play)
     }
+    val party by LinkRequests.party.collectAsState()
+    LaunchedEffect(party) {
+        if (party == null) return@LaunchedEffect
+        LinkRequests.takeParty()?.let(flow::openParty)
+    }
     val step by flow.step.collectAsState()
     LinkStepSheet(step ?: return, flow)
 }

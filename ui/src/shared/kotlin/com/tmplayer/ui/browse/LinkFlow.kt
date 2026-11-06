@@ -8,6 +8,7 @@ import com.tmplayer.data.InvitePreview
 import com.tmplayer.data.KidsLock
 import com.tmplayer.data.ChatGate
 import com.tmplayer.data.LinkRules
+import com.tmplayer.data.PartyLink
 import com.tmplayer.data.PostOpen
 import com.tmplayer.data.Td
 import com.tmplayer.data.TelegramLinkActions
@@ -38,6 +39,17 @@ object LinkRequests {
 
     /** Takes the request, once: the flow that acts on it clears it. */
     fun take(): TgLink? = _asked.value.also { _asked.value = null }
+
+    private val _party = MutableStateFlow<PartyLink?>(null)
+    val party: StateFlow<PartyLink?> = _party.asStateFlow()
+
+    /** A Watch party link another app handed over, to open once signed in. */
+    fun askParty(link: PartyLink) {
+        _party.value = link
+    }
+
+    /** Takes the party request, once: the flow that acts on it clears it. */
+    fun takeParty(): PartyLink? = _party.value.also { _party.value = null }
 
     /** A video found off the chat's grid (a comment, a round video) to play through the window's own path. */
     data class PlayAsk(val item: com.tmplayer.data.MediaItem, val chatTitle: String)
@@ -103,20 +115,45 @@ class LinkFlow(
         }
     }
 
+    /**
+     * A Watch party link handed to the app: the same video, opened by its ids on this
+     * account, from the link's place. No step is shown while it resolves (the Opening step
+     * names a Telegram link, and this is not one); a refusal is shown the same way.
+     */
+    fun openParty(link: PartyLink) {
+        job?.cancel()
+        job = scope.launch {
+            try {
+                val answer = withTimeoutOrNull(TIMEOUT_MS) {
+                    val session = Td.awaitConnectedSessionOrNull() ?: return@withTimeoutOrNull LinkStep.Failed(Failures.OFFLINE)
+                    actOn(TelegramLinkActions(session.client).openParty(link))
+                } ?: LinkStep.Failed(SlowAnswer.MESSAGE)
+                _step.value = answer
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _step.value = LinkStep.Failed(Failures.humanise(e))
+            }
+        }
+    }
+
+    /** Acts on a resolved post: plays it, opens its chat, or shows why neither happened. */
+    private fun actOn(open: PostOpen): LinkStep? = when (open) {
+        is PostOpen.Play -> {
+            onPlay(open)
+            null
+        }
+        is PostOpen.OpenChat -> {
+            onOpenChat(open.chat)
+            open.note?.let(say)
+            null
+        }
+        is PostOpen.Refused -> LinkStep.Failed(open.reason)
+    }
+
     /** The answer for [link]: a step to show, or null once it has been acted on. */
     private suspend fun resolve(actions: TelegramLinkActions, td: dev.g000sha256.tdl.TdlClient, link: TgLink): LinkStep? = when (link) {
-        is TgLink.Post -> when (val open = actions.openPost(link)) {
-            is PostOpen.Play -> {
-                onPlay(open)
-                null
-            }
-            is PostOpen.OpenChat -> {
-                onOpenChat(open.chat)
-                open.note?.let(say)
-                null
-            }
-            is PostOpen.Refused -> LinkStep.Failed(open.reason)
-        }
+        is TgLink.Post -> actOn(actions.openPost(link))
         is TgLink.Invite -> actions.previewInvite(link).fold(
             onSuccess = { preview ->
                 val chat = if (preview.alreadyMember) ChatRepository(td).summary(preview.chatId) else null
