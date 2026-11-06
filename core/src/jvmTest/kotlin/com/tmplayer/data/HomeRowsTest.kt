@@ -88,6 +88,62 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `genre shelves and top rated group by the titles meta`() {
+        val action = listOf(
+            video(1, "Action One 2024.mp4"),
+            video(1, "Action Two 2024.mp4"),
+            video(1, "Action Three 2024.mp4"),
+            video(1, "Action Four 2024.mp4"),
+        )
+        val drama = listOf(
+            video(1, "Drama One 2024.mp4"),
+            video(1, "Drama Two 2024.mp4"),
+            video(1, "Drama Three 2024.mp4"),
+        )
+        val comedy = listOf(
+            video(1, "Comedy One 2024.mp4"),
+            video(1, "Comedy Two 2024.mp4"),
+        )
+        val unrated = video(1, "Quiet One 2024.mp4")
+        val films = action + drama + comedy + unrated
+        val meta = HashMap<String, TitleMeta>()
+        listOf(8.1, 7.9, 7.5, 6.0).forEachIndexed { i, rating -> meta[action[i].id] = TitleMeta(listOf("Action"), rating) }
+        listOf(8.4, 8.0, 7.6).forEachIndexed { i, rating -> meta[drama[i].id] = TitleMeta(listOf("Drama"), rating) }
+        listOf(9.0, 8.8).forEachIndexed { i, rating -> meta[comedy[i].id] = TitleMeta(listOf("Comedy"), rating) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val catalog = rows.filterIsInstance<HomeRow.Catalog>()
+        // Two titles make no Comedy shelf (fewer than three), and the unrated film is in none.
+        assertEquals(
+            listOf("catalog-movies", "catalog-genre-action", "catalog-genre-drama", "catalog-top-rated"),
+            catalog.map { it.key },
+        )
+        assertEquals("Action", catalog[1].label)
+        assertEquals(4, catalog[1].entries.size)
+        assertEquals(3, catalog[2].entries.size)
+        // Top Rated: everything at 7.5 or above, best first, the 6.0 and the unrated left out.
+        assertEquals(
+            listOf(comedy[0], comedy[1], drama[0], action[0], drama[1], action[1], drama[2], action[2]).map { it.messageId },
+            catalog[3].entries.flatMap(::idsOf),
+        )
+        // No meta handed in: no genre and no Top Rated shelf, the rest as before.
+        val bare = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        assertTrue(bare.filterIsInstance<HomeRow.Catalog>().none { it.kind.startsWith("genre-") || it.kind == "top-rated" })
+    }
+
+    @Test
     fun `rows come in order continue, recent, then starred chats`() {
         val a = video(1)
         val b = video(2)

@@ -112,9 +112,11 @@ sealed interface HomeRow {
      * chat rows draw. [kind] is "movies", "series" or "lang-" and the language code; [label]
      * names a language shelf (a language's own name for itself in English, a proper noun the
      * data carries, the way a chat's name is data), and is empty for Movies and Series, whose
-     * headings the screens take from the catalog. Genre and rating shelves are not built: the
-     * rows are grouped from what Home already holds, and neither a genre nor a rating is part
-     * of a [MediaItem] (they live in the online lookups, fetched per title for its own page).
+     * headings the screens take from the catalog. Since v1.0.7 a shelf can also be one genre
+     * ("genre-" and a slug of the genre's name, the name itself in [label], data the online
+     * lookups carry) or the Top Rated shelf ("top-rated", its heading from the catalog),
+     * grouped from the [TitleMeta] the caller hands in: neither a genre nor a rating is part
+     * of a [MediaItem], so a title with no meta stands in neither kind of shelf.
      */
     data class Catalog(
         val kind: String,
@@ -125,6 +127,19 @@ sealed interface HomeRow {
         override val total: Int get() = entries.size
     }
 }
+
+/**
+ * What the online lookups already know of one title, for the genre and Top Rated shelves:
+ * its genres (the provider's own names for them) and its rating out of ten, where the
+ * provider gave one that stands (enough votes behind it). Keyed in [HomeRows.build]'s
+ * input by the [MediaItem.id] of the tile's lead item: a file's own id, a show's cover's.
+ * A title nobody has matched, or whose facts were never fetched, has no entry here and
+ * stands in no genre or Top Rated shelf; it keeps its place in the chat rows.
+ */
+data class TitleMeta(
+    val genres: List<String> = emptyList(),
+    val rating: Double? = null,
+)
 
 /**
  * Builds Home's rows from what is on this device and what Telegram has answered so far.
@@ -252,6 +267,7 @@ object HomeRows {
         layout: HomeLayout = HomeLayout(),
         recentFrom: List<Long>? = null,
         noneChosen: Boolean = false,
+        titleMeta: Map<String, TitleMeta> = emptyMap(),
     ): List<HomeRow> = buildList<HomeRow> {
         val seen = HashSet<String>()
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
@@ -351,7 +367,7 @@ object HomeRows {
         if (layout.catalogRows) {
             val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
                 .distinctBy { it.id }
-            catalogShelves(pool, shownCopies, inContinue).forEach { add(it) }
+            catalogShelves(pool, shownCopies, inContinue, titleMeta).forEach { add(it) }
         }
     }
 
@@ -360,6 +376,12 @@ object HomeRows {
 
     /** Language shelves at most, the fullest first: Home stays a screen, not a catalogue. */
     const val CATALOG_LANGUAGES = 4
+
+    /** Genre shelves at most, the fullest first, capped the way the language shelves are. */
+    const val CATALOG_GENRES = 4
+
+    /** The lowest rating, out of ten, that earns a tile a place on the Top Rated shelf. */
+    const val TOP_RATED_MIN = 7.5
 
     /** A language code's name, for its shelf's heading. */
     fun languageName(code: String): String? = LANGUAGE_NAMES[code]
@@ -379,14 +401,33 @@ object HomeRows {
             ?: entry.series.episodes.firstOrNull()?.copies?.firstOrNull()?.let { VideoCopies.languagesOf(it).firstOrNull() }
     }
 
+    /** The meta of an entry's tile: a file's own, a show's cover's (its newest episode). */
+    private fun metaOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): TitleMeta? = when (entry) {
+        is ShelfEntry.File -> titleMeta[entry.item.id]
+        is ShelfEntry.Show -> titleMeta[entry.series.cover.id]
+    }
+
+    /** A genre's name made safe for a shelf's kind: letters and numbers, the rest as dashes. */
+    private fun genreKind(genre: String): String =
+        "genre-" + genre.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-')
+
     /**
-     * The shelves for [build]'s foot: Movies, Series, then a shelf per language, from [pool]
-     * arranged the way a row arranges it. A title may stand in a shelf and in its chat's row:
-     * the shelves are a second way through the same videos, the way a streaming home groups
-     * them, and they leave out only what Continue watching holds. A shelf with fewer than
-     * [CATALOG_MIN] tiles is left out.
+     * The shelves for [build]'s foot: Movies, Series, then a shelf per language, then a shelf
+     * per genre, then Top Rated, from [pool] arranged the way a row arranges it. A title may
+     * stand in a shelf and in its chat's row: the shelves are a second way through the same
+     * videos, the way a streaming home groups them, and they leave out only what Continue
+     * watching holds. A shelf with fewer than [CATALOG_MIN] tiles is left out. The genre and
+     * Top Rated shelves group by [titleMeta] alone: a title with no meta, or with genres the
+     * lookups never named, stands in neither, and a title with several genres stands in each
+     * of its genres' shelves. Top Rated holds the titles rated at or above [TOP_RATED_MIN],
+     * best first, ties in the row's own newest first order.
      */
-    private fun catalogShelves(pool: List<MediaItem>, continuing: Set<String>, inProgress: Set<String>): List<HomeRow.Catalog> {
+    private fun catalogShelves(
+        pool: List<MediaItem>,
+        continuing: Set<String>,
+        inProgress: Set<String>,
+        titleMeta: Map<String, TitleMeta> = emptyMap(),
+    ): List<HomeRow.Catalog> {
         if (pool.isEmpty()) return emptyList()
         val all = arranged(pool, HashSet(inProgress), continuing, inProgress)
         if (all.isEmpty()) return emptyList()
@@ -403,6 +444,24 @@ object HomeRows {
                 .forEach { (code, entries) ->
                     add(HomeRow.Catalog("lang-$code", LANGUAGE_NAMES.getValue(code!!), entries.take(LIMIT)))
                 }
+            if (titleMeta.isNotEmpty()) {
+                val byGenre = LinkedHashMap<String, MutableList<ShelfEntry>>()
+                all.forEach { entry ->
+                    metaOf(entry, titleMeta)?.genres.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                        .forEach { genre -> byGenre.getOrPut(genre) { ArrayList() } += entry }
+                }
+                byGenre.entries
+                    .filter { it.value.size >= CATALOG_MIN }
+                    .sortedWith(compareByDescending<Map.Entry<String, List<ShelfEntry>>> { it.value.size }.thenBy { it.key })
+                    .take(CATALOG_GENRES)
+                    .forEach { (genre, entries) ->
+                        add(HomeRow.Catalog(genreKind(genre), genre, entries.take(LIMIT)))
+                    }
+                val rated = all.mapNotNull { entry ->
+                    metaOf(entry, titleMeta)?.rating?.takeIf { it >= TOP_RATED_MIN }?.let { entry to it }
+                }.sortedByDescending { it.second }
+                if (rated.size >= CATALOG_MIN) add(HomeRow.Catalog("top-rated", "", rated.take(LIMIT).map { it.first }))
+            }
         }
     }
 

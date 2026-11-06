@@ -1099,6 +1099,7 @@ fun rememberHomeRows(
                 continueWatching, home, loaded, recent, partial = partial, watchLater = watchLater, fresh = fresh,
                 recentMinStarred = recentMinStarred, starred = favourites, autoFill = autoFill,
                 chatsPending = chatsPending, layout = layout, recentFrom = recentFrom, noneChosen = noneChosen,
+                titleMeta = if (layout.catalogRows) homeTitleMeta(home, loaded, recent) else emptyMap(),
             )
         }
         homeMemo.built = inputs
@@ -1213,6 +1214,46 @@ private fun PrefetchHomeArt(rows: List<HomeRow>, model: HomeViewModel) {
             }
         }
     }
+}
+
+/**
+ * The genres and ratings the genre and Top Rated shelves group by, for the videos Home's
+ * chats hold ([loaded]) and the recent search's ([recent]): what the online lookups have
+ * already kept of each title, read from memory and the disk cache only, the way the tiles'
+ * card scores are read, never the network, so a large account asks nobody for its shelves
+ * and no row waits on a provider. A title nobody matched, or whose facts were never
+ * fetched (its detail page never opened), is left out: it stands in no such shelf and
+ * keeps its chat row. Read off the main thread: a title not in memory is read from the disk.
+ */
+private fun homeTitleMeta(
+    home: List<ChatSummary>,
+    loaded: Map<Long, List<MediaItem>>,
+    recent: List<MediaItem>?,
+): Map<String, com.tmplayer.data.TitleMeta> {
+    val online = com.tmplayer.online.OnlineMetadata.current ?: return emptyMap()
+    if (!online.settings.value.enabled) return emptyMap()
+    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty()).distinctBy { it.id }
+    val lang = online.tmdbLanguage()
+    val byQuery = HashMap<String, com.tmplayer.data.TitleMeta?>()
+    val out = LinkedHashMap<String, com.tmplayer.data.TitleMeta>()
+    for (item in pool) {
+        // A show's episodes share the show's own answer, asked once per title, not per episode.
+        val query = item.metaQuery?.showOnly() ?: continue
+        val key = query.cacheKey(lang)
+        val meta = if (key in byQuery) {
+            byQuery[key]
+        } else {
+            val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info
+            val extras = info?.let { online.storedExtras(it) }
+            val found = extras
+                ?.takeIf { it.genres.isNotEmpty() || it.rating != null }
+                ?.let { com.tmplayer.data.TitleMeta(it.genres, it.rating) }
+            byQuery[key] = found
+            found
+        }
+        if (meta != null) out[item.id] = meta
+    }
+    return out
 }
 
 /** A tile looked up ahead: a show by its name alone, and the carousel's with its title logo. */
