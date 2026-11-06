@@ -787,26 +787,26 @@ internal fun BrowseScreen(
                                 Column(Modifier.fillMaxSize()) {
                                     StatsSummary(watchedHistory, continueWatching, insets)
                                     Box(Modifier.weight(1f)) {
-                                // Read once per visit rather than ticking: "5 minutes ago" going
-                                // stale while the tab is open is harmless, and a clock here would
-                                // recompose every card each minute for it.
-                                val now = remember(watchedHistory) { System.currentTimeMillis() }
-                                ContinueSection(
-                                    records = watchedShown,
-                                    byName = historySort == ChatSort.Name,
-                                    text = { it.cardText(now) },
-                                    insets = insets,
-                                    autoFocus = !touch,
-                                    mayTakeFocus = listMayTakeFocus,
-                                    pageOpen = details.top != null,
-                                    onResume = openWatched,
-                                    onHold = { watchedMenu = it },
-                                    dayOf = { it.watchedAt },
-                                    dayText = { record, day -> record.cardText(now, day) },
-                                    ticked = tickedOrNull,
-                                    onTick = { tick(it.key) },
-                                    refocusSignal = listRefocus,
-                                )
+                                        // Read once per visit rather than ticking: "5 minutes ago" going
+                                        // stale while the tab is open is harmless, and a clock here would
+                                        // recompose every card each minute for it.
+                                        val now = remember(watchedHistory) { System.currentTimeMillis() }
+                                        ContinueSection(
+                                            records = watchedShown,
+                                            byName = historySort == ChatSort.Name,
+                                            text = { it.cardText(now) },
+                                            insets = insets,
+                                            autoFocus = !touch,
+                                            mayTakeFocus = listMayTakeFocus,
+                                            pageOpen = details.top != null,
+                                            onResume = openWatched,
+                                            onHold = { watchedMenu = it },
+                                            dayOf = { it.watchedAt },
+                                            dayText = { record, day -> record.cardText(now, day) },
+                                            ticked = tickedOrNull,
+                                            onTick = { tick(it.key) },
+                                            refocusSignal = listRefocus,
+                                        )
                                     }
                                 }
                             }
