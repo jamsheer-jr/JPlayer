@@ -37,10 +37,19 @@ object AndroidLogSink : LogSink {
  * renames it, once, before anything can hand it to TDLib (see [CacheDirRename] for why the old
  * name is left as a link); every other place that needs the cache's location asks this class.
  */
-class AndroidPaths(context: Context) : Paths {
+class AndroidPaths(context: Context, slot: Int = Accounts.activeSlot(context)) : Paths {
     private val app = context.applicationContext
-    override val databaseDir: File = File(app.filesDir, "tdlib")
-    override val filesDir: File = cacheDir(app)
+
+    /**
+     * The account's own TDLib database: slot 0 is the directory the app has always used, and
+     * every later account gets its own, so no two accounts ever share a session ([Accounts]).
+     */
+    override val databaseDir: File =
+        if (slot <= 0) File(app.filesDir, "tdlib") else File(app.filesDir, "tdlib-$slot")
+
+    /** The account's own TDLib files, beside its database for the same reason. */
+    override val filesDir: File =
+        if (slot <= 0) cacheDir(app) else File(app.filesDir, "cache-$slot")
 
     /**
      * Asked fresh each time: a download may be moving to, or already living on, the volume
