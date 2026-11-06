@@ -49,10 +49,17 @@ class SeekUndoTest {
     }
 
     @Test
-    fun `nudging around the landing keeps the way back`() {
+    fun `any further seek takes the offer down at once`() {
         undo.seeked(120_000, 1_500_000, nowMs = 0)
-        val offer = undo.seeked(1_500_000, 1_495_000, nowMs = 4_000)
-        assertEquals(SeekUndo.Offer(120_000, 4_000 + SeekUndo.OFFER_MS), offer)
+        assertNull(undo.seeked(1_500_000, 1_495_000, nowMs = 4_000))
+        assertNull(undo.current(nowMs = 4_001))
+    }
+
+    @Test
+    fun `a fresh long jump raises a fresh offer from its own start`() {
+        undo.seeked(120_000, 1_500_000, nowMs = 0)
+        val offer = undo.seeked(1_500_000, 300_000, nowMs = 1_000)
+        assertEquals(SeekUndo.Offer(1_500_000, 1_000 + SeekUndo.OFFER_MS), offer)
     }
 
     @Test

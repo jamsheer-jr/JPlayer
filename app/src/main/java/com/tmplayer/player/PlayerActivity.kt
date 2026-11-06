@@ -1393,6 +1393,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** Playback has been ready once, so the resume offer has a picture to sit over. */
     private var firstFrameReady = false
     private var startOverOffered = false
+
+    /** The "Start over" offer is on screen now, so a seek of the viewer's can take it down. */
+    private var startOverOfferUp = false
     private var firstRunHintShown = false
 
     /** How far into the video the download has reached, and whether it has reached the end. */
@@ -4201,6 +4204,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         nextUpDismissed = false
         firstFrameReady = false
         startOverOffered = false
+        startOverOfferUp = false
         abLoop = null
         loopHandler.removeCallbacks(loopWatch)
         seekUndo.clear()
@@ -6824,6 +6828,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         if (!firstFrameReady) return
         seekUndo.seeked(fromMs, toMs, SystemClock.elapsedRealtime())
         refreshUndoChip()
+        dismissStartOverOffer(toMs)
     }
 
     /** Shows the standing offer, or takes the chip away when none stands; and the expiry with it. */
@@ -7321,10 +7326,29 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         if (startOverOffered || !firstFrameReady || resumeMs < RESUME_OFFER_MIN_MS) return
         if (FormFactor.isTv(this)) return
         startOverOffered = true
+        startOverOfferUp = true
         feedback?.offer(
             L.playerResumingFrom(Translator.messages.formatter.clock(resumeMs)),
             L.playerStartOver,
-        ) { startOver() }
+            holdMs = START_OVER_OFFER_MS,
+        ) {
+            startOverOfferUp = false
+            startOver()
+        }
+    }
+
+    /**
+     * A seek of the viewer's takes the "Start over" offer down with it (owner, v1.0.11): the
+     * offer belongs to the place the video opened at, and seeking anywhere else ends that
+     * moment. It does not come back for this playback, as [startOverOffered] already stands.
+     * A seek landing on the resume place itself is the opening still settling, not the viewer
+     * leaving it, and the app's own seeks never reach here (see [noteSeek]).
+     */
+    private fun dismissStartOverOffer(toMs: Long) {
+        if (!startOverOfferUp) return
+        if (kotlin.math.abs(toMs - resumeMs) <= RESUME_SYNC_SLACK_MS) return
+        startOverOfferUp = false
+        if (feedback?.offerUp == true) feedback?.dismissOffer()
     }
 
     /**
@@ -9401,6 +9425,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
         /** A saved position shorter than this is not worth a "Start over". */
         private const val RESUME_OFFER_MIN_MS = 15_000L
+
+        /** How long the "Start over" offer stays up: five seconds, as the "Back to" chip's is (owner, v1.0.11). */
+        private const val START_OVER_OFFER_MS = 5_000L
 
         /** How often a running A-B repeat looks at the position: the loop overruns its end by at most this. */
         private const val LOOP_TICK_MS = 100L

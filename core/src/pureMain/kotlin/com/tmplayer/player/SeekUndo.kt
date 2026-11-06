@@ -12,9 +12,11 @@ import kotlin.math.abs
  *
  * Seeks close together are one journey: the presses of a double tap run, a burst of bar strides
  * or a few arrow keys in a row keep the place they started from, so the offer leads back to where
- * the viewer was before the first of them. While an offer stands, a nudge either side of the
- * landing keeps it (and its way back); a seek that returns to the place by hand ends it, as does
- * taking it. The seek that taking it causes is not a jump of its own.
+ * the viewer was before the first of them. While an offer stands, any further seek takes it down
+ * at once (the owner's call: a way back that lingers over the viewer's next jump is in the way);
+ * a long jump of that seek's own can raise a fresh one back to where it began. A seek that
+ * returns to the place by hand ends it, as does taking it. The seek that taking it causes is not
+ * a jump of its own.
  *
  * Pure and clocked by the caller, so phone, television and desktop share it and the tests need no
  * waiting. Not thread safe: the players call it from their main thread.
@@ -61,22 +63,20 @@ class SeekUndo(
         val inBurst = lastSeekAt != Long.MIN_VALUE && nowMs - lastSeekAt <= burstMs
         lastSeekAt = nowMs
         val standing = current(nowMs)
-        val origin = when {
-            standing != null -> standing.backToMs
-            inBurst && burstOrigin >= 0 -> burstOrigin
-            else -> fromMs
-        }
-        burstOrigin = origin
-        if (standing != null && abs(toMs - origin) <= LANDING_SLACK_MS) {
-            // Back by hand: nothing left to offer.
+        if (standing != null) {
+            // A further seek takes the standing offer down at once, whatever it is: back by
+            // hand it is simply over, and anything else is judged as this seek alone, so
+            // only a long jump of its own raises a fresh offer, back to where it began.
             offer = null
-            return null
+            burstOrigin = standing.backToMs
+            if (abs(toMs - standing.backToMs) <= LANDING_SLACK_MS) return null
+            burstOrigin = fromMs
+            offer = if (abs(toMs - fromMs) >= minDistanceMs) Offer(fromMs, nowMs + offerMs) else null
+            return offer
         }
-        offer = when {
-            standing != null -> standing.copy(untilMs = nowMs + offerMs)
-            abs(toMs - origin) >= minDistanceMs -> Offer(origin, nowMs + offerMs)
-            else -> null
-        }
+        val origin = if (inBurst && burstOrigin >= 0) burstOrigin else fromMs
+        burstOrigin = origin
+        offer = if (abs(toMs - origin) >= minDistanceMs) Offer(origin, nowMs + offerMs) else null
         return offer
     }
 
@@ -107,8 +107,8 @@ class SeekUndo(
         /** Seeks this close together are one journey with one starting place. */
         const val BURST_MS = 2_000L
 
-        /** How long the offer stays up after the last seek. */
-        const val OFFER_MS = 6_000L
+        /** How long the offer stays up after the last seek: five seconds (owner, v1.0.11). */
+        const val OFFER_MS = 5_000L
 
         /** A seek landing this close to a place has landed on it: keyframes are not exact. */
         const val LANDING_SLACK_MS = 2_000L
