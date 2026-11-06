@@ -1680,6 +1680,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             startResumeHeartbeat()
         }
         setUpCasting()
+        // A return tap with nothing behind it: the tap (the media notification, or "Playback
+        // stopped") names the player that was playing unseen, and where that player is still
+        // there the tap reuses it in place, so a fresh instance carrying the mark was made
+        // for a player that is already gone. Close at once rather than open on the "nothing
+        // to play" sheet: the tap lands back on the app.
+        if (intent.hasExtra(EXTRA_RETURN) && fileId <= 0 && streamUrl == null) {
+            finish()
+            return
+        }
         openItem()
     }
 
@@ -9141,6 +9150,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         private const val PIP_TOGGLE_REQUEST = 71
 
         private const val EXTRA_FILE_ID = "file_id"
+
+        /**
+         * The mark on [PlaybackService.playerReturnIntent]: this start asks for the player
+         * that is already playing, not for a video. Public because the service sets it.
+         */
+        const val EXTRA_RETURN = "return_to_player"
 
         /** `SystemClock.elapsedRealtime()` when Play was pressed, for the start timing log. */
         private const val EXTRA_PRESSED_AT = "pressed_at"

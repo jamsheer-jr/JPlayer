@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Looper
@@ -165,5 +166,28 @@ class PlaybackServiceTest {
             PlaybackService.clearStopped(context)
             assertTrue(allNotifications.none { it.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() == L.notifyPlaybackStopped })
         }
+    }
+
+    @Test
+    fun `the way back names the player itself, reuses it in place and carries the return mark`() {
+        val intent = PlaybackService.playerReturnIntent(context)
+        assertEquals(ComponentName(context, PlayerActivity::class.java), intent.component)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP != 0)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
+        assertTrue(intent.getBooleanExtra(PlayerActivity.EXTRA_RETURN, false))
+    }
+
+    @Test
+    fun `the stopped notice's tap is that same way back to the player`() {
+        shadowOf(context as android.app.Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val manager = shadowOf(context.getSystemService(NotificationManager::class.java))
+        PlaybackService.notifyStopped(context)
+        val stopped = manager.allNotifications.single { it.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() == L.notifyPlaybackStopped }
+        val tap = shadowOf(stopped.contentIntent).savedIntent
+        assertEquals(ComponentName(context, PlayerActivity::class.java), tap.component)
+        assertTrue(tap.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP != 0)
+        assertTrue(tap.getBooleanExtra(PlayerActivity.EXTRA_RETURN, false))
+        PlaybackService.clearStopped(context)
     }
 }

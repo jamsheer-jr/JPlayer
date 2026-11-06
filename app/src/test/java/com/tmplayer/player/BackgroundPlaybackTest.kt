@@ -103,6 +103,16 @@ class BackgroundPlaybackTest {
     }
 
     @Test
+    fun `a plain return lands on the player only while its session is held and it asks for nothing`() {
+        assertTrue(BackgroundPlayback.returnsToPlayer(sessionHeld = true, asksForSomething = false))
+        // Nothing playing unseen: the launch is just the app opening.
+        assertFalse(BackgroundPlayback.returnsToPlayer(sessionHeld = false, asksForSomething = false))
+        // A link, a screen or a video the launch carries is its own errand and wins.
+        assertFalse(BackgroundPlayback.returnsToPlayer(sessionHeld = true, asksForSomething = true))
+        assertFalse(BackgroundPlayback.returnsToPlayer(sessionHeld = false, asksForSomething = true))
+    }
+
+    @Test
     fun `an amount with no numbered icon gets the plain one`() {
         assertEquals(CommandButton.ICON_SKIP_BACK_30, BackgroundPlayback.backIcon(30_000))
         assertEquals(CommandButton.ICON_SKIP_BACK, BackgroundPlayback.backIcon(7_000))

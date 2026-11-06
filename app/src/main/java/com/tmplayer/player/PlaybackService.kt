@@ -162,8 +162,9 @@ class PlaybackService : MediaSessionService() {
             setPlayWhenReady(playWhenReady)
             ensureChannel(context)
             clearStopped(context)
-            // The notification's tap brings the app back as it was left, the player on top.
-            launchIntent(context)?.let { tap ->
+            // The notification's tap goes to the player itself, not to the app's front door:
+            // the live player is reused where it stands (see [playerReturnIntent]).
+            playerReturnPendingIntent(context)?.let { tap ->
                 runCatching { session.setSessionActivity(tap) }
             }
             return runCatching { context.startService(Intent(context, PlaybackService::class.java)) }
@@ -217,7 +218,7 @@ class PlaybackService : MediaSessionService() {
                 .setContentText(L.notifyTapToResume)
                 .setCategory(Notification.CATEGORY_TRANSPORT)
                 .setAutoCancel(true)
-                .apply { launchIntent(context)?.let(::setContentIntent) }
+                .apply { playerReturnPendingIntent(context)?.let(::setContentIntent) }
                 .build()
             runCatching { manager(context).notify(STOPPED_ID, notification) }
         }
@@ -227,12 +228,32 @@ class PlaybackService : MediaSessionService() {
             runCatching { manager(context).cancel(STOPPED_ID) }
         }
 
-        /** Brings the app's task back as it was left, which has the player on top. */
-        private fun launchIntent(context: Context): PendingIntent? {
-            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-            return PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        }
+        /**
+         * The way back to the player that is playing unseen, as a tap: an intent for the
+         * player itself, which reuses the live one where it stands in its task (CLEAR_TOP
+         * finds nothing above it, SINGLE_TOP makes no second player), so its onStart takes
+         * the session back as it always has. The mark it carries ([PlayerActivity.EXTRA_RETURN])
+         * is for the other case: a tap that arrives after the live player is gone makes a
+         * fresh player, which reads the mark, finds nothing to play and closes at once, so
+         * the tap lands on the app rather than on an empty player.
+         *
+         * The launcher's intent is not used. It names the app's front door, and a tap
+         * delivered to that singleTask activity finishes the player above it in the task
+         * first: the viewer came back for the video and landed on Home without it.
+         */
+        internal fun playerReturnIntent(context: Context): Intent =
+            Intent(context, PlayerActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+                putExtra(PlayerActivity.EXTRA_RETURN, true)
+            }
+
+        /** [playerReturnIntent] as a notification's tap. */
+        internal fun playerReturnPendingIntent(context: Context): PendingIntent? =
+            PendingIntent.getActivity(context, 0, playerReturnIntent(context), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         private fun manager(context: Context): NotificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -80,6 +80,15 @@ object BackgroundPlayback {
      */
     fun foregroundGraceMs(playWhenReady: Boolean): Long = if (playWhenReady) GAP_GRACE_MS else 0L
 
+    /**
+     * Whether a launch of the app while the sound plays unseen lands on the player rather
+     * than on Home: only while the service holds the player's session, and only when the
+     * launch asks for nothing of its own. A launch carrying a link, a screen a notification
+     * asked for, or a video from a home screen card has its own errand, and the errand wins.
+     */
+    fun returnsToPlayer(sessionHeld: Boolean, asksForSomething: Boolean): Boolean =
+        sessionHeld && !asksForSomething
+
     /** Media3's own ceiling for [foregroundGraceMs], ten minutes. */
     const val GAP_GRACE_MS = 600_000L
 

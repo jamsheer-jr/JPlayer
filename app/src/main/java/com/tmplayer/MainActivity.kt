@@ -348,6 +348,9 @@ class MainActivity : ComponentActivity() {
                 window.decorView.postDelayed({ android.os.Process.sendSignal(android.os.Process.myPid(), 11) }, 3_000)
             }
         }
+        // Before the launch's errands are read off it: a plain return while a video plays
+        // unseen goes back to that video (see [returnToBackgroundPlayer]).
+        val playerReturn = savedInstanceState == null && returnToBackgroundPlayer(intent)
         noteRequestedScreen(intent)
         setContent {
             TMPlayerTheme {
@@ -370,7 +373,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        if (savedInstanceState == null) playFromHomeScreen(intent)
+        if (savedInstanceState == null && !playerReturn) playFromHomeScreen(intent)
     }
 
     /**
@@ -490,8 +493,31 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (returnToBackgroundPlayer(intent)) return
         noteRequestedScreen(intent)
         playFromHomeScreen(intent)
+    }
+
+    /**
+     * A relaunch that asks for nothing (the launcher's icon, a plain return to the app)
+     * while a video is playing unseen: the viewer is coming back for the video, so the live
+     * player comes forward instead of Home. Anything the launch carries (a link handed
+     * over, a screen a notification asked for, a video from a home screen card) is its own
+     * errand and wins; the decision is [BackgroundPlayback.returnsToPlayer]. The service
+     * only ever holds a session for a live player, and never on a television, where
+     * nothing plays unseen.
+     */
+    private fun returnToBackgroundPlayer(intent: Intent?): Boolean {
+        if (intent == null) return false
+        val asks = intent.action == Intent.ACTION_VIEW ||
+            intent.data != null ||
+            intent.hasExtra(EXTRA_OPEN) ||
+            intent.hasExtra(com.tmplayer.data.BackgroundChecks.EXTRA_OPEN_CHAT) ||
+            WatchNextPublisher.videoFrom(intent) != null ||
+            TvChannelsPublisher.showFrom(intent) != null
+        if (!com.tmplayer.player.BackgroundPlayback.returnsToPlayer(com.tmplayer.player.PlaybackService.running, asks)) return false
+        startActivity(com.tmplayer.player.PlaybackService.playerReturnIntent(this))
+        return true
     }
 
     private fun noteRequestedScreen(intent: Intent?) {
