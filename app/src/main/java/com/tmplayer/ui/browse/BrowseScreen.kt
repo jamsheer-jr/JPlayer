@@ -991,10 +991,6 @@ internal fun BrowseScreen(
                 // with Undo, so a mis-tap costs nothing. Favourites' clear has no Undo and stays
                 // behind the overflow, asked first.
                 if (tab.listsVideos && historyHas && !selecting) {
-                // History's Select and Clear sit in the bar, one press each: a clear here is said
-                // with Undo, so a mis-tap costs nothing. Favourites' clear has no Undo and stays
-                // behind the overflow, asked first.
-                if (tab.listsVideos && historyHas && !selecting) {
                     BarIcon(label = s.browseSelect, icon = TmIcons.Checklist, onClick = { startSelecting(null) })
                     BarIcon(
                         label = if (showsWatchLater) s.browseClearWatchLater else s.browseClearHistory,
