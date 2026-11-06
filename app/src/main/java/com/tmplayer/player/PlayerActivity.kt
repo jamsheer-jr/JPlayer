@@ -1127,7 +1127,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         override fun run() {
             val loop = abLoop?.takeIf { it.complete } ?: return
             val exo = player
-            if (exo != null) loop.wrap(exo.currentPosition)?.let { exactSeekTo(exo, it) }
+            if (exo != null) loop.wrap(exo.currentPosition)?.let { quietly { exactSeekTo(exo, it) } }
             // Only while the picture moves: paused, buffering or stopped there is nothing to wrap,
             // and [onIsPlayingChanged] starts the watch again when it plays.
             if (exo?.isPlaying == true) loopHandler.postDelayed(this, LOOP_TICK_MS)
@@ -1364,6 +1364,17 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private var offeredSkip: SkipSegment? = null
 
     /**
+     * "Back to 12:34" after a long jump ([SeekUndo]): the chip, and what it works from. Every seek
+     * reaches [noteSeek] through the player's own discontinuity report, so the bar, the double tap,
+     * the digits, chapters, bookmarks and the skip pill all count without each saying so; the
+     * seeks that are not the viewer's (a repeat wrapping, Watch again) run with [quietSeek] set.
+     */
+    private var undoChip: UndoSeekChip? = null
+    private val seekUndo = SeekUndo()
+    private var quietSeek = false
+    private val undoExpiry = Runnable { refreshUndoChip() }
+
+    /**
      * The file's chapter marks, read from its own bytes once they are on the disk ([MkvChapters];
      * Media3 reads none). Empty for a file without any, and until they are found.
      */
@@ -1379,8 +1390,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** Set once the row has introduced itself over the first frames, so it only does it once. */
     private var controlsShownOnStart = false
 
-    /** Playback has been ready once: the first run hint waits for a picture to sit over. */
+    /** Playback has been ready once, so the resume offer has a picture to sit over. */
     private var firstFrameReady = false
+    private var startOverOffered = false
     private var firstRunHintShown = false
 
     /** How far into the video the download has reached, and whether it has reached the end. */
@@ -1711,8 +1723,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         override fun takeBack(positionMs: Long) {
             val exo = player ?: return
             // Back from the TV at the TV's place: that is where this carries on, so the opening's
-            // "Resuming from" (the place before casting) is not applied again.
+            // "Resuming from" (the place before casting) is neither offered nor applied again.
             resumeMs = positionMs
+            startOverOffered = true
             keepScreenOn(true)
             attachMediaSession(exo)
             exo.seekTo(positionMs)
@@ -2275,7 +2288,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 onTapControls = ::toggleControls,
                 onTogglePlay = ::togglePlaybackFromPicture,
                 isOnChrome = { x, y ->
-                    controls?.isOnChrome(x, y) == true || isOnNextUpCard(x, y) || isOnSkipPill(x, y) ||
+                    controls?.isOnChrome(x, y) == true || isOnNextUpCard(x, y) || isOnSkipPill(x, y) || isOnUndoChip(x, y) ||
                         feedback?.isOnZoomChip(x, y) == true
                 },
                 systemEdges = ::systemGestureEdges,
@@ -2328,6 +2341,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
             skipPill?.view?.updateLayoutParams<FrameLayout.LayoutParams> {
                 rightMargin = safe.right + NextUpCard.marginPx(root)
+                bottomMargin = safe.bottom + NextUpCard.bottomPx(root)
+            }
+            // "Back to" on the start side keeps clear of a cutout or the bar in landscape too.
+            undoChip?.view?.updateLayoutParams<FrameLayout.LayoutParams> {
+                leftMargin = safe.left + NextUpCard.marginPx(root)
+                marginStart = safe.left + NextUpCard.marginPx(root)
                 bottomMargin = safe.bottom + NextUpCard.bottomPx(root)
             }
             insets
@@ -4181,8 +4200,11 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         nextUpShown = false
         nextUpDismissed = false
         firstFrameReady = false
+        startOverOffered = false
         abLoop = null
         loopHandler.removeCallbacks(loopWatch)
+        seekUndo.clear()
+        undoChip?.hide()
         markedWatchedHere = false
         watchedHere = false
         onWatchedList = false
@@ -4337,6 +4359,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                     firstFrameReady = true
                     noteSeekIndex()
                     readChapters()
+                    offerStartOver()
                     controls?.setBuffering(false)
                     if (!failurePinned) hideStatus()
                     showAudioCard()
@@ -4401,6 +4424,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
             if (!watch.done) watch.reset()
             seekStartedAt = SystemClock.elapsedRealtime()
+            noteSeek(oldPosition.positionMs, newPosition.positionMs)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -5542,7 +5566,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             setOnClickListener {
                 text = L.commonTryAgain
                 setOnClickListener { retryPlayback() }
-                player?.seekTo(0)
+                quietly { player?.seekTo(0) }
                 player?.playWhenReady = true
                 hideStatus()
                 keepScreenOn(true)
@@ -5974,7 +5998,16 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 }
             }
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                // Any press over the bare picture asks for the row rather than doing
+                // Up while "Back to" is offered takes it, row up or down: a key that otherwise
+                // only raises the row, so Left, Right and OK keep 1.16.0's meanings. The chip's
+                // second line says so.
+                if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && FormFactor.isTv(this) &&
+                    undoChip?.isShown == true && statusOverlay.visibility != View.VISIBLE
+                ) {
+                    if (event.repeatCount == 0) undoSeek()
+                    return true
+                }
+                // Any other press over the bare picture asks for the row rather than doing
                 // anything irreversible; the second press does the thing it lands on.
                 if (FormFactor.isTv(this) && !controlsUp && statusOverlay.visibility != View.VISIBLE) {
                     controls?.show()
@@ -6483,6 +6516,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             feedback?.clear()
             hideNextUp()
             hideSkipPill()
+            undoChip?.hide()
         }
         subtitleView.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
         subtitleTwin?.visibility = subtitleView.visibility
@@ -6764,6 +6798,68 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, PartyLinks.build(chatId, messageId, atSec))
         runCatching { startActivity(Intent.createChooser(send, L.commonShare)) }
+    }
+
+    /** Runs [seek] as one the viewer did not ask for: no "Back to" offer comes of it. */
+    private inline fun quietly(seek: () -> Unit) {
+        quietSeek = true
+        try {
+            seek()
+        } finally {
+            quietSeek = false
+        }
+    }
+
+    /**
+     * Every seek, from the player's report of it. Ignored before the first frame (the resume
+     * position is not a jump) and while [quietSeek] is set; otherwise [SeekUndo] decides whether
+     * it was long enough to offer the way back.
+     */
+    private fun noteSeek(fromMs: Long, toMs: Long) {
+        if (quietSeek) {
+            seekUndo.clear()
+            refreshUndoChip()
+            return
+        }
+        if (!firstFrameReady) return
+        seekUndo.seeked(fromMs, toMs, SystemClock.elapsedRealtime())
+        refreshUndoChip()
+    }
+
+    /** Shows the standing offer, or takes the chip away when none stands; and the expiry with it. */
+    private fun refreshUndoChip() {
+        val chip = undoChip ?: return
+        loopHandler.removeCallbacks(undoExpiry)
+        val now = SystemClock.elapsedRealtime()
+        val offer = seekUndo.current(now)?.takeIf {
+            !locked && !inPictureInPicture && statusOverlay.visibility != View.VISIBLE
+        }
+        if (offer == null) {
+            chip.hide()
+            return
+        }
+        val wasShown = chip.isShown
+        chip.show(offer.backToMs)
+        if (!wasShown) liftCornerOffers()
+        loopHandler.postDelayed(undoExpiry, (offer.untilMs - now).coerceAtLeast(0))
+    }
+
+    /** The chip's tap, or Up on a television: back to where the viewer was before the jump. */
+    private fun undoSeek() {
+        val exo = player ?: return
+        val back = seekUndo.take(SystemClock.elapsedRealtime()) ?: return
+        loopHandler.removeCallbacks(undoExpiry)
+        undoChip?.hide(taken = true)
+        exo.seekTo(back)
+        showGestureFeedback(Translator.messages.formatter.clock(back))
+    }
+
+    private fun isOnUndoChip(rawX: Float, rawY: Float): Boolean {
+        val chip = undoChip?.view ?: return false
+        if (chip.visibility != View.VISIBLE) return false
+        val at = IntArray(2)
+        chip.getLocationInWindow(at)
+        return rawX >= at[0] && rawX < at[0] + chip.width && rawY >= at[1] && rawY < at[1] + chip.height
     }
 
     /** The menus' chapter lines: the next chapter, or the start of this one, as [Chapters] has it. */
@@ -7199,10 +7295,11 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         App.backgroundScope.launch { runCatching { store.rememberSpeed(scopes, value) } }
     }
 
-    /** Puts the "Resuming from" line up for [atMs]: the video simply carries on from there. */
+    /** Puts the "Resuming from" line up for [atMs] and offers the phone's way back to the start. */
     private fun showResumeFrom(atMs: Long) {
         resumeNotice = L.playerResumingFrom(Translator.messages.formatter.clock(atMs))
         renderStatusText()
+        offerStartOver()
     }
 
     /**
@@ -7215,10 +7312,26 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
+     * The phone's way back to the start of a video that opened where it was left: a line over the
+     * picture with "Start over", for a few seconds. It needs both the saved position and a picture,
+     * which arrive in either order, so the two places that learn them both come here. A saved
+     * position within the first seconds is not worth offering, and the television keeps its menu line.
+     */
+    private fun offerStartOver() {
+        if (startOverOffered || !firstFrameReady || resumeMs < RESUME_OFFER_MIN_MS) return
+        if (FormFactor.isTv(this)) return
+        startOverOffered = true
+        feedback?.offer(
+            L.playerResumingFrom(Translator.messages.formatter.clock(resumeMs)),
+            L.playerStartOver,
+        ) { startOver() }
+    }
+
+    /**
      * What the row and the menus no longer show: on a phone that a double tap jumps and which swipes
      * are on (see [FirstRunHint]), with "Got it" to put it away sooner; on a television that the
      * arrows jump and More lists every key. Said once ever, the first time the row goes away over a
-     * playing video. The tour leaves these to this moment.
+     * playing video, and not while the resume offer is up. The tour leaves these to this moment.
      */
     private fun showFirstRunHint() {
         if (firstRunHintShown || !firstFrameReady) return
@@ -7285,6 +7398,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * Everything is off, the orientation is frozen, and a tap anywhere offers the unlock pill.
      */
     private fun lockScreen() {
+        undoChip?.hide()
         if (locked) return
         locked = true
         wakeEndWatch()
@@ -7444,6 +7558,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             below = findViewById(R.id.overlay_container),
             tv = FormFactor.isTv(this),
             onSkip = ::skipOffered,
+        )
+        undoChip = UndoSeekChip(
+            root = findViewById(R.id.player_root),
+            below = findViewById(R.id.overlay_container),
+            tv = FormFactor.isTv(this),
+            onUndo = ::undoSeek,
         )
         watchForTheEnd()
     }
@@ -7711,7 +7831,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         liftSubtitles()
         liftCornerOffers()
         updateDownloadChip()
-        if (!visible) showFirstRunHint()
+        if (!visible && !startOverOffered) showFirstRunHint()
     }
 
     /**
@@ -7722,10 +7842,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * around them, and the remote never reaches them while it is up.
      */
     private fun liftCornerOffers() {
+        // The "Back to" chip climbs on a television too: it comes up after a scrub on the bar,
+        // with the row up, in the corner the row's title sits in.
         val tv = FormFactor.isTv(this)
         val cluster = findViewById<View>(R.id.controls_cluster)
         val root = findViewById<View>(R.id.player_root)
-        val offers = if (tv) emptyList() else listOfNotNull(skipPill?.view, nextUpCard?.view)
+        val offers = if (tv) listOfNotNull(undoChip?.view) else listOfNotNull(skipPill?.view, nextUpCard?.view, undoChip?.view)
         offers.forEach { offer ->
             // After the next layout, so an offer that has only just been shown has a height.
             offer.doOnPreDraw {
@@ -8284,6 +8406,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         freeUpOnFailure = freeUp
         slowStartUp = false
         openingFilm = false
+        undoChip?.hide()
         keepScreenOn(false)
         statusOverlay.visibility = View.VISIBLE
         // The only state that earns the warning triangle, matching the error screens the rest of
@@ -9275,6 +9398,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         private const val UNLOCK_PILL_MS = 2_500L
 
         private const val RESUME_TICK_MS = 10_000L
+
+        /** A saved position shorter than this is not worth a "Start over". */
+        private const val RESUME_OFFER_MIN_MS = 15_000L
 
         /** How often a running A-B repeat looks at the position: the loop overruns its end by at most this. */
         private const val LOOP_TICK_MS = 100L

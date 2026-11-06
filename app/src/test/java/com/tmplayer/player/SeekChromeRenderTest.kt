@@ -24,9 +24,9 @@ import java.lang.reflect.Proxy
 import java.time.Duration
 
 /**
- * The row with a chaptered file's cuts in the bar and the chapter named after the time, and an
- * A-B repeat's amber marks beside them, on a phone held sideways and on a television. Drawn to
- * `build/device-test/review/seek-*.png` for a look.
+ * The row with a chaptered file's cuts in the bar and the chapter named after the time, an A-B
+ * repeat's amber marks beside them, and the "Back to" chip in its corner, on a phone held sideways
+ * and on a television. Drawn to `build/device-test/review/seek-*.png` for a look.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -81,6 +81,12 @@ class SeekChromeRenderTest {
         controls.chapters = chapters
         controls.loop = AbLoop(startMs = 1_900_000, endMs = 2_100_000)
         controls.show()
+        val chip = UndoSeekChip(root, overlay, tv) {}
+        chip.show(backToMs = 312_000)
+        idle()
+        // Above the row, as the activity lifts it: the row's top, plus a gap.
+        val cluster = root.findViewById<View>(R.id.controls_cluster)
+        chip.view.translationY = -(root.height - cluster.top - NextUpCard.bottomPx(root) + 8 * activity.resources.displayMetrics.density).coerceAtLeast(0f)
         idle()
         val decor = activity.window.decorView
         val bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
