@@ -264,6 +264,13 @@ class HomeViewModel(
     private var order: List<Long> = emptyList()
 
     /**
+     * The chats asked for the Series row's sake alone ([requestSeriesChats]): their answers
+     * are kept when Home fills its picked chats, or the row would lose its feed at the
+     * first fill after they land.
+     */
+    private var seriesKept: Set<Long> = emptySet()
+
+    /**
      * Whether [fill] has been told Home's chats since the last [refresh]: from then on [order] is
      * the whole of what Home reads, even empty (every row off in Settings), and a refresh never
      * falls back to the rows the cache held.
@@ -509,7 +516,7 @@ class HomeViewModel(
         filled = true
         if (ids != order) {
             order = ids
-            val keep = ids.toHashSet()
+            val keep = ids.toHashSet() + seriesKept
             val gone = if (whole) _loaded.value.keys.filterNot { it in keep } else emptyList()
             if (gone.isNotEmpty()) {
                 gone.forEach { fetches.forget("chat:$it"); reads.remove(it); stale -= it }
@@ -520,6 +527,20 @@ class HomeViewModel(
             if (whole && chats.isNotEmpty() && chats != _own.value) _own.value = chats
         }
         ids.take(EAGER_CHATS).forEach(::request)
+    }
+
+    /**
+     * Asks for the videos of chats Home did not pick, for the Series row alone (owner,
+     * 2026-11-06): the row is fed by every visible chat, the way the search across chats
+     * feeds Recently added, and a series in a chat Home never picked was invisible to it.
+     * Each chat gets the one bounded read its own row would get ([request]), the answers
+     * are kept across fills (see [seriesKept]), and at most [SERIES_CHATS] chats are
+     * asked, so a very long chat list stays a bounded amount of work.
+     */
+    fun requestSeriesChats(ids: List<Long>) {
+        val wanted = ids.distinct().take(SERIES_CHATS)
+        seriesKept = wanted.toSet()
+        wanted.forEach(::request)
     }
 
     /**
@@ -883,6 +904,9 @@ class HomeViewModel(
         /** Rows a refresh asks again at once, from the top; the others when they next come on screen. */
         const val REFRESH_CHATS = 8
 
+        /** The most chats asked for the Series row's sake alone ([requestSeriesChats]). */
+        const val SERIES_CHATS = 100
+
         /** The least time between two fetches of one row set off by posts in its chat. */
         const val LIVE_GAP_MS = 120_000L
 
@@ -1053,6 +1077,13 @@ fun rememberHomeRows(
         val online = com.tmplayer.online.OnlineMetadata.current ?: return@LaunchedEffect
         val refs = runCatching { online.trending() }.getOrDefault(emptyList())
         if (refs.isNotEmpty()) trendingRefs = refs
+    }
+    // The Series row reads every visible chat, not only Home's picked ones (owner,
+    // 2026-11-06): while the catalog rows are on, the rest of the chat list is asked for
+    // its videos too, each the same bounded read a row gets when it comes on screen.
+    LaunchedEffect(model, layout?.catalogRows, chats) {
+        if (layout?.catalogRows != true) return@LaunchedEffect
+        model.requestSeriesChats(chats.map { it.id })
     }
     // Built off the main thread, and only once the chats' answers stop arriving for a moment: a
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads

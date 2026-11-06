@@ -297,6 +297,16 @@ object HomeRows {
         if (resume.isNotEmpty()) add(HomeRow.Continue(resume, everyResume.drop(LIMIT)))
         val inContinue = HashSet(seen)
 
+        // The Series row, directly under Continue watching (owner, 2026-11-06): fed by
+        // every chat whose videos Home has read (the whole [loaded] map, not only Home's
+        // picked chats) together with the search across chats, so a series in any visible
+        // chat stands here. The shelves at the foot keep their narrower pool, their gates
+        // and their place.
+        if (layout.catalogRows) {
+            val seriesPool = (loaded.values.flatten() + recent.orEmpty()).distinctBy { it.id }
+            seriesRow(seriesPool, shownCopies, inContinue)?.let { add(it) }
+        }
+
         val homeChats = favourites.distinctBy { it.id }
         // The chats Recently added draws from: Home's chats, or the added ones (in Home's order).
         val homeOrder = if (recentFrom == null) homeChats.map { it.id } else recentFrom.distinct()
@@ -441,8 +451,10 @@ object HomeRows {
 
     /**
      * The shelves for [build]'s foot: Trending now where TMDB's week has titles in the chats,
-     * then Movies, Series, a shelf per language, a shelf per genre, Top Rated, and Because you
-     * watched, from [pool] arranged the way a row arranges it. A title may stand in a shelf
+     * then Movies, a shelf per language, a shelf per genre, Top Rated, and Because you
+     * watched, from [pool] arranged the way a row arranges it. (The Series row is not one of
+     * them any more: it is fed wider and stands under Continue watching instead, see
+     * [seriesRow].) A title may stand in a shelf
      * and in its chat's row: the shelves are a second way through the same videos, the way a
      * streaming home groups them, and they leave out only what Continue watching holds. A
      * shelf with fewer than [CATALOG_MIN] tiles is left out. The genre and Top Rated shelves
@@ -475,8 +487,6 @@ object HomeRows {
             }
             val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null }
             if (movies.size >= CATALOG_MIN) add(HomeRow.Catalog("movies", "", movies.take(LIMIT)))
-            val series = all.filterIsInstance<ShelfEntry.Show>()
-            if (series.size >= CATALOG_MIN) add(HomeRow.Catalog("series", "", series.take(LIMIT)))
             val byLanguage = all.groupBy { languageOf(it) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }
@@ -516,6 +526,25 @@ object HomeRows {
                 }
             }
         }
+    }
+
+    /**
+     * The Series row, on its own (owner, 2026-11-06): every episode-detected show in
+     * [pool], and one show is enough for the row to stand, where every other shelf needs
+     * [CATALOG_MIN]. It is split from [catalogShelves] because [build] feeds it wider than
+     * the shelves (every chat whose videos Home has read, plus the search across chats:
+     * a series in a chat Home did not pick was invisible when the pool was Home's chats
+     * alone) and stands it directly under Continue watching rather than at the foot.
+     */
+    private fun seriesRow(
+        pool: List<MediaItem>,
+        continuing: Set<String>,
+        inProgress: Set<String>,
+    ): HomeRow.Catalog? {
+        if (pool.isEmpty()) return null
+        val series = arranged(pool, HashSet(inProgress), continuing, inProgress)
+            .filterIsInstance<ShelfEntry.Show>()
+        return if (series.isEmpty()) null else HomeRow.Catalog("series", "", series.take(LIMIT))
     }
 
     /**

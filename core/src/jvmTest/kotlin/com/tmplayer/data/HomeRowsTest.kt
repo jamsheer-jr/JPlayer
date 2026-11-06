@@ -144,6 +144,54 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `the series row stands under continue watching, fed by every chat read`() {
+        val started = video(1)
+        val episodes = (1..2).map { video(2, "Harbour.Notes.S01E%02d.mkv".format(it)) }
+        val rows = HomeRows.build(
+            continueWatching = listOf(resume(started)),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to listOf(started), 2L to episodes),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        // Chat 2 is not one of Home's chats, and the show is the only one there is: the row
+        // stands anyway, directly under Continue watching, and only once on the screen.
+        assertEquals("continue", rows[0].key)
+        val series = rows[1] as HomeRow.Catalog
+        assertEquals("series", series.kind)
+        assertEquals(1, series.entries.size)
+        assertTrue(series.entries.single() is ShelfEntry.Show)
+        assertEquals(1, rows.count { it is HomeRow.Catalog && it.kind == "series" })
+    }
+
+    @Test
+    fun `the series row is fed by the search across chats too`() {
+        val episodes = (1..2).map { video(9, "Harbour.Notes.S01E%02d.mkv".format(it)) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to listOf(video(1))),
+            recent = episodes,
+            layout = HomeLayout(catalogRows = true),
+        )
+        val series = rows.filterIsInstance<HomeRow.Catalog>().single { it.kind == "series" }
+        assertEquals(1, series.entries.size)
+        assertTrue(series.entries.single() is ShelfEntry.Show)
+    }
+
+    @Test
+    fun `no series row while the catalog rows are off`() {
+        val episodes = (1..2).map { video(2, "Harbour.Notes.S01E%02d.mkv".format(it)) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(2L to episodes),
+            recent = emptyList(),
+        )
+        assertTrue(rows.none { it is HomeRow.Catalog })
+    }
+
+    @Test
     fun `trending shelf follows the given order and only ranked titles`() {
         val films = listOf(
             video(1, "Alpha 2024.mp4"),
