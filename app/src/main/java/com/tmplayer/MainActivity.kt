@@ -1776,10 +1776,12 @@ private fun Root() {
         // not repeat that chat's own row as a row of its own would.
         // Null until the setting is read, so no row that is off is fetched for the first frame.
         val homeLayout by remember { settings.homeLayout }.collectAsStateWithLifecycle(initialValue = null)
+        val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
         val homeRows = rememberHomeRows(
             homeViewModel, chats, favorites, continueWatching, watchLater, watchedVideos.values,
             recentMinStarred = 1,
             layout = homeLayout,
+            collections = collections,
         )
         val tvChannelsOn by settings.tvChannels.collectAsStateWithLifecycle(initialValue = null)
         TvHomeChannels(

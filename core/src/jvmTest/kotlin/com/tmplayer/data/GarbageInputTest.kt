@@ -241,6 +241,7 @@ class GarbageInputTest {
             survive("SupportReminder.decodeRecent", text) { SupportReminder.decodeRecent(text) }
             survive("BookmarkCodec.decode", text) { BookmarkCodec.decode(1, 2, text) }
             survive("QualityHabit.decode", text) { QualityHabit.decode(text) }
+            survive("Collections.decode", text) { Collections.decode(text) }
             survive("LessonSteps.read", text) { LessonSteps.read(text) }
             survive("TimeEntry.parse", text) { TimeEntry.parse(text, 3_600_000, 0); TimeEntry.parse(text, 0, -5) }
             survive("ProxyLinks.parse", text) { ProxyLinks.parse(text) }

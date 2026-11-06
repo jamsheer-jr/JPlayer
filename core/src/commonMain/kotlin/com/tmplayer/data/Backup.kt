@@ -133,6 +133,7 @@ object Backups {
         "pip_on_leave" to Kind.BOOL,
         "chat_filter" to Kind.TEXT,
         "chat_sort" to Kind.TEXT,
+        "collections" to Kind.TEXT,
         "controls_timeout_ms" to Kind.LONG,
         "detail_first" to Kind.BOOL,
         "compact_nav" to Kind.BOOL,

@@ -90,6 +90,7 @@ private val MIN_SIZE = longPreferencesKey("min_size_bytes")
 private val MAX_SIZE = longPreferencesKey("max_size_bytes")
 private val CHAT_FILTER = stringPreferencesKey("chat_filter")
 private val CHAT_SORT = stringPreferencesKey("chat_sort")
+private val COLLECTIONS = stringPreferencesKey("collections")
 /** "Only my folders", retired: read once by [SettingsStore.takeOnlyFolders] and removed. */
 private val HIDE_DEFAULT_GROUPS = booleanPreferencesKey("hide_default_groups")
 
@@ -1957,6 +1958,15 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setChatSort(name: String) {
         prefs.edit { it[CHAT_SORT] = name }
+    }
+
+    /** The viewer's own collections, decoded from their one stored value: see [Collections]. */
+    val collections: Flow<List<VideoCollection>> = read { it[COLLECTIONS] }.map { raw -> Collections.decode(raw) }
+
+    suspend fun collectionsNow(): List<VideoCollection> = Collections.decode(prefs.data.first()[COLLECTIONS])
+
+    suspend fun setCollections(collections: List<VideoCollection>) {
+        prefs.edit { it[COLLECTIONS] = Collections.encode(collections) }
     }
 
     // ---- "Only my folders", retired ----------------------------------------------------------

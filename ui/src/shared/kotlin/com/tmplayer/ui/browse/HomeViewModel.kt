@@ -1004,6 +1004,8 @@ fun rememberHomeRows(
      * that is off is never fetched, not even for the first frame.
      */
     layout: HomeLayout? = HomeLayout(),
+    /** The viewer's own collections, drawn as Home rows: see [HomeRows.build]. */
+    collections: List<com.tmplayer.data.VideoCollection> = emptyList(),
 ): List<HomeRow> {
     // The chats the viewer added (HX27): with a choice made, Recently added reads them one by one
     // ([HomeLayout.chosenChats]) rather than Telegram's newest across the whole account, which a
@@ -1045,7 +1047,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1091,7 +1093,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         val built = withContext(homeBuild) {
@@ -1100,6 +1102,7 @@ fun rememberHomeRows(
                 recentMinStarred = recentMinStarred, starred = favourites, autoFill = autoFill,
                 chatsPending = chatsPending, layout = layout, recentFrom = recentFrom, noneChosen = noneChosen,
                 titleMeta = if (layout.catalogRows) homeTitleMeta(home, loaded, recent) else emptyMap(),
+                collections = collections,
             )
         }
         homeMemo.built = inputs

@@ -268,6 +268,7 @@ object HomeRows {
         recentFrom: List<Long>? = null,
         noneChosen: Boolean = false,
         titleMeta: Map<String, TitleMeta> = emptyMap(),
+        collections: List<VideoCollection> = emptyList(),
     ): List<HomeRow> = buildList<HomeRow> {
         val seen = HashSet<String>()
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
@@ -368,6 +369,20 @@ object HomeRows {
             val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
                 .distinctBy { it.id }
             catalogShelves(pool, shownCopies, inContinue, titleMeta).forEach { add(it) }
+            // The viewer's own collections under the shelves (J Player, 2026-11-06): a title is
+            // in a collection by its progress key, and any copy of it stands for it, the way a
+            // folded tile stands for its copies everywhere else on Home. One tile is enough:
+            // the row is the viewer's own, not a shelf that has to earn its place.
+            if (collections.isNotEmpty()) {
+                val byKey = HashMap<String, ShelfEntry>()
+                arranged(pool, emptySet()).forEach { entry ->
+                    itemsOf(entry).forEach { item -> byKey.putIfAbsent(item.progressKey, entry) }
+                }
+                collections.forEachIndexed { index, collection ->
+                    val entries = collection.keys.mapNotNull { byKey[it] }.distinct().take(LIMIT)
+                    if (entries.isNotEmpty()) add(HomeRow.Catalog("collection-$index", collection.name, entries))
+                }
+            }
         }
     }
 
@@ -504,6 +519,12 @@ object HomeRows {
      * An episode in Continue ([inProgress]) still counts towards its show, though: left out, the
      * show's tile said "11 episodes" for a show of 12. It is only never a tile of its own.
      */
+    /** Every video an entry stands for: a film's copies and parts, a show's episode copies. */
+    private fun itemsOf(entry: ShelfEntry): List<MediaItem> = when (entry) {
+        is ShelfEntry.File -> listOf(entry.item) + entry.item.versions + entry.item.parts
+        is ShelfEntry.Show -> entry.series.episodes.flatMap { it.copies + it.alsoIn }
+    }
+
     private fun row(
         items: List<MediaItem>,
         seen: MutableSet<String>,
