@@ -144,6 +144,87 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `trending shelf follows the given order and only ranked titles`() {
+        val films = listOf(
+            video(1, "Alpha 2024.mp4"),
+            video(1, "Beta 2024.mp4"),
+            video(1, "Gamma 2024.mp4"),
+            video(1, "Delta 2024.mp4"),
+            video(1, "Unranked 2024.mp4"),
+        )
+        val ranks = mapOf(films[2].id to 0, films[0].id to 1, films[3].id to 2, films[1].id to 3)
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            trending = ranks,
+        )
+        val catalog = rows.filterIsInstance<HomeRow.Catalog>()
+        // Trending leads the shelves, in TMDB's order, and the unranked film is not in it.
+        assertEquals("catalog-trending", catalog.first().key)
+        assertEquals(
+            listOf(films[2], films[0], films[3], films[1]).map { it.messageId },
+            catalog.first().entries.flatMap(::idsOf),
+        )
+        // Two ranked titles are not a shelf.
+        val thin = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            trending = mapOf(films[0].id to 0, films[1].id to 1),
+        )
+        assertTrue(thin.filterIsInstance<HomeRow.Catalog>().none { it.kind == "trending" })
+    }
+
+    @Test
+    fun `because shelf suggests unwatched titles sharing the watched genres`() {
+        val both = video(1, "Both Genres 2024.mp4")
+        val actionLow = video(1, "Action Low 2024.mp4")
+        val actionHigh = video(1, "Action High 2024.mp4")
+        val seenAction = video(1, "Action Seen 2024.mp4")
+        val drama = video(1, "Drama One 2024.mp4")
+        val films = listOf(both, actionLow, actionHigh, seenAction, drama)
+        val meta = mapOf(
+            both.id to TitleMeta(listOf("Action", "Thriller"), 7.0),
+            actionLow.id to TitleMeta(listOf("Action"), 6.5),
+            actionHigh.id to TitleMeta(listOf("Action"), 9.0),
+            seenAction.id to TitleMeta(listOf("Action"), 9.5),
+            drama.id to TitleMeta(listOf("Drama"), 9.9),
+        )
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+            watchedGenres = setOf("Action", "Thriller"),
+            watchedKeys = setOf(seenAction.progressKey),
+        )
+        val because = rows.filterIsInstance<HomeRow.Catalog>().single { it.kind == "because" }
+        // Most shared genres first, then the best rated; the watched one and the drama stay out,
+        // however high they rate.
+        assertEquals(
+            listOf(both, actionHigh, actionLow).map { it.messageId },
+            because.entries.flatMap(::idsOf),
+        )
+        // Nothing watched, nothing suggested.
+        val bare = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        assertTrue(bare.filterIsInstance<HomeRow.Catalog>().none { it.kind == "because" })
+    }
+
+    @Test
     fun `rows come in order continue, recent, then starred chats`() {
         val a = video(1)
         val b = video(2)

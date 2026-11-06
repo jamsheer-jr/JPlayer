@@ -116,7 +116,11 @@ sealed interface HomeRow {
      * ("genre-" and a slug of the genre's name, the name itself in [label], data the online
      * lookups carry) or the Top Rated shelf ("top-rated", its heading from the catalog),
      * grouped from the [TitleMeta] the caller hands in: neither a genre nor a rating is part
-     * of a [MediaItem], so a title with no meta stands in neither kind of shelf.
+     * of a [MediaItem], so a title with no meta stands in neither kind of shelf. Since v1.0.10
+     * a shelf can also be "trending" (the titles TMDB says are trending this week, of the
+     * ones in the viewer's chats, in TMDB's own order) or "because" (unwatched titles sharing
+     * a genre with what the viewer has watched), both from inputs the caller hands in the
+     * same way; their headings come from the catalog too.
      */
     data class Catalog(
         val kind: String,
@@ -269,6 +273,9 @@ object HomeRows {
         noneChosen: Boolean = false,
         titleMeta: Map<String, TitleMeta> = emptyMap(),
         collections: List<VideoCollection> = emptyList(),
+        trending: Map<String, Int> = emptyMap(),
+        watchedGenres: Set<String> = emptySet(),
+        watchedKeys: Set<String> = emptySet(),
     ): List<HomeRow> = buildList<HomeRow> {
         val seen = HashSet<String>()
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
@@ -368,7 +375,7 @@ object HomeRows {
         if (layout.catalogRows) {
             val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
                 .distinctBy { it.id }
-            catalogShelves(pool, shownCopies, inContinue, titleMeta).forEach { add(it) }
+            catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys).forEach { add(it) }
             // The viewer's own collections under the shelves (J Player, 2026-11-06): a title is
             // in a collection by its progress key, and any copy of it stands for it, the way a
             // folded tile stands for its copies everywhere else on Home. One tile is enough:
@@ -426,27 +433,46 @@ object HomeRows {
     private fun genreKind(genre: String): String =
         "genre-" + genre.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-')
 
+    /** The id a shelf's inputs are keyed by: a file's own, a show's cover's. */
+    private fun leadIdOf(entry: ShelfEntry): String = when (entry) {
+        is ShelfEntry.File -> entry.item.id
+        is ShelfEntry.Show -> entry.series.cover.id
+    }
+
     /**
-     * The shelves for [build]'s foot: Movies, Series, then a shelf per language, then a shelf
-     * per genre, then Top Rated, from [pool] arranged the way a row arranges it. A title may
-     * stand in a shelf and in its chat's row: the shelves are a second way through the same
-     * videos, the way a streaming home groups them, and they leave out only what Continue
-     * watching holds. A shelf with fewer than [CATALOG_MIN] tiles is left out. The genre and
-     * Top Rated shelves group by [titleMeta] alone: a title with no meta, or with genres the
-     * lookups never named, stands in neither, and a title with several genres stands in each
-     * of its genres' shelves. Top Rated holds the titles rated at or above [TOP_RATED_MIN],
-     * best first, ties in the row's own newest first order.
+     * The shelves for [build]'s foot: Trending now where TMDB's week has titles in the chats,
+     * then Movies, Series, a shelf per language, a shelf per genre, Top Rated, and Because you
+     * watched, from [pool] arranged the way a row arranges it. A title may stand in a shelf
+     * and in its chat's row: the shelves are a second way through the same videos, the way a
+     * streaming home groups them, and they leave out only what Continue watching holds. A
+     * shelf with fewer than [CATALOG_MIN] tiles is left out. The genre and Top Rated shelves
+     * group by [titleMeta] alone: a title with no meta, or with genres the lookups never
+     * named, stands in neither, and a title with several genres stands in each of its genres'
+     * shelves. Top Rated holds the titles rated at or above [TOP_RATED_MIN], best first, ties
+     * in the row's own newest first order. Trending holds the pool's titles [trending] ranks
+     * (a tile's lead id to its place in TMDB's order), in that order. Because you watched
+     * holds titles sharing a genre in [watchedGenres] with what was watched, most shared
+     * genres first, then best rated, and leaves out anything already watched ([watchedKeys]
+     * holds the watched videos' progress keys: any copy watched keeps the tile out).
      */
     private fun catalogShelves(
         pool: List<MediaItem>,
         continuing: Set<String>,
         inProgress: Set<String>,
         titleMeta: Map<String, TitleMeta> = emptyMap(),
+        trending: Map<String, Int> = emptyMap(),
+        watchedGenres: Set<String> = emptySet(),
+        watchedKeys: Set<String> = emptySet(),
     ): List<HomeRow.Catalog> {
         if (pool.isEmpty()) return emptyList()
         val all = arranged(pool, HashSet(inProgress), continuing, inProgress)
         if (all.isEmpty()) return emptyList()
         return buildList {
+            if (trending.isNotEmpty()) {
+                val ranked = all.mapNotNull { entry -> trending[leadIdOf(entry)]?.let { entry to it } }
+                    .sortedBy { it.second }
+                if (ranked.size >= CATALOG_MIN) add(HomeRow.Catalog("trending", "", ranked.take(LIMIT).map { it.first }))
+            }
             val movies = all.filter { entry -> entry is ShelfEntry.File && SeriesShelf.episodeOf(entry.item).episode == null }
             if (movies.size >= CATALOG_MIN) add(HomeRow.Catalog("movies", "", movies.take(LIMIT)))
             val series = all.filterIsInstance<ShelfEntry.Show>()
@@ -476,6 +502,18 @@ object HomeRows {
                     metaOf(entry, titleMeta)?.rating?.takeIf { it >= TOP_RATED_MIN }?.let { entry to it }
                 }.sortedByDescending { it.second }
                 if (rated.size >= CATALOG_MIN) add(HomeRow.Catalog("top-rated", "", rated.take(LIMIT).map { it.first }))
+                if (watchedGenres.isNotEmpty()) {
+                    val wanted = watchedGenres.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
+                    val scored = all.mapNotNull { entry ->
+                        val meta = metaOf(entry, titleMeta) ?: return@mapNotNull null
+                        if (itemsOf(entry).any { it.progressKey in watchedKeys }) return@mapNotNull null
+                        val shared = meta.genres.count { it.trim().lowercase() in wanted }
+                        if (shared == 0) null else Triple(entry, shared, meta.rating ?: 0.0)
+                    }.sortedWith(
+                        compareByDescending<Triple<ShelfEntry, Int, Double>> { it.second }.thenByDescending { it.third },
+                    )
+                    if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("because", "", scored.take(LIMIT).map { it.first }))
+                }
             }
         }
     }
