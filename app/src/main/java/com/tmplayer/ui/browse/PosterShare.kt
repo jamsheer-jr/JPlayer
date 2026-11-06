@@ -53,7 +53,7 @@ suspend fun sharePosterCard(context: Context, item: MediaItem) {
     val card = drawPosterCard(poster, info.title, info.year)
     val uri = PosterCard.save(context, card, info.title)
     if (uri == null) {
-        showMessage(context, L.downloadsShareFailed)
+        showMessage(context, L.gridShareFailed)
         return
     }
     val send = Intent(Intent.ACTION_SEND)
@@ -62,7 +62,7 @@ suspend fun sharePosterCard(context: Context, item: MediaItem) {
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     runCatching {
         context.startActivity(Intent.createChooser(send, L.commonShare).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.onFailure { showMessage(context, L.downloadsShareFailed) }
+    }.onFailure { showMessage(context, L.gridShareFailed) }
 }
 
 /**
