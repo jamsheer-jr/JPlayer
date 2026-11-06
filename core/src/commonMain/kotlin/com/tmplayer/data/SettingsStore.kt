@@ -2449,6 +2449,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             habit = qualityHabitNow(),
             language = com.tmplayer.player.TrackLanguages.normalise(trackPreferencesNow().audioLanguage),
             tooSlow = VideoCopies.tooSlowHere,
+            saveData = VideoCopies.saveDataHere,
         ) ?: return item
         return picked.asVersion(item)
     }
@@ -2467,6 +2468,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             habit = qualityHabitNow(),
             language = com.tmplayer.player.TrackLanguages.normalise(trackPreferencesNow().audioLanguage),
             tooSlow = VideoCopies.tooSlowHere,
+            saveData = VideoCopies.saveDataHere,
         )
     }
 

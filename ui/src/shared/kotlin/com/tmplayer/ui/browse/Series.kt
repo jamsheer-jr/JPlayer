@@ -173,7 +173,7 @@ class SeriesWatch(
     fun course(items: List<MediaItem>): CourseProgress? = CourseProgress.of(items, onList, point)
 
     fun progress(series: Series): SeriesProgress =
-        SeriesShelf.progress(series, finished) { point(it)?.fraction ?: 0f }
+        SeriesShelf.progress(series, finished, { point(it)?.fraction ?: 0f }, saveData = com.tmplayer.data.VideoCopies.saveDataHere)
 
     /** How many of [series]' episodes arrived since the viewer last watched it: see [NewEpisodes.inSeries]. */
     fun newEpisodes(series: Series): Int =
@@ -188,7 +188,7 @@ class SeriesWatch(
 
     /** The copy of [episode] to play: see [SeriesShelf.pick]. */
     fun pick(episode: SeriesEpisode, progress: SeriesProgress): MediaItem =
-        SeriesShelf.pick(episode, finished, { point(it)?.fraction ?: 0f }, progress.like)
+        SeriesShelf.pick(episode, finished, { point(it)?.fraction ?: 0f }, progress.like, saveData = com.tmplayer.data.VideoCopies.saveDataHere)
 
     /** "Download season" or "Download unwatched" for [season]: see [SeasonDownload.copies]. */
     fun download(series: Series, season: SeriesSeason, which: SeasonDownload.Which) = SeasonDownloadRequest { held ->

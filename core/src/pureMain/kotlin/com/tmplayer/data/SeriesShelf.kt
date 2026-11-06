@@ -669,6 +669,7 @@ object SeriesShelf {
         series: Series,
         finished: (MediaItem) -> Boolean,
         position: (MediaItem) -> Float,
+        saveData: Boolean = false,
     ): SeriesProgress {
         val all = series.episodes
         val done = all.map { episode -> episode.watched(finished) }
@@ -687,23 +688,28 @@ object SeriesShelf {
         return SeriesProgress(
             watched = watched,
             total = all.size,
-            next = next?.let { it.copy(item = pick(it, finished, position, like)) },
+            next = next?.let { it.copy(item = pick(it, finished, position, like, saveData)) },
             like = like,
         )
     }
 
     /**
      * Which copy of [episode] to play: the one partway through, else the one most like [like]
-     * (the copy the viewer watched last), else the newest.
+     * (the copy the viewer watched last), else the newest. With [saveData] (Save mobile data
+     * in force), the lightest adequate copy ([VideoCopies.smallestAdequate]) stands in for
+     * the likeness and the newest: the partway copy still wins, since a resume belongs to
+     * the file it was made in.
      */
     fun pick(
         episode: SeriesEpisode,
         finished: (MediaItem) -> Boolean,
         position: (MediaItem) -> Float,
         like: MediaItem?,
+        saveData: Boolean = false,
     ): MediaItem {
         if (episode.copies.size <= 1) return episode.item
         episode.copies.firstOrNull { !finished(it) && position(it) > 0f }?.let { return it }
+        if (saveData) VideoCopies.smallestAdequate(episode.copies)?.let { return it }
         return like?.let { EpisodeCopies.closest(it, episode.copies) } ?: episode.item
     }
 

@@ -123,6 +123,16 @@ class App : Application() {
                     com.tmplayer.player.StreamWarmup.allowed = { !(saving && NetworkMonitor.metered.value) }
                 }
         }
+        // The same saving, for the copy pick: on a metered line the lightest adequate copy
+        // plays without asking ([com.tmplayer.data.VideoCopies.saveDataHere]), and a change
+        // of network mid-session counts the moment it lands.
+        backgroundScope.launch {
+            val store = SettingsStore(this@App)
+            val tv = com.tmplayer.data.FormFactor.isTv(this@App)
+            kotlinx.coroutines.flow.combine(store.saveMobileData, NetworkMonitor.metered) { save, metered ->
+                com.tmplayer.data.MeteredPolicy.saveMobileDataInForce(save, tv) && metered
+            }.collect { com.tmplayer.data.VideoCopies.saveDataHere = it }
+        }
         // Lighter pictures and Reduce motion (CP68), from the stored choice and whenever it changes.
         // Before the promo return, so the fixture shows a screen as a low-end device draws it.
         backgroundScope.launch {

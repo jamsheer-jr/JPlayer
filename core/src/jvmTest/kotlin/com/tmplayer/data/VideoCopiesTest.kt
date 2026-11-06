@@ -200,6 +200,49 @@ class VideoCopiesTest {
     }
 
     @Test
+    fun `saving data plays the smallest adequate copy, and the standing winners still win`() {
+        val uhdCopy = video(1, 60, "Film.2024.2160p.mkv", size = 6_000L shl 20, date = 400)
+        val hdCopy = video(1, 61, "Film.2024.1080p.mkv", size = 2_000L shl 20, date = 300)
+        val light = video(1, 62, "Film.2024.480p.mkv", size = 500L shl 20, date = 200)
+        val lighter = video(1, 63, "Film.2024.360p.mkv", size = 300L shl 20, date = 100)
+        val all = listOf(uhdCopy, hdCopy, light, lighter)
+        val habit = QualityHabit(mapOf(1080 to 9))
+        // The 360p copy: the lowest height at the floor, ahead of habit and newness.
+        assertEquals(lighter, VideoCopies.pick(all, habit = habit, saveData = true))
+        // Off, the same list picks by habit as before.
+        assertEquals(hdCopy, VideoCopies.pick(all, habit = habit))
+        // A chosen copy is the viewer's decision, a downloaded one costs no data, and a
+        // started one is the resume itself: all three still win over the saving.
+        assertEquals(uhdCopy, VideoCopies.pick(all, chosen = uhdCopy.id, habit = habit, saveData = true))
+        val kept = video(1, 64, "Film.2024.1080p.mkv", locality = MediaItem.Locality.Downloaded)
+        assertEquals(kept, VideoCopies.pick(all + kept, habit = habit, saveData = true))
+        assertEquals(hdCopy, VideoCopies.pick(all, started = { it == hdCopy }, habit = habit, saveData = true))
+        // The language pool still bounds the saving: a Tamil 720p beats an unnamed 360p.
+        val tamil = video(1, 65, "Film.2024.Tamil.720p.mkv", size = 800L shl 20)
+        assertEquals(tamil, VideoCopies.pick(all + tamil, habit = habit, language = "ta", saveData = true))
+    }
+
+    @Test
+    fun `the smallest adequate copy reads heights, sizes and the floor as written`() {
+        // Nothing reaches the floor: the highest below it is the best of what there is.
+        val tiny = video(1, 70, "Clip.240p.mkv", size = 50L shl 20)
+        val small = video(1, 71, "Clip.144p.mkv", size = 20L shl 20)
+        assertEquals(tiny, VideoCopies.smallestAdequate(listOf(small, tiny)))
+        // At the same height the smaller file wins, then the newer.
+        val big480 = video(1, 72, "Film.480p.mkv", size = 900L shl 20, date = 10)
+        val small480 = video(1, 73, "Film.480p.mkv", size = 400L shl 20, date = 5)
+        assertEquals(small480, VideoCopies.smallestAdequate(listOf(big480, small480)))
+        // Heights from Telegram's own picture size count too, and an unknown height stands
+        // behind every known one; among unknown heights the smallest file wins.
+        val wide = video(1, 74, "Film.mkv", width = 1920, height = 800, size = 100L shl 20)
+        val unknown = video(1, 75, "Film copy.mkv", size = 10L shl 20)
+        assertEquals(wide, VideoCopies.smallestAdequate(listOf(unknown, wide)))
+        val unknownBig = video(1, 76, "Film copy two.mkv", size = 30L shl 20)
+        assertEquals(unknown, VideoCopies.smallestAdequate(listOf(unknownBig, unknown)))
+        assertNull(VideoCopies.smallestAdequate(emptyList()))
+    }
+
+    @Test
     fun `the viewer's audio language comes before the usual quality, and leads the next episode`() {
         val tamil = video(1, 30, "Film.2020.Tamil.720p.mkv", date = 100)
         val hindi = video(1, 31, "Film.2020.Hindi.1080p.mkv", date = 200)

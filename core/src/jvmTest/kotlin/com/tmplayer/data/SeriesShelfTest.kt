@@ -187,6 +187,20 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `saving data picks the episodes lightest adequate copy, a partway copy still first`() {
+        val hd = video("Show.S01E01.1080p.mkv", size = 1_800L * 1024 * 1024)
+        val sd = video("Show.S01E01.720p.mkv", size = 900L * 1024 * 1024)
+        val light = video("Show.S01E01.360p.mkv", size = 200L * 1024 * 1024)
+        val episode = SeriesEpisode(item = hd, season = 1, episode = 1, copies = listOf(hd, sd, light))
+        // Like for like without the saving: the copy most like the 1080p one watched last.
+        assertEquals(hd.id, SeriesShelf.pick(episode, { false }, { 0f }, like = hd).id)
+        // Saving: the 360p copy, whatever was watched last.
+        assertEquals(light.id, SeriesShelf.pick(episode, { false }, { 0f }, like = hd, saveData = true).id)
+        // A copy partway through is the resume itself and wins over the saving.
+        assertEquals(hd.id, SeriesShelf.pick(episode, { false }, { if (it.id == hd.id) 0.4f else 0f }, like = null, saveData = true).id)
+    }
+
+    @Test
     fun `episode 5 named in a bare E5 joins the show the chat established`() {
         val items = familyFullHouse() + video("Family Full House With Rohit Sharma \u2014 E5. Vlog.mp4", size = 475 * mb)
         val entries = SeriesShelf.arrange(items)

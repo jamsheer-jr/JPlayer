@@ -226,6 +226,12 @@ object VideoCopies {
      * watch ([DecodeJudge]: AV1 on a TV stick with no AV1 silicon), as long as one copy is left:
      * a smooth copy is the one played without asking. The viewer's own pick (1) is kept whatever
      * it is.
+     *
+     * With [saveData] (Save mobile data in force: the setting on, on a metered connection),
+     * steps 5 and 6 give way to [smallestAdequate] within the language pool: the lightest copy
+     * that is still watchable, since every byte of it is fetched. Steps 1 to 3 stand: a chosen
+     * copy is the viewer's decision, a copy on the device costs no data, and a resume belongs
+     * to the file it was made in.
      */
     fun pick(
         copies: List<MediaItem>,
@@ -234,11 +240,12 @@ object VideoCopies {
         habit: QualityHabit = QualityHabit(),
         language: String? = null,
         tooSlow: (MediaItem) -> Boolean = { false },
+        saveData: Boolean = false,
     ): MediaItem? {
         if (copies.size <= 1) return copies.firstOrNull()
         chosen?.let { id -> copies.firstOrNull { it.id == id } }?.let { return it }
         val smooth = copies.filterNot(tooSlow).ifEmpty { copies }
-        return pickAmong(smooth, started, habit, language)
+        return pickAmong(smooth, started, habit, language, saveData)
     }
 
     /**
@@ -252,11 +259,12 @@ object VideoCopies {
         habit: QualityHabit = QualityHabit(),
         language: String? = null,
         tooSlow: (MediaItem) -> Boolean = { false },
+        saveData: Boolean = false,
     ): MediaItem? {
         if (copies.size <= 1) return null
         if (chosen != null && copies.any { it.id == chosen }) return null
-        val plain = pickAmong(copies, started, habit, language) ?: return null
-        val picked = pick(copies, chosen, started, habit, language, tooSlow) ?: return null
+        val plain = pickAmong(copies, started, habit, language, saveData) ?: return null
+        val picked = pick(copies, chosen, started, habit, language, tooSlow, saveData) ?: return null
         return plain.takeIf { it.id != picked.id && tooSlow(it) }
     }
 
@@ -266,6 +274,48 @@ object VideoCopies {
      */
     @Volatile
     var tooSlowHere: (MediaItem) -> Boolean = { false }
+
+    /**
+     * Whether Save mobile data is in force on this device right now (the setting on, and the
+     * connection metered), as the app keeps it: [pick]'s data saving input, the way
+     * [tooSlowHere] is its smoothness one. False until set, and never set on a television
+     * ([MeteredPolicy] keeps the setting off there).
+     */
+    @Volatile
+    var saveDataHere: Boolean = false
+
+    /** The lowest height, in pixels, that still reads as the video itself: the data saver's floor. */
+    const val ADEQUATE_HEIGHT = 360
+
+    /**
+     * The lightest of [copies] that is still watchable, for [pick] when data is being saved:
+     * the lowest known height at or above [ADEQUATE_HEIGHT] (the 360p and 480p copies first),
+     * the smallest file on a tie, then the newest. When no copy reaches the floor, the highest
+     * below it: the best of what there is beats a bigger guess. A copy whose height is not
+     * known stands behind every known one; among unknown heights alone, the smallest file
+     * wins, then the newest. Null only for an empty list.
+     */
+    fun smallestAdequate(copies: List<MediaItem>): MediaItem? {
+        if (copies.isEmpty()) return null
+        val known = copies.mapNotNull { copy -> heightOf(copy)?.let { copy to it } }
+        if (known.isEmpty()) {
+            return copies.sortedWith(compareBy<MediaItem> { it.sizeBytes }.thenByDescending { it.date }).first()
+        }
+        val adequate = known.filter { it.second >= ADEQUATE_HEIGHT }
+        return if (adequate.isNotEmpty()) {
+            adequate.sortedWith(
+                compareBy<Pair<MediaItem, Int>> { it.second }
+                    .thenBy { it.first.sizeBytes }
+                    .thenByDescending { it.first.date },
+            ).first().first
+        } else {
+            known.sortedWith(
+                compareByDescending<Pair<MediaItem, Int>> { it.second }
+                    .thenBy { it.first.sizeBytes }
+                    .thenByDescending { it.first.date },
+            ).first().first
+        }
+    }
 
     /**
      * Whether this device plays a copy smoothly as far as its name says: true, false (it may
@@ -284,12 +334,14 @@ object VideoCopies {
         started: (MediaItem) -> Boolean,
         habit: QualityHabit,
         language: String?,
+        saveData: Boolean = false,
     ): MediaItem? {
         if (copies.size <= 1) return copies.firstOrNull()
         copies.firstOrNull { it.locality == MediaItem.Locality.Downloaded }?.let { return it }
         copies.firstOrNull { it.onDevice }?.let { return it }
         copies.firstOrNull(started)?.let { return it }
         val pool = language?.let { code -> copies.filter { code in languagesOf(it) }.ifEmpty { null } } ?: copies
+        if (saveData) return smallestAdequate(pool)
         val newest = pool.maxWith(compareBy<MediaItem> { it.date }.thenBy { it.messageId })
         val usual = habit.usual ?: return newest
         return pool
