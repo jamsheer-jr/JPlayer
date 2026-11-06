@@ -638,10 +638,11 @@
         <!-- Phone only (PlayerControls shows and finishes it there): the ONE slim bottom row,
              MX Player shape. The lock is moved here from the pill row by PlayerControls at the
              far left, the episode steps and play or pause sit in the centre as plain icons (no
-             disc, no pill), and picture shape (also moved, before this row's own last button)
-             and picture in picture close the right end. The steps stay invisible without a
-             neighbouring episode, so the play button keeps the middle either way. The row over
-             this one keeps only the copy and Episodes pills, exactly where they were. -->
+             disc, no pill), and the copies pill (also moved here, from the row over this one),
+             picture shape (also moved, before this row's own last button) and picture in
+             picture close the right end. The steps stay invisible without a neighbouring
+             episode, so the play button keeps the middle either way. The row over this one
+             keeps only the Episodes pill. -->
         <LinearLayout
             android:id="@+id/controls_transport"
             android:layout_width="match_parent"

@@ -600,16 +600,15 @@ class PlayerControls(
         // speed and rotate stay reachable in More, and subtitles and audio live on the top bar,
         // so the whole pill scroll view goes. The lock and picture shape move into the transport
         // row itself: the lock at the far left, picture shape at the right just before picture
-        // in picture, both always shown, upright or sideways. The copy and Episodes pills keep
-        // the row over this one, exactly where they were. A television never runs this: its
-        // row, its pill and its shape button stay where they have always been.
+        // in picture, both always shown, upright or sideways. The Episodes pill keeps the row
+        // over this one. A television never runs this: its row, its pill and its shape button
+        // stay where they have always been.
         (buttons.parent as? View)?.visibility = View.GONE
-        // The copy pill belongs at the right end of its row on a phone (device feedback,
+        // The pills belong at the right end of their rows on a phone (device feedback,
         // 2026-11-06): the scroll view above was the row's weighted child and held the pills
-        // at the right, so with it gone the copy pill drifted to the left. A weighted spacer
-        // at the row's start takes its place and pushes the copy pill, and Episodes beside
-        // it when it shows, back to the right end, whichever of them is on the row. A
-        // television never runs this: its scroll view keeps its own weight.
+        // at the right, so with it gone they drifted to the left. A weighted spacer at the
+        // row's start takes its place and pushes the Episodes pill back to the right end.
+        // A television never runs this: its scroll view keeps its own weight.
         (copyButton.parent as? android.widget.LinearLayout)?.let { copyRow ->
             val spacer = android.widget.Space(root.context)
             spacer.layoutParams = android.widget.LinearLayout.LayoutParams(0, 1).apply { weight = 1f }
@@ -623,6 +622,13 @@ class PlayerControls(
         row.addView(shapeButton, (row.childCount - 1).coerceAtLeast(0))
         shapeButton.visibility = if (shapeOffered) View.VISIBLE else View.GONE
         pipButton.visibility = View.VISIBLE
+        // The copies pill moves down into this row (owner, 2026-11-06), at its right end
+        // beside picture shape, so the quality of the copy playing is chosen where the
+        // transport is worked rather than from a row of its own. It keeps its own height
+        // and its gone-until-there-are-copies showing (see setCopy, which works off the
+        // field wherever the pill sits); the Episodes pill stays in the row over this one.
+        (copyButton.parent as? android.view.ViewGroup)?.removeView(copyButton)
+        row.addView(copyButton, row.indexOfChild(shapeButton))
         wire(root.findViewById(R.id.control_back)) { onBack() }
         val more = root.findViewById<View>(R.id.control_more)
         wire(more) { onMore(more) }
