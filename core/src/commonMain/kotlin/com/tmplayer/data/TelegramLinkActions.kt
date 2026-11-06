@@ -158,7 +158,13 @@ class TelegramLinkActions(private val td: TdlClient) {
         if (!LinkRules.mayJoin(ChatGate.awaitReady())) return@withContext Result.failure(LinkRefusal(L.linkKidsLock))
         when (val answer = td.joinChatByInviteLink(link.url)) {
             is TdlResult.Failure -> Result.failure(LinkRefusal(LinkRules.inviteFailure(answer.message)))
-            is TdlResult.Success -> Result.success(answer.result.id)
+            is TdlResult.Success -> {
+                // The join's own answer carries no chat id to open, so the invite is read
+                // once more: with the account now in, its info names the chat (still 0
+                // while a join request waits on the admins, as promised above).
+                val info = td.checkChatInviteLink(link.url).valueOrNull
+                Result.success(info?.chatId ?: 0L)
+            }
         }
     }
 
@@ -172,7 +178,7 @@ class TelegramLinkActions(private val td: TdlClient) {
         if (chatId == 0L) return@withContext emptyList()
         val history = td.getChatHistory(chatId, 0, 0, RECENT_POSTS, false).valueOrNull
             ?: return@withContext emptyList()
-        history.messages.map { message ->
+        history.messages.filterNotNull().map { message ->
             ChannelPost(
                 messageId = message.id,
                 text = textOf(message).orEmpty(),
