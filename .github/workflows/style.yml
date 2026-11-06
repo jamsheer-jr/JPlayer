@@ -1,7 +1,7 @@
 name: Style
 
 # The house style check, on every push and pull request whatever it touches. Split out of CI so a
-# site or docs only change, which skips the full build, is still checked: those are exactly the
+# docs only change, which skips the full build, is still checked: those are exactly the
 # files where a pasted dash turns up. It needs no JDK and finishes in seconds.
 on:
   push:
@@ -30,34 +30,3 @@ jobs:
             exit 1
           fi
           echo "Clean: no em or en dashes in tracked files."
-
-  site:
-    name: Site builds, and its translations and links are consistent
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      # tmplayer.org is an Astro site in site/ (site/README.md). Vercel builds it from the
-      # same commit; this builds it first, so a page that does not compile, a catalog key nothing
-      # uses or a page using a key en.json lacks, a translation that lost a {placeholder}, or a
-      # broken internal link fails here rather than on the live site. pnpm and Node come from
-      # site/package.json (packageManager, engines).
-      - uses: pnpm/action-setup@v6
-        with:
-          package_json_file: site/package.json
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: site/pnpm-lock.yaml
-      - name: Install
-        run: pnpm -C site install --frozen-lockfile
-      - name: Type check
-        run: pnpm -C site check
-      - name: Build
-        run: pnpm -C site build
-      - name: Catalogs match the pages and app.js
-        run: python3 scripts/site-i18n-check.py
-      - name: Internal links resolve
-        run: python3 scripts/site-links.py

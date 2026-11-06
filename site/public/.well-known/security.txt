@@ -1,7 +1,0 @@
-# How to report a security problem in TMPlayer. The full policy is on the page below.
-Contact: mailto:hello@tmplayer.org
-Contact: https://github.com/dracu-lah/TMPlayer/security/advisories/new
-Expires: 2027-10-13T00:00:00.000Z
-Preferred-Languages: en
-Canonical: https://tmplayer.org/.well-known/security.txt
-Policy: https://tmplayer.org/security/

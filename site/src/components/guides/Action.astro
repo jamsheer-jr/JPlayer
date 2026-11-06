@@ -1,8 +1,0 @@
----
-// A page-head button with the small arrow after its label.
-import Icon from '../Icon.astro';
-
-interface Props { href: string; filled?: boolean }
-const { href, filled = false } = Astro.props;
----
-<a class={filled ? 'btn btn-filled' : 'btn btn-outline'} href={href}><slot /> <Icon name="arrow-right-sm" /></a>

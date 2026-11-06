@@ -2,8 +2,7 @@
 
 The rules for anyone, person or coding agent, changing this repository. Agents read this file
 directly (Codex, Cursor, Copilot, Windsurf) or import it (`CLAUDE.md`, `GEMINI.md`), so it is the
-only copy: edit it here, never in those. The site has its own rules in
-[site/AGENTS.md](site/AGENTS.md), loaded when working under `site/`.
+only copy: edit it here, never in those.
 
 Where the rest lives, read when the task touches it:
 
@@ -13,7 +12,6 @@ Where the rest lives, read when the task touches it:
 | Cutting a release | [docs/RELEASING.md](docs/RELEASING.md) |
 | How the code is laid out | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Stores, package managers, Telegram's terms | [docs/distribution/README.md](docs/distribution/README.md) |
-| The site: how to run it, add a page, a string or a language | [site/README.md](site/README.md) |
 | Ground rules, style, translations | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Telegram's terms, store rules, what to check on a sign in/manifest/updater change | [docs/agents/telegram-terms.md](docs/agents/telegram-terms.md) |
 | Screenshots (WebP, quality 88, convert command) | [docs/agents/screenshots.md](docs/agents/screenshots.md) |

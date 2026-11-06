@@ -1,9 +1,0 @@
----
-// The numbered steps, each a <Step>. `rail` joins the numbers with a line down the side, as the
-// install page draws them (styles.css, `.steps-rail`).
-interface Props { rail?: boolean }
-const { rail = false } = Astro.props;
----
-<ol class:list={['steps', { 'steps-rail': rail }]}>
-  <slot />
-</ol>

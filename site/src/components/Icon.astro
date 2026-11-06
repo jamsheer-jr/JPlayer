@@ -1,8 +1,0 @@
----
-// One inline SVG from src/icons/, written into the page exactly as the file has it.
-const icons = import.meta.glob<string>('../icons/*.svg', { query: '?raw', import: 'default', eager: true });
-interface Props { name: string }
-const svg = icons[`../icons/${Astro.props.name}.svg`];
-if (svg === undefined) throw new Error(`no icon src/icons/${Astro.props.name}.svg`);
----
-<Fragment set:html={svg.trim()} />

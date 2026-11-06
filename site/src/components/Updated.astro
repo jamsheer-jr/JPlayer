@@ -1,9 +1,0 @@
----
-// "Updated 15 October 2026": the page's lastmod in the page's language.
-import T from './T.astro';
-import { formatDay, lastmod } from '../lib/lastmod';
-
-interface Props { path: string }
-const day = lastmod(Astro.props.path);
----
-<p class="page-updated"><T k="common.updated"><time slot="time1" datetime={day}>{formatDay(Astro.locals.lang, day)}</time></T></p>

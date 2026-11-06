@@ -1,9 +1,0 @@
----
-// A command that checks one release file. The file name sits in a span that app.js fills in with
-// the real name from the update feed, latest.json (data-name); with `expect`, the line below it gets that file's
-// SHA-256 (data-sha) and stays hidden until then.
-interface Props { asset: string; file: string; before: string; after?: string; expect?: boolean }
-const { asset, file, before, after = '', expect = false } = Astro.props;
----
-<pre class="code"><code>{before}<span data-name={asset}>{file}</span>{after}</code></pre>
-{expect && <p class="sha-expect" data-sha={asset} hidden></p>}
