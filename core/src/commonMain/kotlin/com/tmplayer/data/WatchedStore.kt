@@ -58,6 +58,22 @@ class WatchedStore(private val store: DataStore<Preferences>) {
         store.data.first()[keyOf(chatId, messageId)] != null
 
     /**
+     * Stamps one watched video as watched now, the mark itself (and whether it was made by
+     * hand) kept as it was: the same stamp finishing a video writes ([markWatched] with the
+     * moment it finished at), read back by [NewEpisodes.touchTimes] as when the viewer last
+     * watched. Opening a show's page writes it for a finished show's latest watched copy, so
+     * a "New Episode" tag clears on opening exactly as it does on playing. No mark, nothing
+     * to stamp.
+     */
+    suspend fun touchWatched(chatId: Long, messageId: Long) {
+        store.edit { prefs ->
+            val key = keyOf(chatId, messageId)
+            val record = WatchedRecord.decode(SettingsStore.progressKey(chatId, messageId), prefs[key]) ?: return@edit
+            prefs[key] = record.copy(watchedAt = System.currentTimeMillis()).encode()
+        }
+    }
+
+    /**
      * Records [record] as watched. A manual mark is never downgraded to an automatic one: if the
      * viewer said so first, the player finishing it later keeps their word and the new time.
      *

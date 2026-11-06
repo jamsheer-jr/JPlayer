@@ -573,6 +573,12 @@ private fun Actions(
     val metadataOff = online != null && !online.settings.collectAsState().value.enabled
     val trailer = page.extras?.trailer
     val primary = page.rows.firstOrNull()
+    // The Watch later row, drawn again beside Play as a My List pill (owner, v1.0.13): the
+    // same row, so the pill writes the one Watch later store through the row's own action,
+    // and the round Watch later button keeps its place among the others untouched.
+    val myListRow = page.rows.firstOrNull {
+        it.action == DetailAction.AddWatchLater || it.action == DetailAction.RemoveWatchLater
+    }
     val others = buildList {
         addAll(page.rows.drop(1).filter { !headlineOnly || it.action in HEADLINE_ACTIONS })
         // Beside the main button, as a streaming app's "Episodes" sits by Play; at the end when the
@@ -593,10 +599,23 @@ private fun Actions(
     val hero: @Composable (Modifier) -> Unit = { modifier ->
         if (primary != null) HeroPill(primary.label, primary.icon, primary.onSelect, modifier, focusRequester = page.firstAction)
     }
+    // My List beside Play (owner, v1.0.13): its own labelled pill, keyed as the Watch later
+    // button is, so focus stays on it as a press turns Add into Remove and back.
+    val myList: @Composable () -> Unit = {
+        if (myListRow != null) {
+            androidx.compose.runtime.key(slotOf(myListRow)) {
+                MyListPill(
+                    listed = myListRow.action == DetailAction.RemoveWatchLater,
+                    onClick = myListRow.onSelect,
+                )
+            }
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (tv) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 hero(Modifier)
+                myList()
                 others.forEach { androidx.compose.runtime.key(slotOf(it)) { RoundAction(it.label, it.icon, it.onSelect, destructive = it.destructive, detail = it.detail, short = roundLabel(it, s), toggles = togglesOn(it.action), progress = it.progress, enabled = it.enabled, ghost = it.placeholder, waiting = it.placeholder && !page.extrasState.settled) } }
             }
         } else if (!primaryFullWidth) {
@@ -605,10 +624,17 @@ private fun Actions(
             // first at the start, so a trailer arriving later never moves it.
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 hero(Modifier)
+                myList()
                 others.forEach { androidx.compose.runtime.key(slotOf(it)) { RoundAction(it.label, it.icon, it.onSelect, destructive = it.destructive, detail = it.detail, short = roundLabel(it, s), toggles = togglesOn(it.action), progress = it.progress, enabled = it.enabled, ghost = it.placeholder, waiting = it.placeholder && !page.extrasState.settled) } }
             }
         } else {
             hero(Modifier.fillMaxWidth())
+            // Play full width first, My List under it at the head of the buttons' own row.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, if (headlineOnly) Alignment.CenterHorizontally else Alignment.Start),
+                verticalAlignment = Alignment.CenterVertically,
+            ) { myList() }
             FlowRow(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp, if (headlineOnly) Alignment.CenterHorizontally else Alignment.Start),
@@ -618,6 +644,43 @@ private fun Actions(
             }
         }
         trailers.unopened?.let { TrailerQr(it, Modifier.padding(vertical = 8.dp)) }
+    }
+}
+
+/**
+ * "+ My List" beside Play (owner, v1.0.13, the streaming apps' placement): a secondary pill
+ * of Play's own height in the quiet surface fill, a plus while the title is unlisted and a
+ * tick with plain "My List" once it stands in Watch later. It presses the Watch later row's
+ * own action, so it and the round Watch later button are two faces of the one store and
+ * neither can disagree with the other. Focus takes the focus fill on a television, as
+ * [HeroPill] does; under a finger it presses in a little, as every button here does.
+ */
+@Composable
+private fun MyListPill(listed: Boolean, onClick: () -> Unit) {
+    val s = LocalStrings.current
+    val tv = !isTouch()
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusVisibleAsState()
+    val ink = if (focused) Tone.onFocusFill else Tone.text
+    Row(
+        Modifier
+            .heightIn(min = if (tv) 48.dp else 52.dp)
+            .then(if (tv) Modifier else Modifier.pressScale(interactions, com.tmplayer.ui.components.Micro.PillPressScale))
+            .clip(CircleShape)
+            .background(if (focused) Tone.focusFill else Tone.surfaceHigh)
+            .clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onClick)
+            .padding(start = 18.dp, end = 22.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+    ) {
+        Icon(if (listed) TmIcons.Check else TmIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        Text(
+            if (listed) s.detailMyList else s.detailMyListAdd,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = ink,
+            maxLines = 1,
+        )
     }
 }
 

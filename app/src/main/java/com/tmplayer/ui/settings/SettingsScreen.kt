@@ -406,6 +406,8 @@ fun SettingsScreen(
     var editingOmdbKey by remember { mutableStateOf(false) }
     // Home's banner and categories sheets (owner, 2026-11-06): "banner", "pins" or "categories".
     var homeSheet by remember { mutableStateOf<String?>(null) }
+    // The banner pins sheet's search (v1.0.13): what the viewer is filtering the titles by.
+    var pinsQuery by remember { mutableStateOf("") }
     val bannerMode by settings.homeBannerMode.collectAsStateWithLifecycle(initialValue = "auto")
     val bannerPins by settings.homeBannerPins.collectAsStateWithLifecycle(initialValue = emptyList())
     val language by settings.language.collectAsStateWithLifecycle(initialValue = "")
@@ -2533,12 +2535,26 @@ fun SettingsScreen(
                 .takeLast(100)
                 .asReversed()
         }
+        // The search (v1.0.13): a plain substring on the title as the viewer types, the file
+        // name behind it, both read without case. An empty search is the sheet as it was: the
+        // whole list. Ticking a filtered line writes the same pins as ticking it unfiltered.
+        val shown = candidates.filter { (_, item) ->
+            pinsQuery.isBlank() ||
+                item.title.contains(pinsQuery, ignoreCase = true) ||
+                item.fileName.contains(pinsQuery, ignoreCase = true)
+        }
         ChoiceSheet(title = s.settingsHomePins, note = s.settingsHomePinsDetail, onDismiss = { homeSheet = null }, onClose = { homeSheet = null }) {
+            PaneField(
+                value = pinsQuery,
+                onValueChange = { pinsQuery = it },
+                placeholder = s.commonSearch,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            )
             ChoiceList {
-                if (candidates.isEmpty()) {
+                if (shown.isEmpty()) {
                     ChoiceLine(title = s.settingsHomePinsEmpty, enabled = false) {}
                 }
-                candidates.forEach { (key, item) ->
+                shown.forEach { (key, item) ->
                     val ticked = key in bannerPins
                     ChoiceLine(
                         title = item.title.ifBlank { item.fileName },
@@ -2556,16 +2572,48 @@ fun SettingsScreen(
         val ordered = (homeLayout.catalogOrder + com.tmplayer.data.HomeLayout.CATALOG_GROUPS).distinct()
         ChoiceSheet(title = s.settingsHomeCategories, note = s.settingsHomeCategoriesDetail, onDismiss = { homeSheet = null }, onClose = { homeSheet = null }) {
             ChoiceList {
-                ordered.forEach { group ->
+                ordered.forEachIndexed { index, group ->
                     val shown = group !in homeLayout.hiddenCatalog
-                    ChoiceLine(
-                        title = homeCategoryLabel(group, s),
-                        detail = if (shown) s.settingsHomeCategoryShown else s.settingsHomeCategoryHidden,
-                        selected = if (touch) null else shown,
-                        icon = if (shown) TmIcons.Check else null,
-                    ) {
-                        val next = if (shown) homeLayout.hiddenCatalog + group else homeLayout.hiddenCatalog - group
-                        scope.launch { settings.setHomeHiddenCatalog(next) }
+                    // Move up and move down (owner, carried over from v1.0.12): buttons, not
+                    // a drag, so the remote's focus walks them like any other control. A move
+                    // writes the order as it stands on the sheet, the whole list, into the
+                    // same stored order the layout reads; the end rows lose the button that
+                    // would move them off the end.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChoiceLine(
+                            title = homeCategoryLabel(group, s),
+                            detail = if (shown) s.settingsHomeCategoryShown else s.settingsHomeCategoryHidden,
+                            selected = if (touch) null else shown,
+                            icon = if (shown) TmIcons.Check else null,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            val next = if (shown) homeLayout.hiddenCatalog + group else homeLayout.hiddenCatalog - group
+                            scope.launch { settings.setHomeHiddenCatalog(next) }
+                        }
+                        IconButton(
+                            enabled = index > 0,
+                            onClick = {
+                                val next = ordered.toMutableList()
+                                val other = next[index - 1]
+                                next[index - 1] = group
+                                next[index] = other
+                                scope.launch { settings.setHomeCatalogOrder(next) }
+                            },
+                        ) {
+                            M3Icon(TmIcons.ChevronUp, contentDescription = s.settingsMoveUp)
+                        }
+                        IconButton(
+                            enabled = index < ordered.lastIndex,
+                            onClick = {
+                                val next = ordered.toMutableList()
+                                val other = next[index + 1]
+                                next[index + 1] = group
+                                next[index] = other
+                                scope.launch { settings.setHomeCatalogOrder(next) }
+                            },
+                        ) {
+                            M3Icon(TmIcons.ChevronDown, contentDescription = s.settingsMoveDown)
+                        }
                     }
                 }
             }
@@ -3561,6 +3609,7 @@ internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): St
     "top10" -> s.settingsCatTop10
     "movies" -> s.settingsCatMovies
     "series" -> s.settingsCatSeries
+    "anime" -> s.homeRowAnime
     "lang" -> s.settingsCatLang
     "genre" -> s.settingsCatGenre
     "top-rated" -> s.settingsCatTopRated

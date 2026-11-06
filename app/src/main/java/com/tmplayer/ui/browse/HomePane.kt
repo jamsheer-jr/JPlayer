@@ -1,6 +1,9 @@
 package com.tmplayer.ui.browse
 
 import com.tmplayer.ui.components.EdgeStep
+import com.tmplayer.ui.components.ChoiceSheet
+import com.tmplayer.ui.components.ChoiceList
+import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.keepTopInSight
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.snapshotFlow
@@ -312,6 +315,14 @@ internal fun HomePane(
     var seeAllKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     // A catalog shelf's See all page, by the shelf's key (owner, 2026-11-06).
     var catalogKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    // The Categories index sheet (phone, v1.0.13): opened from the category row's last pill.
+    var categoriesOpen by remember { mutableStateOf(false) }
+    // The year shelf's own picker sheet (phone, v1.0.13): opened from the year row's heading.
+    var yearSheet by remember { mutableStateOf(false) }
+    // The year the year shelf gathers, as stored (0 is no pick: the current year). Read here,
+    // beside the banner's own reads off the same store, since the heading's picker shows the
+    // pick and the row already holds it.
+    val shelfYear by remember(bannerSettings) { bannerSettings.homeShelfYear }.collectAsState(initial = 0)
     val catalogRow = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
     // Open link (v1.0.11): an address pasted on Home, played through the same stream mode
     // the built-in channel's posts use.
@@ -724,20 +735,20 @@ internal fun HomePane(
                             OpenLinkPill { openLink = true }
                         }
                     }
-                    // Quick chips (owner, 2026-11-06): a jump to the Movies, Shows,
-                    // Genres and Languages rows, for the rows Home has this time.
+                    // The category row (owner, v1.0.13, the streaming apps' shape): a jump
+                    // to the TV Shows, Movies and Anime shelves Home has this time, in that
+                    // order, and Categories, which opens an index of every shelf present.
+                    // Each label is its shelf's own heading, so no new words are wanted.
                     val chipTargets = listOfNotNull(
-                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "movies" }
-                            .takeIf { it >= 0 }?.let { s.homeRowMovies to it },
                         listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "series" }
                             .takeIf { it >= 0 }?.let { s.homeRowShows to it },
-                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind.startsWith("genre-") }
-                            .takeIf { it >= 0 }?.let { s.settingsCatGenre to it },
-                        listed.indexOfFirst {
-                            it is HomeRow.Catalog && (it.kind.startsWith("lang-") || it.kind.startsWith("series-lang-"))
-                        }.takeIf { it >= 0 }?.let { s.settingsCatLang to it },
+                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "movies" }
+                            .takeIf { it >= 0 }?.let { s.homeRowMovies to it },
+                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "anime" }
+                            .takeIf { it >= 0 }?.let { s.homeRowAnime to it },
                     )
-                    if (chipTargets.isNotEmpty()) {
+                    val hasShelves = listed.any { it is HomeRow.Catalog }
+                    if (chipTargets.isNotEmpty() || hasShelves) {
                         item(key = CHIPS_KEY, contentType = CHIPS_KEY) {
                             Row(
                                 Modifier.padding(start = start, end = end, top = 2.dp, bottom = 2.dp),
@@ -757,6 +768,18 @@ internal fun HomePane(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         M3Text(label, style = M3MaterialTheme.typography.labelLarge, color = Tone.text)
+                                    }
+                                }
+                                if (hasShelves) {
+                                    Row(
+                                        Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .background(Tone.surface)
+                                            .clickable { categoriesOpen = true }
+                                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        M3Text(s.homeCategories, style = M3MaterialTheme.typography.labelLarge, color = Tone.text)
                                     }
                                 }
                             }
@@ -810,6 +833,14 @@ internal fun HomePane(
                             start = start,
                             end = end,
                             seeAll = seeAll.takeIf { touch },
+                            // The year shelf's heading is its own toggle on a phone
+                            // (v1.0.13): tapping it opens the years. A television passes
+                            // null here by construction, its heading untouched.
+                            onYear = if (touch && row is HomeRow.Catalog && row.kind.startsWith("year-")) {
+                                { yearSheet = true }
+                            } else {
+                                null
+                            },
                         )
                         if (!loaded) {
                             PlaceholderRow(start, poster = row is HomeRow.Recent || row is HomeRow.Chat || row is HomeRow.Catalog)
@@ -889,7 +920,7 @@ internal fun HomePane(
                                 }
                             }
                             is HomeRow.Chat -> ShelfRows(row.entries, watch, touch, isFirst, first, { row.title }, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
-                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd, ranked = row.kind == "top10") { opened.open(it) }
+                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd, ranked = row.kind == "top10", badge = if (row.kind == "top10") ({ Top10Badge() }) else null) { opened.open(it) }
                             is HomeRow.Recent -> if (row.noneChosen) {
                                 com.tmplayer.ui.browse.HomeNoneChosenCard(
                                     start = start,
@@ -908,7 +939,7 @@ internal fun HomePane(
                                     runCatching { tilesFocus.requestFocus() }
                                     returnTo = null
                                 }
-                                ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
+                                ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd, bottomTag = s.homeChannelRecent) { opened.open(it) }
                             }
                         }
                     }
@@ -942,6 +973,77 @@ internal fun HomePane(
         ScrollToTop(listState)
         // Home's rows are not in an order a bubble could name, so the handle carries no label.
         FastScroller(listState)
+    }
+
+    // The Categories index (phone, v1.0.13): every shelf Home has this time, under its own
+    // heading; a tap closes the sheet and jumps the list to that shelf, by the same offset
+    // the category pills jump with.
+    if (categoriesOpen) {
+        ChoiceSheet(
+            title = s.homeCategories,
+            onDismiss = { categoriesOpen = false },
+            onClose = { categoriesOpen = false },
+        ) {
+            ChoiceList {
+                listed.filterIsInstance<HomeRow.Catalog>().forEach { row ->
+                    ChoiceLine(
+                        title = homeRowTitle(row, s),
+                        selected = null,
+                    ) {
+                        categoriesOpen = false
+                        val index = listed.indexOf(row)
+                        if (index >= 0) scope.launch { listState.animateScrollToItem(index + 4) }
+                    }
+                }
+            }
+        }
+    }
+
+    // The year shelf's picker (phone, v1.0.13): the years the pool on this Home actually
+    // holds, read off the tiles' own names (the matched years stay inside the row building,
+    // which shows the same titles), newest first, with the year the shelf gathers now marked;
+    // a pick is stored and the shelf retitles and refills itself.
+    if (yearSheet) {
+        val currentYear = com.tmplayer.platform.currentYear()
+        val effectiveYear = if (shelfYear > 0) shelfYear else currentYear
+        val years = remember(listed, effectiveYear, currentYear) {
+            val found = sortedSetOf<Int>(reverseOrder())
+            for (row in listed) {
+                val entries = when (row) {
+                    is HomeRow.Chat -> row.entries
+                    is HomeRow.Catalog -> row.entries
+                    is HomeRow.Recent -> row.entries
+                    else -> emptyList()
+                }
+                for (entry in entries) {
+                    val item = when (entry) {
+                        is ShelfEntry.File -> entry.item
+                        is ShelfEntry.Show -> entry.series.cover
+                    }
+                    item.parsedName.year?.let { found.add(it) }
+                }
+            }
+            found.add(effectiveYear)
+            found.add(currentYear)
+            found.toList()
+        }
+        ChoiceSheet(
+            title = s.settingsCatYear,
+            onDismiss = { yearSheet = false },
+            onClose = { yearSheet = false },
+        ) {
+            ChoiceList {
+                years.forEach { year ->
+                    ChoiceLine(
+                        title = year.toString(),
+                        selected = year == effectiveYear,
+                    ) {
+                        scope.launch { bannerSettings.setHomeShelfYear(year) }
+                        yearSheet = false
+                    }
+                }
+            }
+        }
     }
 
     if (openLink) {
@@ -1191,11 +1293,15 @@ private fun ShelfRows(
     seeAll: SeeAllEnd? = null,
     /** The Top 10 row: each tile stands beside its big rank number (owner, 2026-11-06). */
     ranked: Boolean = false,
+    /** The Top 10 row's corner badge for every tile (owner, v1.0.13); null for other rows. */
+    badge: (@Composable () -> Unit)? = null,
+    /** A tag across the foot of every tile's art (Recently added, v1.0.13); null for other rows. */
+    bottomTag: String? = null,
     onOpenSeries: (Series) -> Unit,
 ) {
     val poster = remember(entries) { SeriesShelf.posterKeys(entries).isNotEmpty() }
     TileRow(start, end, modifier, seeAll = seeAll?.copy(width = if (poster) posterWidth(touch) else wideWidth(touch), poster = poster)) {
-        entries(entries, poster, watch, touch, if (isFirstRow) entries.firstOrNull() else null, first, chatTitle, onPlay, onHold, onOpenSeries, ranked)
+        entries(entries, poster, watch, touch, if (isFirstRow) entries.firstOrNull() else null, first, chatTitle, onPlay, onHold, onOpenSeries, ranked, badge, bottomTag)
     }
 }
 
@@ -1211,6 +1317,8 @@ private fun LazyListScope.entries(
     onHold: (MediaItem, String) -> Unit,
     onOpenSeries: (Series) -> Unit,
     ranked: Boolean = false,
+    badge: (@Composable () -> Unit)? = null,
+    bottomTag: String? = null,
 ) {
     items(entries.size, key = { entries[it].key }, contentType = { if (poster) "poster-${entries[it]::class.simpleName}" else entries[it]::class }) { index ->
         val entry = entries[index]
@@ -1226,10 +1334,10 @@ private fun LazyListScope.entries(
                         color = Tone.accent.copy(alpha = 0.85f),
                     ),
                 )
-                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width))
+                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width), badge, bottomTag)
             }
         } else {
-            ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width).then(focus))
+            ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width).then(focus), badge, bottomTag)
         }
     }
 }
@@ -1330,7 +1438,7 @@ private fun RowSeeAll(
             ) { index ->
                 val entry = entries[index]
                 val focus = if (index == 0) Modifier.focusRequester(firstTile) else Modifier
-                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus))
+                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus), bottomTag = s.homeChannelRecent)
             }
             if (fed != null && (fed.loading || fed.failure != null)) {
                 item(key = "more-foot", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }, contentType = "more-foot") {
@@ -1437,7 +1545,7 @@ private fun CatalogSeeAll(
             ) { index ->
                 val entry = entries[index]
                 val focus = if (index == 0) Modifier.focusRequester(firstTile) else Modifier
-                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus))
+                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus), badge = if (row.kind == "top10") ({ Top10Badge() }) else null)
             }
         }
     }
@@ -1455,6 +1563,10 @@ private fun ShelfTile(
     onHold: (MediaItem, String) -> Unit,
     onOpenSeries: (Series) -> Unit,
     modifier: Modifier,
+    /** The Top 10 row's corner badge; null for other rows. A show's own "New Episode" tag gives way to it. */
+    badge: (@Composable () -> Unit)? = null,
+    /** A tag across the foot of the art (Recently added); null for other rows. */
+    bottomTag: String? = null,
 ) {
     when (entry) {
         is ShelfEntry.File -> MediaCard(
@@ -1465,6 +1577,8 @@ private fun ShelfTile(
             onLongClick = { onHold(entry.item, chatTitle(entry.item.chatId)) },
             dense = touch,
             poster = poster,
+            badge = badge,
+            bottomTag = bottomTag,
             // Its first bytes asked for while the card is in focus or under the finger.
             modifier = modifier,
         )
@@ -1481,9 +1595,30 @@ private fun ShelfTile(
                 onClick = { onOpenSeries(entry.series) },
                 dense = touch,
                 poster = poster,
+                badge = badge,
+                bottomTag = bottomTag,
                 modifier = modifier.warmUpOnIntent(next),
             )
         }
+    }
+}
+
+/**
+ * The Top 10 row's corner badge (owner, v1.0.13): a small red tag on the art, beside the big
+ * rank numeral the row already stands each tile next to.
+ */
+@Composable
+private fun Top10Badge() {
+    val s = LocalStrings.current
+    Box(
+        Modifier.clip(RoundedCornerShape(4.dp)).background(Tone.danger).padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        M3Text(
+            s.homeRowTop10,
+            style = M3MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+            maxLines = 1,
+        )
     }
 }
 
@@ -1574,6 +1709,13 @@ private fun RowHeading(
     end: Dp,
     /** A phone's See all; a television's is the row's last tile ([SeeAllTile]). */
     seeAll: (() -> Unit)?,
+    /**
+     * The year shelf's picker (phone only, v1.0.13): when set, the title itself is the toggle
+     * and tapping it opens the years. Null everywhere else, and always null on a television,
+     * whose heading keeps exactly its old shape and focus behaviour; the stored year still
+     * reaches the television's shelf through the rows themselves.
+     */
+    onYear: (() -> Unit)? = null,
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
@@ -1586,7 +1728,31 @@ private fun RowHeading(
             .heightIn(min = if (touch) SEE_ALL_CHIP else TV_SEE_ALL_HEIGHT),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (touch) {
+        if (touch && onYear != null) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onYear)
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                M3Text(
+                    title,
+                    style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = Tone.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.width(4.dp))
+                M3Icon(
+                    imageVector = TmIcons.ChevronDown,
+                    contentDescription = null,
+                    tint = Tone.muted,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        } else if (touch) {
             M3Text(
                 title,
                 style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),

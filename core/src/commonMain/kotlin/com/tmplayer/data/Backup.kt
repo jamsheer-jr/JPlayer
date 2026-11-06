@@ -175,6 +175,9 @@ object Backups {
         "home_hidden_catalog" to Kind.TEXT,
         "home_continue" to Kind.BOOL,
         "home_recent" to Kind.BOOL,
+        // The year the year shelf gathers (v1.0.13): a year is a whole number, and LONG is
+        // the kind whole numbers travel as here, as the size limits and timeouts do.
+        "home_shelf_year" to Kind.LONG,
         "home_starred_rows" to Kind.BOOL,
         "language" to Kind.TEXT,
         "lighter_pictures" to Kind.BOOL,

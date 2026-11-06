@@ -72,6 +72,11 @@ fun SeriesArt(
      */
     fresh: Boolean = false,
     /**
+     * A tag across the foot of the art (Home's Recently added row wears one, v1.0.13), drawn
+     * under the episode count pill and the score, which keep their corners over it.
+     */
+    bottomTag: String? = null,
+    /**
      * False inside a frame that already rounds the art's corners (a video tile's): a second clip
      * to the same shape was one more layer per tile for nothing.
      */
@@ -94,6 +99,20 @@ fun SeriesArt(
             MetaPicture(meta?.backdropUrl, Modifier.fillMaxSize())
         }
         Box(Modifier.fillMaxSize().tileFootScrim())
+        if (bottomTag != null) {
+            Box(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Tone.danger).padding(vertical = 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    bottomTag,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            }
+        }
         val fraction = if (progress.total == 0) 0f else progress.watched.toFloat() / progress.total
         val inset = if (compact) 6.dp else 8.dp
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
@@ -128,21 +147,24 @@ fun SeriesArt(
 }
 
 /**
- * "New", in the accent, on a tile with an episode posted since the viewer last watched its show:
- * the badge on a show's tile and on each tile of Home's New episodes row. A [TileBadge]'s pill in
- * the accent rather than black, since it is the app telling the viewer something.
+ * "New Episode", as a small red tag, on a tile with an episode posted since the viewer last
+ * watched its show (owner, v1.0.13: the streaming apps' shape, red with the full words, in
+ * place of the accent pill that just said "New"): the badge on a show's tile and on each tile
+ * of Home's New episodes row. It clears when the episode is played or the show's page is
+ * opened, both of which stamp the show's latest watched copy as touched now (see
+ * [com.tmplayer.data.NewEpisodes.touchTimes]).
  */
 @Composable
 fun NewBadge(compact: Boolean, modifier: Modifier = Modifier) {
     Text(
-        LocalStrings.current.homeNewBadge,
+        LocalStrings.current.homeNewEpisodeTag,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.SemiBold,
-        color = Tone.onAccent,
+        color = Color.White,
         maxLines = 1,
         modifier = modifier
             .heightIn(min = if (compact) TileBadgeHeight - 2.dp else TileBadgeHeight)
-            .background(Tone.accent, CircleShape)
+            .background(Tone.danger, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 2.dp),
     )
 }

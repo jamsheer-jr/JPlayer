@@ -88,6 +88,7 @@ private val HOME_HIDDEN_CATALOG = stringPreferencesKey("home_hidden_catalog")
 private val HOME_CATALOG_ORDER = stringPreferencesKey("home_catalog_order")
 private val HOME_BANNER_MODE = stringPreferencesKey("home_banner_mode")
 private val HOME_BANNER_PINS = stringPreferencesKey("home_banner_pins")
+private val HOME_SHELF_YEAR = longPreferencesKey("home_shelf_year")
 private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
 private val LAST_CHAT = longPreferencesKey("last_chat")
 private val MIN_SIZE = longPreferencesKey("min_size_bytes")
@@ -1248,6 +1249,45 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHomeBannerPins(keys: List<String>) {
         prefs.edit { it[HOME_BANNER_PINS] = keys.distinct().take(10).joinToString("\n") }
+    }
+
+    /**
+     * The year Home's year shelf gathers, as the viewer picked it on the shelf's heading
+     * (v1.0.13): 0, the stored default, is no pick, and the shelf takes the current year.
+     * Stored as a whole number, so it travels in a backup as one ([Backups] Kind.LONG).
+     */
+    val homeShelfYear: Flow<Int> = read { prefs ->
+        (prefs[HOME_SHELF_YEAR] ?: 0L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    suspend fun setHomeShelfYear(year: Int) {
+        prefs.edit { it[HOME_SHELF_YEAR] = year.coerceAtLeast(0).toLong() }
+    }
+
+    /**
+     * Stamps one video's resume line as touched now, its place and length kept as they were:
+     * the same stamp the player's own saves write ([saveResumePosition] writes the line with
+     * the moment it saved at), read back by [NewEpisodes.touchTimes] as when the viewer last
+     * watched. Opening a show's page writes it for the show's latest watched copy, so a "New
+     * Episode" tag clears on opening exactly as it does on playing. No line, nothing to stamp:
+     * a show nobody has started has no tag to clear.
+     */
+    suspend fun touchResume(chatId: Long, messageId: Long) {
+        prefs.edit { prefs ->
+            val record = recordOf(prefs, chatId, messageId, null) ?: return@edit
+            prefs[metaKey(chatId, messageId)] = ResumeRecord.encode(
+                fileId = record.fileId,
+                title = record.title,
+                chatTitle = record.chatTitle,
+                sizeBytes = record.sizeBytes,
+                durationSec = record.durationSec,
+                updatedAt = System.currentTimeMillis(),
+                localPath = record.localPath,
+                state = record.state,
+                fileName = record.fileName,
+                caption = record.caption,
+            )
+        }
     }
 
     suspend fun setHomeContinue(value: Boolean) {

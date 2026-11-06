@@ -477,6 +477,8 @@
     "matched_as_no_year": "Matched as {title}",
     "missing_badge": "Missing",
     "missing_count": "{count, plural, one {# episode of this season is not in this chat yet. Ask whoever runs it to post it.} other {# episodes of this season are not in this chat yet. Ask whoever runs it to post them.}}",
+    "my_list": "My List",
+    "my_list_add": "+ My List",
     "new_collection": "New collection",
     "next_episode": "Next episode {code} on {date}",
     "not_in_chat": "Not in this chat",
@@ -1030,6 +1032,7 @@
     "shown_toast": "Chats and Saved Messages are back"
   },
   "home": {
+    "categories": "Categories",
     "channel_join_failed": "Could not join that channel. Try again.",
     "channel_new_videos": "{count, plural, one {# new video} other {# new videos}}",
     "channel_recent": "Recently added",
@@ -1048,6 +1051,7 @@
     "live_title": "Live now",
     "new_badge": "New",
     "new_episode": "{code}, new",
+    "new_episode_tag": "New Episode",
     "none_added": "None of the chats you added has videos to show here yet. Pick more in Add chats.",
     "none_added_chosen": "None of your chosen chats has videos to show here yet. J Player shows videos only from the chats you choose, so choose more to see more.",
     "none_chosen": "No chosen chats to show here. Pick the chats for Recently added in Home settings.",
@@ -2547,6 +2551,7 @@
     "low_storage_detail": "Stream a video while keeping only a small part of it on the device",
     "low_storage_off": "Off: videos you play stay whole in Recently played, so going back is instant",
     "low_storage_on": "On: keeps only a small window of the video. Seeking back downloads it again, with a short pause now and then",
+    "move_down": "Move down",
     "move_up": "Move up",
     "new_videos": "New videos in starred chats",
     "new_videos_detail": "A notification when a starred chat posts videos, checked every few hours while the device is online and the battery is not low",

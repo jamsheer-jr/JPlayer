@@ -51,8 +51,10 @@ internal fun SeriesCard(
     badge: (@Composable () -> Unit)? = null,
     /** A 2:3 poster card, in a grid of films and shows; a 16:9 card in a row of videos. */
     poster: Boolean = false,
-    /** Episodes posted since the viewer last watched the show: a "New" badge on the picture. */
+    /** Episodes posted since the viewer last watched the show: a "New Episode" tag on the picture. */
     fresh: Boolean = false,
+    /** A tag across the foot of the art (Home's Recently added row), or null for none. */
+    bottomTag: String? = null,
     /** A long press or a held OK: the show's menu ([ShowMenu]), as a video's tile opens its panel (HX20). */
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -77,7 +79,7 @@ internal fun SeriesCard(
         },
     ) {
         // VideoTile already rounds the art's corners.
-        SeriesArt(series, progress, Modifier.fillMaxSize(), compact = dense, badge = badge, poster = poster, fresh = fresh, clip = false)
+        SeriesArt(series, progress, Modifier.fillMaxSize(), compact = dense, badge = badge, poster = poster, fresh = fresh, bottomTag = bottomTag, clip = false)
     }
 }
 
@@ -157,6 +159,25 @@ internal fun SeriesOpened(
         onMessage = { com.tmplayer.ui.components.showMessage(context, it) },
         onOpenChat = onOpenChat,
     )
+    // Opening the page clears the show's "New Episode" tag (owner, v1.0.13): the tag stands
+    // while episodes arrived after the viewer last watched the show, and opening the show is
+    // a watch act of the same kind as playing one, so it writes the same touch the watch path
+    // writes: the latest watched copy's resume line and watched mark are stamped now, in the
+    // stores that already hold them, and newEpisodes then finds nothing posted after the
+    // stamp. Once per page opened, and only while the tag stands.
+    val watchedStore = remember(context) { com.tmplayer.data.WatchedStore(context) }
+    val touchedOnOpen = remember(series.key) { booleanArrayOf(false) }
+    androidx.compose.runtime.LaunchedEffect(series.key, whole, watch) {
+        if (touchedOnOpen[0]) return@LaunchedEffect
+        touchedOnOpen[0] = true
+        if (watch.newEpisodes(whole) <= 0) return@LaunchedEffect
+        val latest = whole.episodes.flatMap { it.copies }
+            .filter { watch.finished(it) || watch.point(it) != null }
+            .maxByOrNull { watch.touchedAt(it) ?: Long.MIN_VALUE }
+            ?: return@LaunchedEffect
+        runCatching { settings.touchResume(latest.chatId, latest.messageId) }
+        runCatching { watchedStore.touchWatched(latest.chatId, latest.messageId) }
+    }
     SeriesPage(whole, watch, onPlay, startOver, onDismiss, onLongClick.takeIf { isTouch() }, onDownload, chatTitle, downloadedIds, showActions)
 }
 

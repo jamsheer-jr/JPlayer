@@ -16,6 +16,7 @@ fun homeRowTitle(row: HomeRow, s: Messages): String = when (row) {
     is HomeRow.Catalog -> when (row.kind) {
         "movies" -> s.homeRowMovies
         "series" -> s.homeRowShows
+        "anime" -> s.homeRowAnime
         "series-lang-ko" -> s.homeRowKdrama
         "series-lang-zh" -> s.homeRowCdrama
         "top-rated" -> s.homeRowTopRated

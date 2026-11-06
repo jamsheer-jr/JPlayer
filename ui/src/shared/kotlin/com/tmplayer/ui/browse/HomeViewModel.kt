@@ -1031,6 +1031,12 @@ fun rememberHomeRows(
     layout: HomeLayout? = HomeLayout(),
     /** The viewer's own collections, drawn as Home rows: see [HomeRows.build]. */
     collections: List<com.tmplayer.data.VideoCollection> = emptyList(),
+    /**
+     * The year the year shelf gathers, as picked on the shelf's own heading (v1.0.13): the
+     * caller reads the stored pick ([com.tmplayer.data.SettingsStore.homeShelfYear]) and
+     * passes the current year while there is none, which is the shelf as it has always been.
+     */
+    shelfYear: Int = com.tmplayer.platform.currentYear(),
 ): List<HomeRow> {
     // The chats the viewer added (HX27): with a choice made, Recently added reads them one by one
     // ([HomeLayout.chosenChats]) rather than Telegram's newest across the whole account, which a
@@ -1092,7 +1098,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, shelfYear) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1138,7 +1144,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, shelfYear)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         val built = withContext(homeBuild) {
@@ -1155,6 +1161,7 @@ fun rememberHomeRows(
                 // directly under Continue watching; a television keeps its arrangement.
                 phoneOrder = phoneOrder,
                 nowMs = System.currentTimeMillis(),
+                shelfYear = shelfYear,
             )
         }
         homeMemo.built = inputs
@@ -1303,11 +1310,13 @@ private fun homeTitleMeta(
             val found = extras
                 ?.takeIf {
                     it.genres.isNotEmpty() || it.rating != null || it.originalLanguage != null ||
-                        it.year != null || it.providers.isNotEmpty()
+                        it.year != null || it.providers.isNotEmpty() ||
+                        info?.provider == com.tmplayer.online.MetaProvider.AniList
                 }
                 ?.let {
                     com.tmplayer.data.TitleMeta(
                         it.genres, it.rating, it.originalLanguage, it.year, it.providers,
+                        anime = info?.provider == com.tmplayer.online.MetaProvider.AniList,
                     )
                 }
             byQuery[key] = found

@@ -2095,6 +2095,8 @@ internal fun MediaCard(
     title: String? = null,
     /** The line of facts in place of the file's own (Home's New episodes row: the chat, quality and size). */
     meta: (@Composable (ink: androidx.compose.ui.graphics.ColorProducer) -> Unit)? = null,
+    /** A tag across the foot of the art (Home's Recently added row, v1.0.13), or null for none. */
+    bottomTag: String? = null,
 ) {
     // This video's correction alone, from the screen's one collector ([LocalTileShared]).
     val renamed = com.tmplayer.ui.components.rememberCorrection(item.id)?.title
@@ -2119,6 +2121,7 @@ internal fun MediaCard(
             selected = selected,
             badge = badge,
             poster = poster,
+            bottomTag = bottomTag,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -2496,6 +2499,8 @@ private fun MediaArt(
      * fill most of a picture this size.
      */
     thumb: Boolean = false,
+    /** A tag across the foot of the art (Home's Recently added row, v1.0.13), or null for none. */
+    bottomTag: String? = null,
 ) {
     val s = LocalStrings.current
     val named = rememberCover(item)
@@ -2574,6 +2579,24 @@ private fun MediaArt(
             badge != null -> Box(Modifier.align(Alignment.TopEnd).padding(inset)) { badge() }
             // Only on its own: two chips across a narrow poster would meet in the middle.
             poster && !thumb && quality != null && waiting == null && !item.onDevice && !finished -> TileBadge(quality, Modifier.align(Alignment.TopEnd).padding(inset))
+        }
+
+        // A tag across the foot of the picture (Home's Recently added row, v1.0.13), in the
+        // danger red the "New Episode" tag wears. The progress line under it draws over its
+        // foot, as it draws over the picture.
+        if (bottomTag != null) {
+            Box(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Tone.danger).padding(vertical = 3.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                M3Text(
+                    bottomTag,
+                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            }
         }
 
         // Where playback stopped, as a line laid on the foot of the picture. Only with a saved

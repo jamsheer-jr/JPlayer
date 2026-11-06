@@ -117,6 +117,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.collectLatest
 import com.tmplayer.ui.i18n.LocalStrings
@@ -259,6 +260,13 @@ internal fun TouchNavHost(
     val reduced = rememberReducedMotion() || Motion.reduced
     val bar = chrome.bar
     var profileOpen by remember { mutableStateOf(false) }
+    // The popover's New Collection name prompt (v1.0.13): the same sheet the detail page
+    // names a collection with, over the same store; only the collection it makes differs,
+    // holding nothing yet, since no title stands behind this one.
+    var namingCollection by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val settings = remember(context) { com.tmplayer.data.SettingsStore(context) }
+    val s = LocalStrings.current
     SideEffect { chrome.pageKey = pageKey }
     val spec = chrome.specs[pageKey]
 
@@ -425,7 +433,44 @@ internal fun TouchNavHost(
                     onWatchLater = { profileOpen = false; nav.onHistory(HistoryTab.WatchLater) },
                     onSettings = { profileOpen = false; nav.onSettings() },
                     onUpdate = { profileOpen = false; nav.onUpdate() },
+                    onNewCollection = { profileOpen = false; namingCollection = true },
                 )
+
+                if (namingCollection) {
+                    com.tmplayer.player.BookmarkNoteSheet(
+                        title = s.detailNewCollection,
+                        initial = "",
+                        saveLabel = s.gridRenameSave,
+                        onSave = { typed ->
+                            // An empty collection: it stands in the store (and so in the
+                            // detail page's own list) at once, and Home draws no row for a
+                            // collection holding nothing. A name already taken, or the cap
+                            // reached, saves nothing, as the detail page's path refuses a
+                            // collection it cannot hold.
+                            val name = typed.trim()
+                            if (name.isNotEmpty()) {
+                                com.tmplayer.App.backgroundScope.launch {
+                                    val existing = settings.collectionsNow()
+                                    if (existing.size < com.tmplayer.data.Collections.MAX_COLLECTIONS &&
+                                        existing.none { it.name.equals(name, ignoreCase = true) }
+                                    ) {
+                                        settings.setCollections(
+                                            existing + com.tmplayer.data.VideoCollection(
+                                                name.take(com.tmplayer.data.Collections.MAX_NAME),
+                                                emptyList(),
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                            namingCollection = false
+                        },
+                        onDismiss = { namingCollection = false },
+                        onClose = { namingCollection = false },
+                        hint = s.detailCollectionName,
+                        maxLength = com.tmplayer.data.Collections.MAX_NAME,
+                    )
+                }
             }
         }
     }
@@ -906,6 +951,8 @@ private fun ProfilePopover(
     onWatchLater: () -> Unit,
     onSettings: () -> Unit,
     onUpdate: () -> Unit,
+    /** A new empty collection, named in the same prompt the detail page names one with (v1.0.13). */
+    onNewCollection: () -> Unit,
 ) {
     val s = LocalStrings.current
     AnimatedVisibility(
@@ -986,6 +1033,8 @@ private fun ProfilePopover(
                         // Amber, as on the television's rail and the desktop's side bar: the one row that is news.
                         add { m -> PopoverRow(TmIcons.Refresh, s.navUpdate, updateVersion, ink = Tone.caution, modifier = m, onClick = onUpdate) }
                     }
+                    // Last, after everything the popover already held (owner, v1.0.13).
+                    add { m -> PopoverRow(TmIcons.Add, s.detailNewCollection, null, modifier = m, onClick = onNewCollection) }
                 }
                 rows.take(POPOVER_LISTS).forEach { it(Modifier) }
                 HorizontalDivider(Modifier.padding(horizontal = 14.dp, vertical = 2.dp))
