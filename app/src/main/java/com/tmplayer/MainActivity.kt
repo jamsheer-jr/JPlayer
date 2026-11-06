@@ -2634,6 +2634,7 @@ private fun DownloadOrb(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
 private fun StartupCrashQuestion() {
     val context = LocalContext.current
     val settings = remember { SettingsStore(context) }

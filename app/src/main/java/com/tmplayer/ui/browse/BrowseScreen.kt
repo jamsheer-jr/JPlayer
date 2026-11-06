@@ -2954,6 +2954,7 @@ private fun JMoviesPin(onClick: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
 private fun ChatRow(
     chat: ChatSummary,
     favorite: Boolean,

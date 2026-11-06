@@ -827,6 +827,7 @@ internal fun StreamQualitySheet(
     }
 }
 
+@Composable
 internal fun ShapeSheet(current: VideoScale, onPick: (VideoScale) -> Unit, onDismiss: () -> Unit, onClose: () -> Unit) {
     val s = LocalStrings.current
     val touch = isTouch()
