@@ -65,19 +65,6 @@ object PageLinkResolver {
         }
     }
 
-    /**
-     * [resolveDriveOutcome] in the shape callers that only ever wanted the link have
-     * always used: the playable link, or the original link where Drive refused (the
-     * player then says the stream is unavailable, as it did before the outcomes
-     * existed). Kept for the Open link flow in HomePane, which is another change's
-     * ground this wave; new callers should read the outcome itself.
-     */
-    suspend fun resolveDrive(direct: StreamLink): StreamLink? =
-        when (val outcome = resolveDriveOutcome(direct)) {
-            is DriveOutcome.Playable -> outcome.link
-            DriveOutcome.Quota, DriveOutcome.Refused -> direct
-        }
-
     /** A fetched manifest's answer, for the player's honesty check ([StreamManifest]). */
     class ManifestAnswer(val contentType: String, val body: String)
 

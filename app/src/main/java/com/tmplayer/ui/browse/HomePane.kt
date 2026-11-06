@@ -329,6 +329,9 @@ internal fun HomePane(
     var openLink by remember { mutableStateOf(false) }
     var linkText by remember { mutableStateOf("") }
     var linkInvalid by remember { mutableStateOf(false) }
+    // A Drive file held back for its download quota (v1.0.13): the Open link box stays up
+    // and says so, where the invalid note would stand.
+    var linkQuota by remember { mutableStateOf(false) }
     // The links opened before, offered back in the box (owner, 2026-11-06).
     val linkContext = LocalContext.current
     val linkSettings = remember { SettingsStore(linkContext) }
@@ -1050,7 +1053,11 @@ internal fun HomePane(
         com.tmplayer.ui.components.TvConfirm(
             title = s.homeOpenLink,
             message = s.homeOpenLinkMessage,
-            detail = if (linkInvalid) s.homeOpenLinkInvalid else null,
+            detail = when {
+                linkQuota -> s.playerStreamDriveQuota
+                linkInvalid -> s.homeOpenLinkInvalid
+                else -> null
+            },
             confirmLabel = s.commonPlay,
             destructive = false,
             icon = TmIcons.OpenExternal,
@@ -1059,18 +1066,32 @@ internal fun HomePane(
                 val link = com.tmplayer.data.StreamLinks.pasted(linkText)
                 val raw = Regex("""https?://\S+""").find(linkText)?.value
                 if (link != null) {
-                    openLink = false
                     linkInvalid = false
+                    linkQuota = false
                     // Kept for the box's history, as pasted, Drive pages included.
                     if (raw != null) App.backgroundScope.launch { runCatching { linkSettings.addLinkHistory(raw) } }
                     if (link.source == "drive.google.com") {
                         // A large Drive file answers with a confirmation page first; the
-                        // playable address is read off it before the player opens.
+                        // playable address is read off it before the player opens. The box
+                        // stays up until the answer is known: a file Drive is holding back
+                        // for its download quota says so here (v1.0.13) instead of opening
+                        // a player that can only fail. A refusal opens the address as it
+                        // always did, and the player says what it finds.
                         scope.launch {
-                            val resolved = com.tmplayer.data.PageLinkResolver.resolveDrive(link)
-                            onPlayStream(resolved ?: link)
+                            when (val outcome = com.tmplayer.data.PageLinkResolver.resolveDriveOutcome(link)) {
+                                is com.tmplayer.data.DriveOutcome.Playable -> {
+                                    openLink = false
+                                    onPlayStream(outcome.link)
+                                }
+                                com.tmplayer.data.DriveOutcome.Quota -> linkQuota = true
+                                com.tmplayer.data.DriveOutcome.Refused -> {
+                                    openLink = false
+                                    onPlayStream(link)
+                                }
+                            }
                         }
                     } else {
+                        openLink = false
                         onPlayStream(link)
                     }
                 } else if (raw != null && com.tmplayer.data.StreamLinks.isPageLink(raw)) {
@@ -1092,12 +1113,12 @@ internal fun HomePane(
                     linkInvalid = true
                 }
             },
-            onDismiss = { openLink = false; linkInvalid = false },
+            onDismiss = { openLink = false; linkInvalid = false; linkQuota = false },
             extra = {
                 Column {
                     com.tmplayer.ui.auth.PaneField(
                         value = linkText,
-                        onValueChange = { linkText = it; linkInvalid = false },
+                        onValueChange = { linkText = it; linkInvalid = false; linkQuota = false },
                         placeholder = s.homeOpenLinkHint,
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -1137,7 +1158,7 @@ internal fun HomePane(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { linkText = past; linkInvalid = false }
+                                    .clickable { linkText = past; linkInvalid = false; linkQuota = false }
                                     .padding(vertical = 4.dp),
                             )
                         }
