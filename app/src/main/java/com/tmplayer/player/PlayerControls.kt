@@ -16,6 +16,7 @@ import com.tmplayer.R
 import com.tmplayer.data.MediaItem
 import com.tmplayer.i18n.L
 import com.tmplayer.i18n.Translator
+import kotlin.math.roundToInt
 
 /**
  * The transport overlay in player_controls.xml, given its behaviour.
@@ -106,6 +107,8 @@ class PlayerControls(
     private val topBar: View = root.findViewById(R.id.controls_topbar)
     private val topTitle: TextView = root.findViewById(R.id.topbar_title)
     private val topSubtitle: TextView = root.findViewById(R.id.topbar_subtitle)
+    private val topGenres: TextView = root.findViewById(R.id.topbar_genres)
+    private val clusterGenres: TextView = root.findViewById(R.id.controls_genres)
     private val center: View = root.findViewById(R.id.controls_center)
     private val centerPrevious: ImageButton = root.findViewById(R.id.center_previous)
     private val centerNext: ImageButton = root.findViewById(R.id.center_next)
@@ -216,6 +219,9 @@ class PlayerControls(
 
     private val accent = ContextCompat.getColor(root.context, R.color.accent)
 
+    /** The scrub bar's played run and thumb (owner, v1.0.13): Netflix red, in the layout and here. */
+    private val seekRed = ContextCompat.getColor(root.context, R.color.seek_played)
+
     /**
      * Whether the row is up, as the viewer and the activity's touch handling understand it.
      * Not the view's visibility: the row stays VISIBLE through its fade out, and a tap in that
@@ -314,10 +320,10 @@ class PlayerControls(
         timesPosition.maxLines = 1
         timesPosition.ellipsize = android.text.TextUtils.TruncateAt.END
         // The pill behind the bar comes from its state-list background; the scrubber joins it by
-        // turning white, because from a sofa the accent-blue dot alone does not read as "focused"
-        // against the accent-blue played run it sits on.
+        // turning white, because from a sofa the red dot alone does not read as "focused"
+        // against the red played run it sits on.
         timeBar.onFocusChangeListener = View.OnFocusChangeListener { _, focused ->
-            timeBar.setScrubberColor(if (focused) Color.WHITE else accent)
+            timeBar.setScrubberColor(if (focused) Color.WHITE else seekRed)
             poke()
         }
         timeBar.addListener(object : TimeBar.OnScrubListener {
@@ -352,9 +358,9 @@ class PlayerControls(
     var thumbnails: ScrubThumbnails? = null
 
     /**
-     * The viewer turned scrub pictures off in Settings. A phone then shows no card (its clock
-     * under the bar already says the time); a television, whose clock sits apart from the bar,
-     * keeps the card's still face with the time on it.
+     * The viewer turned scrub pictures off in Settings. The card still comes up while scrubbing
+     * on both devices (owner, v1.0.13: the bubble is the scrub's own readout), but with no
+     * picture source: its still face, the time alone on a plain cover.
      */
     var previewsOff = !com.tmplayer.data.Trickplay.PICTURES_SHOWN
 
@@ -387,7 +393,6 @@ class PlayerControls(
      * once, the picture when a source has one (see [ScrubPreviewCard]).
      */
     fun preview(position: Long) {
-        if (previewsOff && !isTv) return
         previewAt = position
         val duration = player()?.duration?.takeIf { it > 0 } ?: 0L
         val label = Translator.messages.formatter.clock(position)
@@ -600,7 +605,7 @@ class PlayerControls(
      */
     private fun setUpPhone(root: View) {
         listOf(tint, topBar, center, times).forEach { it.visibility = View.VISIBLE }
-        listOf(timeText, title, subtitle).forEach { it.visibility = View.GONE }
+        listOf(timeText, title, subtitle, clusterGenres).forEach { it.visibility = View.GONE }
 
         wire(centerPlay) { onTogglePlay(); renderPlayPause(animate = true) }
         transport.visibility = View.VISIBLE
@@ -610,14 +615,13 @@ class PlayerControls(
         // speed and rotate stay reachable in More, and subtitles and audio live on the top bar,
         // so the whole pill scroll view goes. The lock and picture shape move into the transport
         // row itself: the lock at the far left, picture shape at the right just before picture
-        // in picture, both always shown, upright or sideways. The Episodes pill keeps the row
-        // over this one. A television never runs this: its row, its pill and its shape button
-        // stay where they have always been.
+        // in picture, both always shown, upright or sideways. A television never runs this:
+        // its row, its pill and its shape button stay where they have always been.
         (buttons.parent as? View)?.visibility = View.GONE
         // The pills belong at the right end of their rows on a phone (device feedback,
         // 2026-11-06): the scroll view above was the row's weighted child and held the pills
         // at the right, so with it gone they drifted to the left. A weighted spacer at the
-        // row's start takes its place and pushes the Episodes pill back to the right end.
+        // row's start takes its place and pushes the row's remaining words to the right end.
         // A television never runs this: its scroll view keeps its own weight.
         (copyButton.parent as? android.widget.LinearLayout)?.let { copyRow ->
             val spacer = android.widget.Space(root.context)
@@ -636,9 +640,24 @@ class PlayerControls(
         // beside picture shape, so the quality of the copy playing is chosen where the
         // transport is worked rather than from a row of its own. It keeps its own height
         // and its gone-until-there-are-copies showing (see setCopy, which works off the
-        // field wherever the pill sits); the Episodes pill stays in the row over this one.
+        // field wherever the pill sits).
         (copyButton.parent as? android.view.ViewGroup)?.removeView(copyButton)
         row.addView(copyButton, row.indexOfChild(shapeButton))
+        // The Episodes pill comes down beside it (owner, v1.0.13), slimmed to sit in this
+        // row: shorter, tighter padding, smaller words and a narrower gap to its glyph.
+        // It keeps its gone-until-the-chat-says-series showing (see setEpisodesAvailable,
+        // which works off the field wherever the pill sits). A television never runs
+        // this: its pill keeps the row over the bar, its size and its place in the walk.
+        (episodesButton.parent as? android.view.ViewGroup)?.removeView(episodesButton)
+        row.addView(episodesButton, row.indexOfChild(copyButton) + 1)
+        val density = root.resources.displayMetrics.density
+        episodesButton.setPadding((8 * density).roundToInt(), 0, (10 * density).roundToInt(), 0)
+        episodesButton.textSize = 13f
+        episodesButton.compoundDrawablePadding = (4 * density).roundToInt()
+        episodesButton.layoutParams = android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            (36 * density).roundToInt(),
+        ).apply { marginStart = (6 * density).roundToInt() }
         wire(root.findViewById(R.id.control_back)) { onBack() }
         val more = root.findViewById<View>(R.id.control_more)
         wire(more) { onMore(more) }
@@ -831,12 +850,13 @@ class PlayerControls(
     /** The line under the title as [setTitle] last wrote it. */
     private var detail = ""
 
-    fun setTitle(name: String, detail: String) {
+    fun setTitle(name: String, detail: String, genres: String? = null) {
         val tv = isTv
         this.detail = detail
         topTitle.text = name
         topSubtitle.text = detail
         topSubtitle.visibility = if (detail.isBlank()) View.GONE else View.VISIBLE
+        setGenres(genres)
         if (!tv) return
         title.text = name
         title.visibility = if (name.isBlank()) View.GONE else View.VISIBLE
@@ -846,6 +866,19 @@ class PlayerControls(
     private fun showDetail(text: String) {
         subtitle.text = text
         subtitle.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * The genres line under the channel line (owner, v1.0.13): the phone's top bar carries it
+     * under its channel line, the television's cluster under its own. No genres known, no
+     * line: blank takes the view away rather than leaving a gap or a placeholder.
+     */
+    fun setGenres(line: String?) {
+        val text = line.orEmpty()
+        topGenres.text = text
+        topGenres.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
+        clusterGenres.text = text
+        clusterGenres.visibility = if (!isTv || text.isBlank()) View.GONE else View.VISIBLE
     }
 
     /**

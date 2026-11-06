@@ -18,8 +18,8 @@
   The scrub bar is Media3's DefaultTimeBar because scrubbing is the one control not worth
   rewriting: it already draws the buffered run ahead of the played one, takes a drag on a phone,
   and steps under D-pad left and right when focused, folding a burst of presses into a single
-  committed seek. Only its colours are this app's: the played run and the thumb in the accent,
-  the rest in translucent white. FineTimeBar adds the phone's fine scrubbing to it: a finger taken
+  committed seek. Only its colours are this app's: the played run and the thumb in Netflix red
+  (seek_played), the rest in translucent white. FineTimeBar adds the phone's fine scrubbing to it: a finger taken
   away from the bar travels at half and then a quarter of the speed (FineScrub).
 
   One thing floats outside the bottom cluster on a television: the wall clock in the top left
@@ -129,6 +129,19 @@
                 android:maxLines="1"
                 android:textColor="#B8FFFFFF"
                 android:textSize="14sp"
+                android:visibility="gone" />
+
+            <!-- The playing title's genres (owner, v1.0.13), under the channel line, from the
+                 metadata the detail page shows. Gone while none are known: no line at all
+                 rather than a placeholder. PlayerControls writes it (setGenres). -->
+            <TextView
+                android:id="@+id/topbar_genres"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#8CFFFFFF"
+                android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -373,6 +386,20 @@
             android:textSize="14sp"
             android:visibility="gone" />
 
+        <!-- The television's genres line (owner, v1.0.13), under the channel line in the
+             cluster over the bar; the phone's is in its top bar (topbar_genres). Gone while
+             no genres are known. PlayerControls writes it (setGenres). -->
+        <TextView
+            android:id="@+id/controls_genres"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#8CFFFFFF"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
         <!-- Phone only: elapsed on the left, total on the right; a tap on the total flips it to
              the time remaining. -->
         <LinearLayout
@@ -417,8 +444,8 @@
             app:ad_marker_color="#FFFFC107"
             app:bar_height="4dp"
             app:buffered_color="#592AABEE"
-            app:played_color="@color/accent"
-            app:scrubber_color="@color/accent"
+            app:played_color="@color/seek_played"
+            app:scrubber_color="@color/seek_played"
             app:scrubber_dragged_size="18dp"
             app:scrubber_enabled_size="12dp"
             app:touch_target_height="@dimen/player_timebar_touch"
@@ -640,11 +667,11 @@
         <!-- Phone only (PlayerControls shows and finishes it there): the ONE slim bottom row,
              MX Player shape. The lock is moved here from the pill row by PlayerControls at the
              far left, the episode steps and play or pause sit in the centre as plain icons (no
-             disc, no pill), and the copies pill (also moved here, from the row over this one),
-             picture shape (also moved, before this row's own last button) and picture in
-             picture close the right end. The steps stay invisible without a neighbouring
-             episode, so the play button keeps the middle either way. The row over this one
-             keeps only the Episodes pill. -->
+             disc, no pill), and the copies pill and the Episodes pill (both also moved here,
+             from the row over this one, the Episodes pill slimmed as it moves), picture shape
+             (also moved, before this row's own last button) and picture in picture close the
+             right end. The steps stay invisible without a neighbouring episode, so the play
+             button keeps the middle either way. -->
         <LinearLayout
             android:id="@+id/controls_transport"
             android:layout_width="match_parent"

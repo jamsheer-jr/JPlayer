@@ -160,6 +160,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import com.tmplayer.online.MovieHash
 import com.tmplayer.online.EpisodeNames
+import com.tmplayer.online.MetaResult
 import com.tmplayer.online.OnlineMetadata
 import com.tmplayer.online.SkipSegment
 import com.tmplayer.online.SkipSegments
@@ -1926,6 +1927,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         }
         findEpisodes()
         findCopies()
+        askControlsGenres()
         findSkipTimes()
         // Telegram's lighter copies and storyboard (CP80), for the quality list and the scrub bar.
         if (hasMessage()) itemScope.launch { afterOpening(); Td.awaitAuthorizedSession(); readPost() }
@@ -2568,7 +2570,43 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // The chat, as YouTube names the channel: the length and size belong in Playback details.
             chatTitle.ifBlank { mediaSubtitle }.takeIf { it.isNotBlank() },
         ).joinToString("  ·  ")
-        controls?.setTitle(name, detail)
+        controls?.setTitle(name, detail, peekGenresLine(here))
+    }
+
+    /**
+     * The playing title's genres for the controls' third line, from what online metadata already
+     * holds in memory: the match [OnlineMetadata.peek] kept for this item's parsed title, and its
+     * extras as [OnlineMetadata.peekExtras] kept them. Memory only, so this is safe on the UI
+     * path; the disk half is [askControlsGenres]. Joined as the detail page's facts line joins
+     * them (the first three, commas between). Null, and no third line, when nothing is known.
+     */
+    private fun peekGenresLine(here: MediaItem): String? {
+        val online = OnlineMetadata.current ?: return null
+        val query = here.metaQuery ?: return null
+        val info = (online.peek(query) as? MetaResult.Found)?.info ?: return null
+        return online.peekExtras(info)?.genres?.take(3)?.joinToString(", ")?.ifBlank { null }
+    }
+
+    /**
+     * The same line read from the disk cache as well ([OnlineMetadata.cachedAnswer] and
+     * [OnlineMetadata.storedExtras], the loader's own sources), off the UI thread, for a title
+     * matched before but not held in memory. Never a network fetch: a title nobody has matched
+     * simply gets no line.
+     */
+    private fun askControlsGenres() {
+        val here = currentItem()
+        itemScope.launch {
+            val line = withContext(Dispatchers.IO) {
+                runCatching {
+                    val online = OnlineMetadata.current ?: return@runCatching null
+                    val query = here.metaQuery ?: return@runCatching null
+                    val info = (online.cachedAnswer(query) as? MetaResult.Found)?.info ?: return@runCatching null
+                    online.storedExtras(info)?.genres?.take(3)?.joinToString(", ")?.ifBlank { null }
+                }.getOrNull()
+            }
+            // The video may have changed while the cache was read.
+            if (line != null && currentItem().id == here.id) controls?.setGenres(line)
+        }
     }
 
     /**
@@ -2784,19 +2822,109 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * allowing for a copy a little longer or shorter), and remembers it as the copy for this video
      * and the quality for the next episode. The place is per copy: this one keeps its own line,
      * and the new copy's is read as the newest from then on.
+     *
+     * The swap itself is in place ([swapCopyInPlace]): the running player takes the new copy's
+     * stream underneath, on this screen, with no title card and no loading sheet. Only the cases
+     * that cannot swap (no player yet, a cast up, a download, a joined video, a stream, or a copy
+     * that stands for one of Telegram's own qualities) still open the copy the old way, through
+     * [playEpisode], where the jump and the handoff below belong.
      */
     private fun switchCopy(copy: MediaItem, remember: Boolean = true) {
         if (copy.id == currentItem().id) return
         val at = player?.currentPosition ?: 0L
         val from = player?.duration?.takeIf { it > 0 } ?: durationSec * 1000L
-        VideoCopies.carryOver(at, from, copy.durationSec * 1000L)?.takeIf { it > 0 }?.let {
-            BookmarkJump.request(copy.chatId, copy.messageId, it)
-        }
+        val carry = VideoCopies.carryOver(at, from, copy.durationSec * 1000L)
         // A copy the player took by itself for smoothness is not the viewer's pick.
         if (remember) App.backgroundScope.launch { runCatching { settings.setCopyPick(copy) } }
-        // The new player finds the same list, chats and all.
+        // The copies go along either way: a player opened later finds the same list, chats and all.
         CopyHandoff.offer(copies, copies.associate { it.chatId to copyChatTitle(it) }.filterValues { it.isNotBlank() })
+        if (swapCopyInPlace(copy, carry)) return
+        carry?.takeIf { it > 0 }?.let { BookmarkJump.request(copy.chatId, copy.messageId, it) }
         playEpisode(copy, copyChatTitle(copy).ifBlank { chatTitle })
+    }
+
+    /**
+     * [switchCopy] done on the running player: the same construction [startPlayback] puts under
+     * a fresh play (the TDLib stream for the file, its type named, the subtitle files loaded so
+     * far riding on the item), set on this player and prepared at the carried place. The player
+     * itself is untouched, so the viewer's speed, the subtitle style and the sync offsets stand;
+     * the new copy's own tracks arrive through the player's listener, which re-applies the track
+     * plan, the settings subtitles and the software decode check exactly as a fresh play's do.
+     *
+     * False, and nothing changed, where the swap cannot run: no player, a cast decoding at the
+     * other end, a downloaded or joined video or a stream (none of which a copy stands for), or
+     * a copy carrying a Telegram quality wish, which only a fresh open reads ([QualityWish]).
+     * A copy the new tracks judge too heavy for this device still hands over afterwards through
+     * [swapForSoftware], as a fresh play of it would: that path keeps its restart.
+     */
+    private fun swapCopyInPlace(copy: MediaItem, carryMs: Long?): Boolean {
+        val exo = player ?: return false
+        if (castUp() || streamUrl != null || downloadedVideo != null || joinedSource != null) return false
+        if (copy.fileId <= 0 || copy.playingQuality != 0 || copy.isJoined) return false
+        val targetChatTitle = copyChatTitle(copy).ifBlank { chatTitle }
+        // The copy being left keeps its place, as leaving it for a new player wrote it.
+        saveResumePosition(leaving = true)
+        chatId = copy.chatId
+        messageId = copy.messageId
+        fileId = copy.fileId
+        mediaTitle = copy.title
+        // The line under the name, as the intent that opens a copy builds it.
+        mediaSubtitle = listOf(
+            Translator.messages.formatter.duration(copy.durationSec.toLong()),
+            Translator.messages.formatter.size(copy.sizeBytes),
+        ).filter { it.isNotEmpty() }.joinToString("  ·  ")
+        mediaFileName = copy.fileName
+        mediaCaption = copy.caption
+        mediaMime = copy.mimeType
+        mediaTopicId = copy.topicId
+        chatTitle = targetChatTitle
+        fileSizeBytes = copy.sizeBytes
+        durationSec = copy.durationSec
+        postItem = null
+        playingQuality = 0
+        uploadFileId = 0
+        uploadSizeBytes = 0
+        carriedQualities = copy.qualities
+        softwareChecked = false
+        softwareSwapTried = false
+        softwareNote = null
+        softwareNoteUp = false
+        watch.restart()
+        watchPicture = null
+        watchFormat = null
+        derivedFps = 0f
+        fpsEstimator = null
+        storyboardFrames?.let { board ->
+            board.release()
+            storyboardFrames = null
+        }
+        trickplay?.forget()
+        trickplayPath = null
+        trickplaySpans = emptyList()
+        downloadComplete = false
+        downloadedFraction = 0f
+        // The swap is not an opening: no "Resuming from" offer and no seek undo come of it.
+        resumeMs = carryMs?.takeIf { it > 0 } ?: 0L
+        if (startOverOfferUp) {
+            startOverOfferUp = false
+            feedback?.dismissOffer()
+        }
+        startOverOffered = true
+        seekUndo.clear()
+        undoChip?.hide()
+        holdFile(fileId)
+        subtitleFiles.metadata = sessionMetadata()
+        renderControlsTitle()
+        setCopies(copies)
+        askControlsGenres()
+        // The new message read again, for its Telegram qualities and its storyboard.
+        if (hasMessage()) itemScope.launch { readPost() }
+        val source = tdFileUri(fileId, streamType(mediaMime, mediaFileName))
+        val wasReady = exo.playWhenReady
+        exo.setMediaItem(subtitleFiles.item(source), resumeMs)
+        exo.prepare()
+        exo.playWhenReady = wasReady
+        return true
     }
 
     // ---- Telegram's own qualities (CP80) -------------------------------------------------------
@@ -6287,11 +6415,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     private fun startTrickplay() {
         lifecycleScope.launch {
-            val on = Trickplay.PICTURES_SHOWN && runCatching { settings.trickplayNow() }.getOrDefault(true)
+            // The viewer's setting alone decides (v1.0.13): the scrub card is back on phones,
+            // showing its time always and a picture where one can be had (see [showScrubPictures]).
+            val on = runCatching { settings.trickplayNow() }.getOrDefault(true)
             controls?.previewsOff = !on
             if (!on) stopTrickplaySpans()
         }
-        if (!Trickplay.PICTURES_SHOWN || FormFactor.isTv(this) || !DeviceQuirks.trickplayMemory(this)) {
+        if (FormFactor.isTv(this) || !DeviceQuirks.trickplayMemory(this)) {
             stopTrickplaySpans()
             return
         }
@@ -6324,7 +6454,6 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * [TrickplayFrames], else asked before them. Its two small files are fetched at once.
      */
     private fun startStoryboard(fresh: MediaItem) {
-        if (!Trickplay.PICTURES_SHOWN) return
         val board = fresh.storyboard ?: return
         if (storyboardFrames != null) return
         lifecycleScope.launch {
@@ -9491,8 +9620,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
          */
         private const val BUFFER_PLAYBACK_MS = 1_000
 
-        /** After a stall, more than the start asks, so a struggling line does not stall again at once. */
-        private const val BUFFER_REBUFFER_MS = 4_000
+        /**
+         * After a stall, more than the start asks, so a struggling line does not stall again at
+         * once: twice the start's figure (2 s against its 1 s), lowered from 4 s so a resume
+         * after a stall comes sooner (owner, v1.0.13). The minimum and maximum buffers are as
+         * they were.
+         */
+        private const val BUFFER_REBUFFER_MS = 2_000
         /** The buffer on a low-RAM device: a 1 GB stick. */
         private const val LOW_RAM_BUFFER_BYTES = 20 * 1024 * 1024
 

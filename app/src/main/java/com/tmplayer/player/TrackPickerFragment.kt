@@ -179,7 +179,11 @@ class TrackPickerFragment : Fragment() {
                 // Bumped by every in-place line, so the timing and look figures under them redraw.
                 var tick by remember { mutableIntStateOf(0) }
                 val title = if (trackType == C.TRACK_TYPE_AUDIO) L.tracksAudioLanguage else L.tracksSubtitles
-                ChoiceSheet(title = title, onDismiss = ::close, onClose = ::close, closeFocus = closeFocus, ignoreRelease = !touch, fullScreen = true) {
+                // A floating panel, not the full screen (owner, v1.0.13): the sheet floats in
+                // the middle over the dimmed video on a phone as it does on a television, and
+                // the lines scroll inside it. The compact rows below are what keep a long
+                // track list within reach there.
+                ChoiceSheet(title = title, onDismiss = ::close, onClose = ::close, closeFocus = closeFocus, ignoreRelease = !touch, fullScreen = false) {
                     @Suppress("UNUSED_EXPRESSION") tick
                     val lines = trackLines(
                         onOnline = { page = Page.Online },
@@ -413,7 +417,7 @@ class TrackPickerFragment : Fragment() {
             onDismiss = onBack,
             onClose = ::close,
             closeFocus = closeFocus,
-            fullScreen = true,
+            fullScreen = false,
         ) {
             val shown = result
             if (shown == null) {
@@ -516,7 +520,7 @@ class TrackPickerFragment : Fragment() {
             onDismiss = onBack,
             onClose = ::close,
             closeFocus = closeFocus,
-            fullScreen = true,
+            fullScreen = false,
         ) {
             val lines = buildList {
                 add(Line("off", L.commonOff, selected = current.isBlank()) {
@@ -621,6 +625,10 @@ class TrackPickerFragment : Fragment() {
     /**
      * The timing and, for subtitles, the look, as a touch screen draws them. Each change acts at
      * once on the video behind and redraws the figures here through [onInPlace].
+     *
+     * Drawn compact (owner, v1.0.13, "simple and small"): a 40 dp stepper with a smaller figure,
+     * tighter gaps between the segment rows, 36 dp swatches and a 48 dp weight row, so the panel
+     * that floats now (see [PickerPanel]) holds the tracks and these controls together.
      */
     @Composable
     private fun TouchAdjust(timing: Boolean, look: Boolean, version: Int, onInPlace: () -> Unit) {
@@ -642,25 +650,25 @@ class TrackPickerFragment : Fragment() {
             // Earlier and Later either side of where the timing stands now, so a press shows its
             // answer between the two buttons; Reset sits under the figure once there is one.
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(top = 4.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(top = 2.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(onClick = { nudge(-1) }, modifier = Modifier.weight(1f).height(48.dp)) {
+                OutlinedButton(onClick = { nudge(-1) }, modifier = Modifier.weight(1f).height(40.dp)) {
                     M3Icon(TmIcons.ChevronLeft, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     M3Text(L.tracksEarlier, maxLines = 1)
                 }
-                Column(Modifier.width(112.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    M3Text(SyncDelays.label(ms), style = M3Theme.typography.titleLarge, color = Tone.text, maxLines = 1)
+                Column(Modifier.width(96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    M3Text(SyncDelays.label(ms), style = M3Theme.typography.titleMedium, color = Tone.text, maxLines = 1)
                     if (ms != 0L) {
-                        TextButton(onClick = { nudge(0) }, modifier = Modifier.height(32.dp), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        TextButton(onClick = { nudge(0) }, modifier = Modifier.height(28.dp), contentPadding = PaddingValues(horizontal = 8.dp)) {
                             M3Text(L.tracksResetTiming, maxLines = 1)
                         }
                     } else {
                         M3Text(L.tracksDelayNone, style = M3Theme.typography.bodySmall, color = Tone.muted, maxLines = 2, textAlign = TextAlign.Center)
                     }
                 }
-                OutlinedButton(onClick = { nudge(1) }, modifier = Modifier.weight(1f).height(48.dp)) {
+                OutlinedButton(onClick = { nudge(1) }, modifier = Modifier.weight(1f).height(40.dp)) {
                     M3Text(L.tracksLater, maxLines = 1)
                     Spacer(Modifier.width(4.dp))
                     M3Icon(TmIcons.ChevronRight, contentDescription = null)
@@ -690,7 +698,7 @@ class TrackPickerFragment : Fragment() {
                 onValueChange = { change(host.subtitleStyleNow().copy(lift = it)) },
                 valueRange = 0f..SubtitleStyle.MAX_LIFT,
                 colors = SliderDefaults.colors(thumbColor = Tone.accent, activeTrackColor = Tone.accent),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 8.dp),
             )
             val boldTick = com.tmplayer.ui.components.rememberToggleTick()
             SegmentsLabel(L.subtitlesColour)
@@ -713,7 +721,7 @@ class TrackPickerFragment : Fragment() {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 56.dp)
+                    .heightIn(min = 48.dp)
                     .toggleable(value = style.bold, role = Role.Switch) { on -> boldTick(on); change(host.subtitleStyleNow().copy(bold = on)) }
                     .padding(horizontal = ADJUST_PAD),
                 verticalAlignment = Alignment.CenterVertically,
@@ -738,14 +746,14 @@ class TrackPickerFragment : Fragment() {
     @Composable
     private fun ColourSwatches(selected: SubtitleColour, onPick: (SubtitleColour) -> Unit) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SubtitleColour.entries.forEach { colour ->
                 val chosen = colour == selected
                 Box(
                     Modifier
-                        .size(44.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .then(
                             if (chosen) {
@@ -761,7 +769,7 @@ class TrackPickerFragment : Fragment() {
                         .semantics { contentDescription = colour.label },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (chosen) M3Icon(TmIcons.Check, contentDescription = null, tint = androidx.compose.ui.graphics.Color.Black, modifier = Modifier.size(20.dp))
+                    if (chosen) M3Icon(TmIcons.Check, contentDescription = null, tint = androidx.compose.ui.graphics.Color.Black, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -774,7 +782,7 @@ class TrackPickerFragment : Fragment() {
             title,
             style = M3Theme.typography.bodyMedium,
             color = Tone.muted,
-            modifier = Modifier.padding(horizontal = ADJUST_PAD).padding(top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.padding(horizontal = ADJUST_PAD).padding(top = 6.dp, bottom = 4.dp),
         )
     }
 
@@ -782,7 +790,7 @@ class TrackPickerFragment : Fragment() {
     @Composable
     private fun Segments(labels: List<String>, selected: Int, onPick: (Int) -> Unit) {
         val segmentTick = com.tmplayer.ui.components.rememberStepTick()
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 12.dp)) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 8.dp)) {
             labels.forEachIndexed { index, label ->
                 SegmentedButton(
                     selected = index == selected,
@@ -798,7 +806,7 @@ class TrackPickerFragment : Fragment() {
     @Composable
     private fun PanelDivider() {
         HorizontalDivider(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD, vertical = 6.dp),
             color = Tone.outline,
         )
     }
@@ -941,7 +949,7 @@ class TrackPickerFragment : Fragment() {
         private const val ARG_TRACK_TYPE = "track_type"
 
         /** The room that opens a group without a heading: about what a heading's top takes. */
-        private val GROUP_GAP = 8.dp
+        private val GROUP_GAP = 6.dp
 
         /** A loaded subtitle file's mark in its format id: "external-1", "external-2", and so on. */
         private val EXTERNAL_ID = Regex("""external-\d+""")

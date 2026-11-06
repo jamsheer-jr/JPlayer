@@ -9,6 +9,8 @@
     -->
     <color name="window_background">#F6FAFD</color>
     <color name="accent">#2AABEE</color>
+    <!-- The player's scrub bar only (owner, v1.0.13): the played run and the thumb, Netflix red. -->
+    <color name="seek_played">#E50914</color>
     <color name="text_primary">#EDEDF2</color>
 
     <!--
