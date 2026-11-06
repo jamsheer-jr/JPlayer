@@ -102,8 +102,11 @@ import com.tmplayer.data.EpisodeSteps
 import com.tmplayer.data.EpisodeTag
 import com.tmplayer.data.SeriesShelf
 import com.tmplayer.data.MessageLink
+import com.tmplayer.data.ManifestKind
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.MediaMapper
+import com.tmplayer.data.PageLinkResolver
+import com.tmplayer.data.StreamManifest
 import com.tmplayer.data.LocalFileAvailability
 import com.tmplayer.data.MeteredDecision
 import com.tmplayer.data.MeteredPolicy
@@ -1094,7 +1097,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         appendLine("J Player ${com.tmplayer.BuildConfig.VERSION_NAME} (${com.tmplayer.BuildConfig.VERSION_CODE})")
         appendLine("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})${if (FormFactor.isTv(this@PlayerActivity)) ", TV" else ""}")
         appendLine("${statusTitle.text}: ${statusText.text}")
-        appendLine("File: ${mediaFileName.ifBlank { "?" }}, ${mediaMime.ifBlank { "?" }}, ${fileSizeBytes} bytes, ${durationSec} s, ${if (downloadedVideo != null) "downloaded" else "streamed"}")
+        appendLine("File: ${mediaFileName.ifBlank { "?" }}, ${mediaMime.ifBlank { "?" }}, ${fileSizeBytes} bytes, ${durationSec} s, ${if (downloadedVideo != null) "downloaded" else "streamed"}${streamHost()?.let { ", $it" }.orEmpty()}")
         player?.videoFormat?.let { appendLine("Video: ${it.sampleMimeType} ${it.codecs.orEmpty()} ${it.width}x${it.height}") }
         player?.audioFormat?.let { appendLine("Audio: ${it.sampleMimeType} ${it.codecs.orEmpty()} ${it.channelCount} ch ${it.sampleRate} Hz") }
         lastPlaybackError?.let { e ->
@@ -1107,6 +1110,18 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 depth++
             }
         }
+    }
+
+    /**
+     * The host of this stream's address, for the report's file line (owner, 2026-11-07):
+     * the host only, never the address itself, since a stream address can carry a hash
+     * token that must not travel in a shared report. Null for anything that is not a
+     * stream link (a Telegram video, streamed or downloaded, keeps its line as it was).
+     */
+    private fun streamHost(): String? {
+        if (downloadedVideo != null) return null
+        val url = streamUrl?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { android.net.Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
     /** When the latest seek began, for its "seek to ready" log; 0 when none is pending. */
@@ -1880,6 +1895,14 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         itemScope.launch {
             val session = Td.awaitAuthorizedSession()
             if (!session.isCurrent()) return@launch
+            // The honesty check on the manifest itself (owner, 2026-11-07): a DRM
+            // manifest, or a web page wearing a stream's name, fails the open here with
+            // the sentence that names it, on the same error sheet every other failure
+            // uses, instead of the player's generic format answer a moment later.
+            streamBlockMessage()?.let { message ->
+                showError(message, retryable = false)
+                return@launch
+            }
             // A file link keeps its place by its address (owner, 2026-11-06), the way a
             // Telegram video keeps its own: read before the player is built, so the build
             // seeks there and the Start over offer belongs to that place. A live stream
@@ -1889,6 +1912,31 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
             markStart("session ready", STAGE_SESSION)
             startPlayback(session.client)
+        }
+    }
+
+    /**
+     * Why this stream must not open, read off its manifest before the player is handed
+     * the address (owner, 2026-11-07): the one choke point every stream route passes
+     * through, since the Open link flow and the Live row both end in [openStream]. Only
+     * a manifest address (an .mpd or .m3u8, or one the intent already flags as DASH or
+     * live) is fetched, once and capped, through [PageLinkResolver.fetchManifest]; a
+     * plain file link skips the fetch entirely. A DRM manifest and a web page each earn
+     * their own sentence; a real manifest, an unreadable answer and a failed fetch all
+     * return null, so the stream opens exactly as it did before the check existed and
+     * no playable stream is ever blocked by a reading that failed.
+     */
+    private suspend fun streamBlockMessage(): String? {
+        val url = streamUrl.orEmpty()
+        if (url.isBlank()) return null
+        val path = url.substringBefore('?').substringBefore('#').lowercase()
+        val manifest = streamLive || streamDash || path.endsWith(".mpd") || path.endsWith(".m3u8")
+        if (!manifest) return null
+        val answer = runCatching { PageLinkResolver.fetchManifest(url) }.getOrNull() ?: return null
+        return when (StreamManifest.classify(answer.contentType, answer.body)) {
+            is ManifestKind.Drm -> L.playerStreamDrm
+            ManifestKind.WebPage -> L.playerStreamWebPage
+            else -> null
         }
     }
 

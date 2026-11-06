@@ -219,6 +219,11 @@ class GarbageInputTest {
             }
             survive("HiddenStreams.decode", text) { HiddenStreams.decode(text) }
             survive("StreamLinks.driveDirect", text) { StreamLinks.driveDirect(text) }
+            survive("StreamManifest.classify", text) {
+                StreamManifest.classify(text, text)
+                StreamManifest.classify(null, text)
+                StreamManifest.classify(text, null)
+            }
             survive("LinkHistory.decode", text) { LinkHistory.decode(text) }
             survive("StreamResume.decode", text) { StreamResume.decode(text) }
             survive("SeenStreams.decode", text) { SeenStreams.decode(text) }

@@ -30,15 +30,66 @@ object PageLinkResolver {
     }
 
     /**
-     * A Drive direct address made playable: a small public file answers with the file
-     * itself, a large one with a scan confirmation page whose own download address is the
-     * playable one. Null where Drive refuses either way (a private file, a quota page).
+     * A Drive direct address made playable, as a [DriveOutcome]: a small public file
+     * answers with the file itself, a large one with a scan confirmation page whose form
+     * is followed (with the cookies Drive set on the way) to the address that serves the
+     * file. Drive's own refusal shapes are told apart by [DrivePage]: a quota page is
+     * [DriveOutcome.Quota], a sign in page or anything else unreadable is
+     * [DriveOutcome.Refused]. A fetch that fails outright leaves the address as it was
+     * (Playable with the original link), as this resolver has always done: the player
+     * then gives the stream's own answer.
      */
-    suspend fun resolveDrive(direct: StreamLink): StreamLink? = withContext(Dispatchers.IO) {
-        val body = fetch(direct.url) ?: return@withContext direct
-        val confirm = Regex("""https://drive\.google\.com/uc\?export=download[^"'\s<]*""")
-            .find(body)?.value?.replace("&amp;", "&") ?: return@withContext direct
-        if (confirm == direct.url) direct else direct.copy(url = confirm)
+    suspend fun resolveDriveOutcome(direct: StreamLink): DriveOutcome = withContext(Dispatchers.IO) {
+        val jar = CookieJar()
+        val first = fetchRaw(direct.url, jar, alwaysReadBody = false)
+            ?: return@withContext DriveOutcome.Playable(direct)
+        // No page came back: the answer is the file itself, playable as it stands.
+        val page = first.body ?: return@withContext DriveOutcome.Playable(direct)
+        when (val reading = DrivePage.read(page)) {
+            is DrivePageReading.Confirm -> {
+                val second = fetchRaw(reading.url, jar, alwaysReadBody = false)
+                    ?: return@withContext DriveOutcome.Refused
+                val secondPage = second.body
+                    ?: return@withContext DriveOutcome.Playable(direct.copy(url = second.finalUrl))
+                // The follow up answered with another page: read it once more for a
+                // direct address inside it, and give up if there is none.
+                val deeper = DrivePage.directAddress(secondPage)
+                if (deeper != null && deeper != reading.url && deeper != second.finalUrl) {
+                    DriveOutcome.Playable(direct.copy(url = deeper))
+                } else {
+                    DriveOutcome.Refused
+                }
+            }
+            DrivePageReading.Quota -> DriveOutcome.Quota
+            DrivePageReading.Refused -> DriveOutcome.Refused
+        }
+    }
+
+    /**
+     * [resolveDriveOutcome] in the shape callers that only ever wanted the link have
+     * always used: the playable link, or the original link where Drive refused (the
+     * player then says the stream is unavailable, as it did before the outcomes
+     * existed). Kept for the Open link flow in HomePane, which is another change's
+     * ground this wave; new callers should read the outcome itself.
+     */
+    suspend fun resolveDrive(direct: StreamLink): StreamLink? =
+        when (val outcome = resolveDriveOutcome(direct)) {
+            is DriveOutcome.Playable -> outcome.link
+            DriveOutcome.Quota, DriveOutcome.Refused -> direct
+        }
+
+    /** A fetched manifest's answer, for the player's honesty check ([StreamManifest]). */
+    class ManifestAnswer(val contentType: String, val body: String)
+
+    /**
+     * One manifest address fetched once, small and capped, its content type and text
+     * kept together for [StreamManifest.classify]. Null on any failure: the caller then
+     * opens the stream unchecked, exactly as it did before the check existed.
+     */
+    suspend fun fetchManifest(url: String): ManifestAnswer? = withContext(Dispatchers.IO) {
+        val answer = fetchRaw(url, CookieJar(), alwaysReadBody = true) ?: return@withContext null
+        val body = answer.body ?: return@withContext null
+        ManifestAnswer(answer.contentType, body)
     }
 
     /** One page's text, capped; null on any refusal or failure. */
@@ -66,6 +117,284 @@ object PageLinkResolver {
             connection.disconnect()
         }
     }.getOrNull()
+
+    /** One raw answer: where the redirects ended, what it calls itself, and its text where it was read. */
+    private class RawAnswer(val finalUrl: String, val contentType: String, val body: String?)
+
+    /**
+     * One address fetched with [jar]'s cookies sent and its own cookies captured,
+     * redirects followed by hand (at most [MAX_REDIRECTS]) so the jar sees every hop:
+     * Drive sets its cookies on the redirecting answers, which an automatic follow
+     * would never show this code. The body is read (capped, as [fetch] reads) where
+     * [alwaysReadBody] asks for it, or where the answer calls itself text or a page;
+     * a file's answer is not read at all, its content type alone says what it is.
+     * Null on any failure.
+     */
+    private fun fetchRaw(startUrl: String, jar: CookieJar, alwaysReadBody: Boolean): RawAnswer? = runCatching {
+        var current = startUrl
+        var answer: RawAnswer? = null
+        var hops = 0
+        while (answer == null) {
+            val connection = URL(current).openConnection() as HttpURLConnection
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.setRequestProperty("User-Agent", USER_AGENT)
+            connection.setRequestProperty("Range", "bytes=0-${MAX_BODY - 1}")
+            jar.header()?.let { connection.setRequestProperty("Cookie", it) }
+            try {
+                jar.capture(connection.headerFields)
+                val code = connection.responseCode
+                val location = connection.getHeaderField("Location")?.takeIf { it.isNotBlank() }
+                if (location != null && code in REDIRECT_CODES && hops < MAX_REDIRECTS) {
+                    current = URL(URL(current), location).toString()
+                    hops++
+                } else {
+                    val type = connection.contentType.orEmpty()
+                    val readIt = alwaysReadBody || type.isBlank() ||
+                        type.contains("text") || type.contains("html")
+                    answer = if (!readIt) {
+                        RawAnswer(current, type, null)
+                    } else {
+                        val stream = (if (code >= 400) connection.errorStream else connection.inputStream)
+                        if (stream == null) {
+                            RawAnswer(current, type, null)
+                        } else {
+                            val body = stream.bufferedReader().use { reader ->
+                                val out = StringBuilder()
+                                val buffer = CharArray(8192)
+                                while (out.length < MAX_BODY) {
+                                    val read = reader.read(buffer)
+                                    if (read < 0) break
+                                    out.append(buffer, 0, minOf(read, MAX_BODY - out.length))
+                                }
+                                out.toString()
+                            }
+                            RawAnswer(current, type, body)
+                        }
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+        }
+        answer
+    }.getOrNull()
+
+    private const val MAX_REDIRECTS = 6
+    private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
+}
+
+/**
+ * The cookies of one resolver call (owner, 2026-11-07): captured from each answer's
+ * Set-Cookie headers and sent on the call's follow up requests. Held in memory for the
+ * one call only: nothing is persisted, and nothing is shared between calls.
+ */
+private class CookieJar {
+
+    private val cookies = LinkedHashMap<String, String>()
+
+    /** Reads every Set-Cookie header out of one answer's [headers] into the jar. */
+    fun capture(headers: Map<String?, List<String>>) {
+        for ((name, values) in headers) {
+            if (name == null || !name.equals("Set-Cookie", ignoreCase = true)) continue
+            for (value in values) {
+                val pair = value.substringBefore(';').trim()
+                val split = pair.indexOf('=')
+                if (split <= 0) continue
+                val key = pair.substring(0, split).trim()
+                val held = pair.substring(split + 1).trim()
+                if (key.isNotEmpty()) cookies[key] = held
+            }
+        }
+    }
+
+    /** The Cookie header for the next request, or null while the jar is empty. */
+    fun header(): String? =
+        if (cookies.isEmpty()) null
+        else cookies.entries.joinToString("; ") { (key, held) -> "$key=$held" }
+}
+
+/** What a Drive address came to, in [PageLinkResolver.resolveDriveOutcome]. */
+sealed class DriveOutcome {
+
+    /** The file can be played: [link] carries the address that serves it. */
+    data class Playable(val link: StreamLink) : DriveOutcome()
+
+    /** Drive's quota page: too many people are using the file right now. */
+    object Quota : DriveOutcome()
+
+    /** Drive refused: a sign in page, a private file, or a page nothing could be read from. */
+    object Refused : DriveOutcome()
+}
+
+/** What one Drive page says, read by [DrivePage]. */
+sealed class DrivePageReading {
+
+    /** A scan confirmation form: [url] is the follow up address built from it. */
+    data class Confirm(val url: String) : DrivePageReading()
+
+    /** Drive's quota page. */
+    object Quota : DrivePageReading()
+
+    /** A sign in page, or anything else no follow up can be built from. */
+    object Refused : DrivePageReading()
+}
+
+/**
+ * Reading a Drive page for what it offers (owner, 2026-11-07). Pure string work: the
+ * page's text in, a [DrivePageReading] out, no network and nothing that can throw, so
+ * the shapes Drive answers with can be tested off the wire. Drive's pages change, so
+ * every reading is conservative: the confirm form is only believed where its action is
+ * Drive's own download host carrying its hidden fields, and the quota page only where
+ * its distinctive wordings appear.
+ */
+object DrivePage {
+
+    /** How much of a page is ever scanned. */
+    private const val MAX_PAGE = 512 * 1024
+
+    /** Drive's quota wordings, lowercased: phrases no ordinary page carries. */
+    private val QUOTA_PHRASES = listOf(
+        "too many users have viewed or downloaded this file",
+        "can't view or download this file at this time",
+        "cannot view or download this file at this time",
+        "download quota for this file",
+    )
+
+    /** What [page] offers: a confirmation to follow, a quota refusal, or a plain refusal. */
+    fun read(page: String): DrivePageReading {
+        val text = page.take(MAX_PAGE)
+        confirmUrl(text)?.let { return DrivePageReading.Confirm(it) }
+        val flat = text.replace('’', '\'').lowercase()
+        if (QUOTA_PHRASES.any { it in flat }) return DrivePageReading.Quota
+        return DrivePageReading.Refused
+    }
+
+    /**
+     * A direct download address named inside [page] (Drive's usercontent host, or the
+     * older uc shape), with its entities unescaped; null where the page names none.
+     */
+    fun directAddress(page: String): String? {
+        val text = page.take(MAX_PAGE)
+        for (prefix in listOf("https://drive.usercontent.google.com/download", "https://drive.google.com/uc?export=download")) {
+            var at = text.indexOf(prefix)
+            while (at >= 0) {
+                var end = at
+                while (end < text.length && text[end] !in "\"'<> \t\r\n") end++
+                val found = text.substring(at, end).replace("&amp;", "&")
+                if (found.length > prefix.length) return found
+                at = text.indexOf(prefix, at + 1)
+            }
+        }
+        return null
+    }
+
+    /**
+     * The follow up address a confirmation form in [page] builds: the form whose action
+     * is Drive's usercontent download address, plus its hidden fields (id, confirm,
+     * export and any others) in the page's own order. Null where no such form is found,
+     * or it carries no hidden field to follow with.
+     */
+    private fun confirmUrl(page: String): String? {
+        val lower = page.lowercase()
+        var from = 0
+        while (true) {
+            val formAt = lower.indexOf("<form", from)
+            if (formAt < 0) return null
+            val tagEnd = page.indexOf('>', formAt)
+            if (tagEnd < 0) return null
+            val action = attributes(page.substring(formAt, tagEnd + 1))["action"].orEmpty()
+            if ("drive.usercontent.google.com" in action) {
+                val close = lower.indexOf("</form>", tagEnd).let { if (it < 0) page.length else it }
+                val fields = hiddenFields(page, lower, tagEnd + 1, close)
+                if (fields.isEmpty()) return null
+                val separator = if ('?' in action) "&" else "?"
+                return action + separator + fields.joinToString("&") { (name, value) ->
+                    "${encodeField(name)}=${encodeField(value)}"
+                }
+            }
+            from = tagEnd + 1
+        }
+    }
+
+    /** The hidden inputs between [start] and [end] of [page], as name and value pairs in page order. */
+    private fun hiddenFields(page: String, lower: String, start: Int, end: Int): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        var at = start
+        while (true) {
+            val inputAt = lower.indexOf("<input", at)
+            if (inputAt < 0 || inputAt >= end) return out
+            val tagEnd = page.indexOf('>', inputAt)
+            if (tagEnd < 0 || tagEnd > end) return out
+            val attrs = attributes(page.substring(inputAt, tagEnd + 1))
+            val type = attrs["type"]?.lowercase()
+            val name = attrs["name"]
+            val value = attrs["value"]
+            if ((type == null || type == "hidden") && !name.isNullOrEmpty() && value != null) {
+                out += name to value
+            }
+            at = tagEnd + 1
+        }
+    }
+
+    /**
+     * A tag's attributes by lowercase name, read by hand: double quoted, single quoted
+     * and bare values are all taken, and the common entities in a value are unescaped.
+     */
+    private fun attributes(tag: String): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        var i = 0
+        while (i < tag.length && !tag[i].isWhitespace() && tag[i] != '>' && tag[i] != '/') i++
+        while (i < tag.length) {
+            while (i < tag.length && (tag[i].isWhitespace() || tag[i] == '/')) i++
+            if (i >= tag.length || tag[i] == '>') break
+            var nameEnd = i
+            while (nameEnd < tag.length && tag[nameEnd] != '=' && !tag[nameEnd].isWhitespace() && tag[nameEnd] != '>' && tag[nameEnd] != '/') nameEnd++
+            val name = tag.substring(i, nameEnd).lowercase()
+            i = nameEnd
+            while (i < tag.length && tag[i].isWhitespace()) i++
+            var value = ""
+            if (i < tag.length && tag[i] == '=') {
+                i++
+                while (i < tag.length && tag[i].isWhitespace()) i++
+                if (i < tag.length && (tag[i] == '"' || tag[i] == '\'')) {
+                    val quote = tag[i]
+                    i++
+                    val valueStart = i
+                    while (i < tag.length && tag[i] != quote) i++
+                    value = tag.substring(valueStart, i)
+                    if (i < tag.length) i++
+                } else {
+                    val valueStart = i
+                    while (i < tag.length && !tag[i].isWhitespace() && tag[i] != '>') i++
+                    value = tag.substring(valueStart, i)
+                }
+            }
+            if (name.isNotEmpty()) out[name] = unescape(value)
+        }
+        return out
+    }
+
+    /** The entities a Drive page writes into its addresses and field values, undone. */
+    private fun unescape(value: String): String = value
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+
+    /** One form field's name or value, percent encoded for the address it joins. */
+    private fun encodeField(value: String): String {
+        val out = StringBuilder()
+        for (byte in value.toByteArray(Charsets.UTF_8)) {
+            val b = (byte + 256) % 256
+            val ch = b.toChar()
+            val plain = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' ||
+                ch == '-' || ch == '_' || ch == '.' || ch == '~'
+            if (plain) out.append(ch) else out.append('%').append(b.toString(16).uppercase().padStart(2, '0'))
+        }
+        return out.toString()
+    }
 }
 
 /**
