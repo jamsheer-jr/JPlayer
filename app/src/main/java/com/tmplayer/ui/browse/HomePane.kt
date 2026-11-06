@@ -1650,12 +1650,21 @@ private fun BuiltInHomeSections(
         val actions = TelegramLinkActions(session.client)
         val channel = BuiltInChannels.J_MOVIES
         val preview = actions.previewInvite(channel.invite).getOrNull() ?: return@LaunchedEffect
-        if (preview.chatId == 0L) return@LaunchedEffect
+        var chatId = preview.chatId
+        // The owner's direction (2026-11-06): the app joins his channel for the viewer,
+        // once per run, only where their account is not a member, silently, and never in
+        // a loop. A join that lands names the chat, and the Live row reads it at once.
+        if (!preview.alreadyMember && !BuiltInChannels.jMoviesJoinAttempted) {
+            BuiltInChannels.jMoviesJoinAttempted = true
+            val joined = runCatching { actions.joinInvite(channel.invite) }.getOrNull()?.getOrNull() ?: 0L
+            if (joined != 0L) chatId = joined
+        }
+        if (chatId == 0L) return@LaunchedEffect
         // The resolved id is kept process wide: duplicate folding leads with this channel's
         // own post of a file wherever copies fold (owner, 2026-11-06).
-        BuiltInChannels.jMoviesChatId = preview.chatId
-        val posts = runCatching { actions.recentPosts(preview.chatId) }.getOrDefault(emptyList())
-        streams = StreamLinks.inPosts(posts, preview.chatId, preview.title.ifBlank { channel.name })
+        BuiltInChannels.jMoviesChatId = chatId
+        val posts = runCatching { actions.recentPosts(chatId) }.getOrDefault(emptyList())
+        streams = StreamLinks.inPosts(posts, chatId, preview.title.ifBlank { channel.name })
     }
 
     val shown = HiddenStreams.visible(streams, hidden)

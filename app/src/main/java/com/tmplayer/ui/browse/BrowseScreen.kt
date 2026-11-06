@@ -893,6 +893,7 @@ internal fun BrowseScreen(
                                 onOpenChat = onOpenChat,
                                 onHold = { chatMenu = it },
                                 launchChatId = launchChatId,
+                                showPin = tab.isChats && chatFilter == ChatFilter.All && query.isBlank(),
                                 paging = chatPaging,
                                 onMoreChats = onMoreChats,
                             )
@@ -2453,6 +2454,8 @@ private fun ChatSection(
     paging: com.tmplayer.ui.browse.ChatPaging = com.tmplayer.ui.browse.ChatPaging(),
     /** Reads the next chats, as the list's end comes near. */
     onMoreChats: () -> Unit = {},
+    /** The main Chats list only: the owner's channel pinned over it (owner, 2026-11-06). */
+    showPin: Boolean = false,
 ) {
     val s = LocalStrings.current
     val rowsAreFullBleed = isTouch()
@@ -2567,6 +2570,20 @@ private fun ChatSection(
             )
         }
     }
+    // The owner's channel pinned over the list (owner, 2026-11-06): a member's tap opens
+    // the channel itself; anyone else is taken to its invite preview, where Telegram's
+    // own join stands. The chat is known by the id Home resolved, or by its name.
+    val jMoviesChat = chats.firstOrNull { it.id == com.tmplayer.data.BuiltInChannels.jMoviesChatId }
+        ?: chats.firstOrNull {
+            it.title.equals(com.tmplayer.data.BuiltInChannels.J_MOVIES.name, ignoreCase = true) && it.kind == ChatKind.Channel
+        }
+    val onJMoviesPin: () -> Unit = {
+        if (jMoviesChat != null) {
+            open(jMoviesChat, jMoviesChat.id)
+        } else {
+            LinkRequests.ask(com.tmplayer.data.BuiltInChannels.J_MOVIES.invite)
+        }
+    }
     // On a phone a chip, a sort or a search moves the rows to their new places and fades newcomers
     // in. Not past a few hundred chats, where the bookkeeping costs more than the motion is worth.
     val animateRows = rowsAreFullBleed && !(rememberReducedMotion() || Motion.reduced) && chats.size <= ANIMATED_ROWS_MAX
@@ -2583,6 +2600,11 @@ private fun ChatSection(
             ) {
                 if (recent.isNotEmpty()) {
                     item(key = "recent-strip", span = { GridItemSpan(maxLineSpan) }, contentType = "recent-strip") { strip() }
+                }
+                if (showPin) {
+                    item(key = "j-movies-pin", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-pin") {
+                        JMoviesPin(onJMoviesPin)
+                    }
                 }
                 gridItems(chats, key = { it.id }, contentType = { "chat" }) { chat ->
                     ChatRow(
@@ -2617,6 +2639,11 @@ private fun ChatSection(
             ) {
                 if (recent.isNotEmpty()) {
                     item(key = "recent-strip") { strip() }
+                }
+                if (showPin) {
+                    item(key = "j-movies-pin", contentType = "j-movies-pin") {
+                        JMoviesPin(onJMoviesPin, Modifier.padding(horizontal = insets.start, vertical = 8.dp))
+                    }
                 }
 
                 items(chats, key = { it.id }) { chat ->
@@ -2862,6 +2889,54 @@ private fun PrefetchWhileFocused(chatId: Long, focused: Boolean) {
 }
 
 @Composable
+/**
+ * The owner's channel pinned at the top of the Chats list (owner, 2026-11-06): one card
+ * in the app's own colours with its LIVE badge, standing apart from the chats under it.
+ */
+@Composable
+private fun JMoviesPin(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val s = LocalStrings.current
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tone.surfaceHigh)
+            .border(
+                width = Focus.Edge,
+                color = if (focused) Tone.accent else Tone.accent.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(16.dp),
+            )
+            .holdable(interactionSource = interactions, onClick = onClick, onHold = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TmIcons.Play, contentDescription = null, tint = Tone.accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            M3Text(
+                com.tmplayer.data.BuiltInChannels.J_MOVIES.name,
+                style = M3MaterialTheme.typography.titleMedium,
+                color = Tone.text,
+                maxLines = 1,
+            )
+            M3Text(
+                s.browseJMoviesDetail,
+                style = M3MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Box(
+            Modifier.clip(RoundedCornerShape(50)).background(Tone.danger).padding(horizontal = 8.dp, vertical = 3.dp),
+        ) {
+            M3Text(s.homeLiveBadge, style = M3MaterialTheme.typography.labelSmall, color = Color.White)
+        }
+    }
+}
+
 private fun ChatRow(
     chat: ChatSummary,
     favorite: Boolean,
@@ -3047,6 +3122,7 @@ private fun TouchChatRow(
     interactions: MutableInteractionSource,
 ) {
     val s = LocalStrings.current
+    Column {
     ListItem(
         headlineContent = {
             // Two lines, because a channel name is regularly longer than a phone is wide.
@@ -3123,6 +3199,13 @@ private fun TouchChatRow(
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
+        // A hairline under each phone row (owner, 2026-11-06): the list reads as one
+        // clean surface of separated rows rather than names floating on the ground.
+        androidx.compose.material3.HorizontalDivider(
+            Modifier.padding(start = 88.dp),
+            color = Tone.outline.copy(alpha = 0.45f),
+        )
+    }
 }
 
 @Composable

@@ -43,6 +43,15 @@ object BuiltInChannels {
     @Volatile
     var jMoviesChatId: Long? = null
 
+    /**
+     * Whether this run of the app has already tried its one automatic join of J MOVIES
+     * (owner, 2026-11-06, directed against advice): the join is attempted once, after
+     * sign-in on the first Home load, only where the account is not a member, its failure
+     * is silent, and it is never retried in a loop. A fresh run of the app may try again.
+     */
+    @Volatile
+    var jMoviesJoinAttempted: Boolean = false
+
     /** The app's release page: every release, newest first. */
     const val RELEASES_URL = "https://github.com/jamsheer-jr/JPlayer/releases"
 }
