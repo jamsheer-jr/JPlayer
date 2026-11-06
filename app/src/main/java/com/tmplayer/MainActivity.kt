@@ -1795,11 +1795,23 @@ private fun Root() {
 
         // At the top level Back would leave the app outright, and on a remote it sits right next
         // to the D-pad and is very easy to hit by accident. Two presses, the way every other app
-        // on this television does it.
+        // on this television does it. On a phone the same two presses belong to Home alone
+        // (owner, 2026-11-06): Back at the root of any other tab goes to the Home tab first,
+        // because a viewer deep in Chats or Search who presses Back twice means "take me back",
+        // not "close the app".
         if (screen is Screen.Chats) {
             val activity = LocalActivity.current
+            val onHomeTab = pickedTab == null || pickedTab.isHome
             BackHandler {
-                if (exitArmed) activity?.finish() else { exitArmed = true; toast(L.mainBackAgain) }
+                if (!onHomeTab) {
+                    pickedTabKey = BrowseSection.encode(BrowseSection.of(BrowseTab.Home))
+                    exitArmed = false
+                } else if (exitArmed) {
+                    activity?.finish()
+                } else {
+                    exitArmed = true
+                    toast(L.mainBackAgain)
+                }
             }
             // The second press has to follow the first, not arrive ten minutes later on a screen
             // the viewer has long since forgotten pressing Back on.
