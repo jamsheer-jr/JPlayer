@@ -41,8 +41,13 @@ data class StorageSplit(
     /** The online posters and backdrops, beside TDLib's own pictures. Counted in [totalBytes]. */
     val posterBytes: Long = 0,
 ) {
-    /** The unmatched files' share of [cachedBytes]. */
-    val strayBytes: Long get() = strays.sumOf { it.bytes }
+    /**
+     * The unmatched files' share of [cachedBytes], in allocated bytes: what deleting them
+     * actually returns. Their apparent size (the length, [WatchCacheRules.Stray.bytes]) is the
+     * full size of a file that may only be part streamed, and quoting it is how a free up once
+     * promised gigabytes the disk never held.
+     */
+    val strayBytes: Long get() = strays.sumOf { it.allocatedBytes }
 
     /** Every picture: TDLib's thumbnails and previews with the online posters. */
     val pictureBytes: Long get() = otherBytes + posterBytes
@@ -146,8 +151,13 @@ data class StorageSplit(
                 (cachedRecords + kept).map { it.sizeBytes }.filter { it > 0 }.toSet()
             val strays = runCatching { WatchCache.strays(context, accounted.toSet()) }
                 .getOrDefault(emptyList())
+                // The unanswered guard compares apparent sizes, since Telegram's figure for a
+                // video is its full size: a stray the size of an unanswered video is taken to
+                // be it, whatever blocks it holds.
                 .filterNot { stray -> unanswered.any { size -> sameSize(stray.bytes, size) } }
-            cached += strays.sumOf { it.bytes }
+            // Counted in allocated bytes, as [strayBytes] quotes them, so the chart's recent
+            // remainder (cached minus strays) stays the named cached videos alone.
+            cached += strays.sumOf { it.allocatedBytes }
             count += strays.size
 
             val unfinishedBytes = unfinished.sumOf { it.downloadedBytes }

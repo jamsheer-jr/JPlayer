@@ -41,9 +41,13 @@ class WatchCacheRulesTest {
     private var clock = NOW
     private var rule: CacheRule = CacheRule.OneVideo
 
-    private fun rules(sparePlaying: Boolean = true) = WatchCacheRules(
+    private fun rules(
+        sparePlaying: Boolean = true,
+        allocatedOf: (File) -> Long = { file -> file.length() },
+    ) = WatchCacheRules(
         settings, { root }, td, busy = { busy }, playing = { playing }, now = { clock }, rule = { rule },
         sparePlaying = sparePlaying,
+        allocatedOf = allocatedOf,
     )
 
     private val cache = rules()
@@ -289,6 +293,46 @@ class WatchCacheRulesTest {
         assertFalse(file.exists())
         assertFalse(cache.forget(WatchCacheRules.Stray(folder.absolutePath, 1, 0)))
         assertTrue(folder.exists())
+    }
+
+    @Test
+    fun `a stray carries its allocated bytes beside its apparent size`() {
+        val videos = root.resolve("videos").apply { mkdirs() }
+        videos.resolve("part.mkv").writeText("12345678")
+        // The walk is told this file holds one 512 byte block: the two figures are recorded
+        // apart, the length as the apparent size and the blocks as the allocated size.
+        val found = WatchCacheRules.straysIn(root, emptySet()) { 512L }
+        assertEquals(8L, found.single().bytes)
+        assertEquals(512L, found.single().allocatedBytes)
+    }
+
+    @Test
+    fun `allocated falls back to apparent when the walk cannot tell`() {
+        val videos = root.resolve("videos").apply { mkdirs() }
+        videos.resolve("whole.mkv").writeText("12345678")
+        // No allocated read supplied: allocated and apparent are the one figure, not a guess.
+        val found = WatchCacheRules.straysIn(root, emptySet())
+        assertEquals(8L, found.single().allocatedBytes)
+        assertEquals(found.single().bytes, found.single().allocatedBytes)
+        // And a stray built without one, as the older callers build it, reads the same way.
+        assertEquals(42L, WatchCacheRules.Stray("somewhere", 42, 0).allocatedBytes)
+    }
+
+    @Test
+    fun `the sweep credits allocated bytes, not apparent size`() = runBlocking {
+        val videos = root.resolve("videos").apply { mkdirs() }
+        val known = videos.resolve("1.mkv").apply { writeText("known") }
+        val oldStray = videos.resolve("old.mkv").apply { writeText("stray"); setLastModified(NOW - 60 * 60_000L) }
+        known.setLastModified(0)
+        td.bytes[1] = 5
+        settings.noteDownload(item(1), "Chat")
+
+        // The stray reads as five bytes long and holds three: three is what its delete returns.
+        val freed = rules(allocatedOf = { 3L }).sweep()
+
+        assertEquals(3L, freed)
+        assertFalse(oldStray.exists())
+        assertTrue(known.exists())
     }
 
     @Test

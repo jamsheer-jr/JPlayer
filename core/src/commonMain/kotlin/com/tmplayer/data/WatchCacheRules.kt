@@ -64,6 +64,10 @@ sealed interface CacheRule {
  * @param sparePlaying whether [evictAllBut] and [clearAll] also leave alone every file in
  *   [playing]. The desktop does; Android has always relied on the claim of the video now playing
  *   alone, and keeps doing so. [UnderCap][CacheRule.UnderCap] eviction spares them regardless.
+ * @param allocatedOf what a file on disk actually holds, in bytes: its allocated blocks, which
+ *   for a file TDLib wrote in chunks at offsets can be a small fraction of its length. Android
+ *   supplies it from the filesystem; everywhere else it defaults to the file's length, so
+ *   allocated and apparent size are the same figure where nobody can tell them apart.
  */
 class WatchCacheRules(
     private val settings: SettingsStore,
@@ -74,6 +78,7 @@ class WatchCacheRules(
     private val now: () -> Long = System::currentTimeMillis,
     private val rule: () -> CacheRule = { CacheRule.OneVideo },
     private val sparePlaying: Boolean = true,
+    private val allocatedOf: (File) -> Long = { file -> file.length() },
 ) {
     /**
      * Held for the whole of a claim, because stepping through a series overlaps two of them.
@@ -190,7 +195,21 @@ class WatchCacheRules(
     }
 
     /** One file on disk nothing in the app has a name for. */
-    data class Stray(val path: String, val bytes: Long, val modifiedAt: Long) {
+    data class Stray(
+        val path: String,
+        /** The file's apparent size: its length, which for a part streamed file is its full size. */
+        val bytes: Long,
+        val modifiedAt: Long,
+        /**
+         * What the file actually holds on disk: its allocated blocks, in bytes. TDLib writes
+         * streamed chunks at their offsets, so a video abandoned part way can read as its full
+         * size in [bytes] while holding a fraction of it here, and deleting it frees this much
+         * and no more. Anything that promises or credits freed space must use this figure.
+         * Equals [bytes] where the walk cannot tell the two apart, which is every platform but
+         * Android: there the honest fallback is the length, not a guess.
+         */
+        val allocatedBytes: Long = bytes,
+    ) {
 
         /** The file's own name, which is the only identifying thing about it. */
         val fileName: String get() = File(path).name
@@ -216,7 +235,19 @@ class WatchCacheRules(
      * @param knownPaths the local paths of everything the app can name, asked of TDLib by the
      *   caller: only it knows which records are worth resolving.
      */
-    fun strays(knownPaths: Set<String>): List<Stray> = straysIn(filesRoot(), knownPaths)
+    fun strays(knownPaths: Set<String>): List<Stray> = straysIn(filesRoot(), knownPaths, allocatedOf)
+
+    /**
+     * Runs [block] while holding the claim lock, the one [claim] holds for its whole run and
+     * [sweep] for its whole run.
+     *
+     * For work outside this class that deletes the same files those two delete, above all the
+     * Downloads page's manual Free up space: without the shared lock, a launch sweep and a
+     * manual run can both work through one list at once, each deleting files the other then
+     * measures as still there or already gone, so the manual run credits about nothing and
+     * reports its items as skipped. Serialised, the second run simply sees the first's result.
+     */
+    suspend fun <T> withClaimLock(block: suspend () -> T): T = claiming.withLock { block() }
 
     /**
      * Removes one stray from the disk. TDLib refetches it if the video is ever played again.
@@ -247,9 +278,12 @@ class WatchCacheRules(
      * the next one; a sweep guessed costs a video. Nothing written in the last ten minutes counts
      * either, since a file being fetched is touched with every chunk.
      *
-     * @return how many bytes went.
+     * @return how many bytes went, counted in allocated bytes: what the disk actually got back.
      */
-    suspend fun sweep(): Long = withContext(Dispatchers.IO) {
+    suspend fun sweep(): Long = claiming.withLock { sweepLocked() }
+
+    /** The body of [sweep], which runs with the claim lock held. */
+    private suspend fun sweepLocked(): Long = withContext(Dispatchers.IO) {
         val capped = (rule() as? CacheRule.UnderCap)?.let { evictOverCap(it.capBytes) } ?: 0L
         // A download with a path is in the Downloads folder, not in TDLib's: TDLib was told to let
         // go of it, so it has no path to give, and asking would make the sweep give up every time.
@@ -272,7 +306,9 @@ class WatchCacheRules(
         var freed = capped
         for (stray in strays((accounted + open).toSet())) {
             if (stray.modifiedAt > settled) continue
-            if (forget(stray)) freed += stray.bytes
+            // Allocated, not the length: a part streamed file's length is its full size, and
+            // crediting that would claim back space the disk never held.
+            if (forget(stray)) freed += stray.allocatedBytes
         }
         freed
     }
@@ -353,8 +389,19 @@ class WatchCacheRules(
          */
         val MEDIA_DIRECTORIES = listOf("videos", "documents", "animations", "video_notes", "temp")
 
-        /** [strays] against a directory rather than a running app, so the walk can be tested. */
-        fun straysIn(root: File, knownPaths: Set<String>): List<Stray> {
+        /**
+         * [strays] against a directory rather than a running app, so the walk can be tested.
+         *
+         * @param allocatedOf what a file actually holds on disk, beside its length: supplied by
+         *   the platform that can read it (Android reads the file's allocated blocks), and
+         *   defaulting to the length itself, so a walk that cannot tell reports allocated and
+         *   apparent size as one figure rather than inventing one.
+         */
+        fun straysIn(
+            root: File,
+            knownPaths: Set<String>,
+            allocatedOf: (File) -> Long = { file -> file.length() },
+        ): List<Stray> {
             if (!root.isDirectory) return emptyList()
             val known = knownPaths.map(::canonical).toSet()
             return MEDIA_DIRECTORIES
@@ -366,8 +413,13 @@ class WatchCacheRules(
                 // megabytes (owner's device, 2026-11-06).
                 .flatMap { directory -> directory.walkTopDown().toList() }
                 .filter { it.isFile && it.length() > 0 && canonical(it.absolutePath) !in known }
-                .map { Stray(it.absolutePath, it.length(), it.lastModified()) }
-                .sortedByDescending { it.bytes }
+                .map { file ->
+                    val apparent = file.length()
+                    val allocated = runCatching { allocatedOf(file) }.getOrDefault(apparent).coerceAtLeast(0L)
+                    Stray(file.absolutePath, apparent, file.lastModified(), allocatedBytes = allocated)
+                }
+                // Biggest first by what freeing it actually returns, which is the allocated size.
+                .sortedByDescending { it.allocatedBytes }
         }
 
         /**

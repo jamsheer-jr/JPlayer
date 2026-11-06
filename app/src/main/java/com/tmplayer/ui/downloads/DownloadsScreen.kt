@@ -683,7 +683,11 @@ fun DownloadsScreen(
             FreeUpReview.Section(
                 FreeUpReview.Group.Unmatched,
                 split.strayBytes,
-                items = split.strays.map { FreeUpReview.Item(it.path, it.title, it.bytes) },
+                // Allocated bytes, not the length: a part streamed stray's length is its full
+                // size, so the review would promise space the disk does not hold and the run
+                // would then credit the same fiction. What is promised here is what deleting
+                // the file actually returns, and [freeUp] credits this same figure.
+                items = split.strays.map { FreeUpReview.Item(it.path, it.title, it.allocatedBytes) },
             ),
             FreeUpReview.Section(FreeUpReview.Group.Pictures, split.pictureBytes),
             FreeUpReview.Section(
@@ -699,6 +703,11 @@ fun DownloadsScreen(
      * page removes that kind of thing. A download that started again, or a file the player opened,
      * since the sheet was drawn is left and counted as left. Once started it runs to the end even
      * if the page goes, so a file is never half handled; the line it leaves says what it freed.
+     *
+     * The run takes the watch cache's claim lock, the one a claim and the launch sweep take:
+     * this page deletes the same files a sweep deletes, and two runs over one list at once leave
+     * each measuring files the other just took, which read as a manual run that freed about
+     * nothing and skipped everything.
      */
     fun freeUp(picks: FreeUpReview.Picks) {
         if (freeUpBusy) return
@@ -711,62 +720,70 @@ fun DownloadsScreen(
         freeUpResult = null
         scope.launch {
             val outcome = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                var freed = 0L
-                var skipped = 0
-                for (section in sections) {
-                    when (section.group) {
-                        FreeUpReview.Group.Unfinished -> FreeUpReview.picked(picks, section).forEach { item ->
-                            val now = OfflineDownloads.active.value.values.firstOrNull { it.fileId.toString() == item.key }
-                            when {
-                                now == null -> Unit
-                                now.stage == OfflineDownloads.Stage.Running || now.stage == OfflineDownloads.Stage.Moving -> skipped++
-                                else -> {
-                                    dropUnfinished(now.fileId)
-                                    // Counted only when the bytes are verified gone, the same
-                                    // check removeOne makes: a delete TDLib shrugs off must not
-                                    // be reported as space freed.
-                                    val left = runCatching { Td.localDownloadedBytes(now.fileId) }.getOrDefault(0L)
-                                    if (left <= 0L) freed += item.bytes else skipped++
-                                }
-                            }
-                        }
-                        FreeUpReview.Group.Recent, FreeUpReview.Group.Downloads -> {
-                            val pool = if (section.group == FreeUpReview.Group.Recent) recentRows else keptRows
-                            FreeUpReview.picked(picks, section).forEach { item ->
-                                val row = pool.firstOrNull { it.key == item.key } ?: return@forEach
+                // The whole run under the claim lock (see above): it starts only once any
+                // sweep or claim in flight has finished, and no new one starts over the
+                // files this run is deleting until it is done.
+                com.tmplayer.data.WatchCache.withClaimLock(context) {
+                    var freed = 0L
+                    var skipped = 0
+                    for (section in sections) {
+                        when (section.group) {
+                            FreeUpReview.Group.Unfinished -> FreeUpReview.picked(picks, section).forEach { item ->
+                                val now = OfflineDownloads.active.value.values.firstOrNull { it.fileId.toString() == item.key }
                                 when {
-                                    com.tmplayer.data.WatchCache.isPlaying(row.fileId) -> skipped++
-                                    runCatching { removeOne(row) }.getOrDefault(false) -> freed += item.bytes
-                                    else -> skipped++
+                                    now == null -> Unit
+                                    now.stage == OfflineDownloads.Stage.Running || now.stage == OfflineDownloads.Stage.Moving -> skipped++
+                                    else -> {
+                                        dropUnfinished(now.fileId)
+                                        // Counted only when the bytes are verified gone, the same
+                                        // check removeOne makes: a delete TDLib shrugs off must not
+                                        // be reported as space freed.
+                                        val left = runCatching { Td.localDownloadedBytes(now.fileId) }.getOrDefault(0L)
+                                        if (left <= 0L) freed += item.bytes else skipped++
+                                    }
                                 }
                             }
-                        }
-                        FreeUpReview.Group.Unmatched -> FreeUpReview.picked(picks, section).forEach { item ->
-                            val stray = strays.firstOrNull { it.path == item.key } ?: return@forEach
-                            if (runCatching { com.tmplayer.data.WatchCache.forget(context, stray) }.getOrDefault(false)) freed += item.bytes else skipped++
-                        }
-                        FreeUpReview.Group.Pictures -> if (FreeUpReview.wholePicked(picks, section)) {
-                            // Measured, not assumed: the section figure is a remainder (everything
-                            // TDLib holds that is not a video), so what this group freed is the
-                            // drop in TDLib's own total plus the posters, capped at the section.
-                            val tdBefore = runCatching { Td.storageUsedBytes() }.getOrDefault(0L)
-                            val postersBefore = runCatching {
-                                com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L
-                            }.getOrDefault(0L)
-                            if (runCatching { Td.clearPicturesAndPreviews() }.isSuccess) {
-                                runCatching { com.tmplayer.online.OnlineMetadata.current?.purgeImages() }
-                                val tdAfter = runCatching { Td.storageUsedBytes() }.getOrDefault(tdBefore)
-                                val postersAfter = runCatching {
+                            FreeUpReview.Group.Recent, FreeUpReview.Group.Downloads -> {
+                                val pool = if (section.group == FreeUpReview.Group.Recent) recentRows else keptRows
+                                FreeUpReview.picked(picks, section).forEach { item ->
+                                    val row = pool.firstOrNull { it.key == item.key } ?: return@forEach
+                                    when {
+                                        com.tmplayer.data.WatchCache.isPlaying(row.fileId) -> skipped++
+                                        runCatching { removeOne(row) }.getOrDefault(false) -> freed += item.bytes
+                                        else -> skipped++
+                                    }
+                                }
+                            }
+                            FreeUpReview.Group.Unmatched -> FreeUpReview.picked(picks, section).forEach { item ->
+                                val stray = strays.firstOrNull { it.path == item.key } ?: return@forEach
+                                // The item's figure is the stray's allocated bytes (see the
+                                // review's Unmatched group), so what is credited here is what the
+                                // disk actually got back, not the file's apparent size.
+                                if (runCatching { com.tmplayer.data.WatchCache.forget(context, stray) }.getOrDefault(false)) freed += item.bytes else skipped++
+                            }
+                            FreeUpReview.Group.Pictures -> if (FreeUpReview.wholePicked(picks, section)) {
+                                // Measured, not assumed: the section figure is a remainder (everything
+                                // TDLib holds that is not a video), so what this group freed is the
+                                // drop in TDLib's own total plus the posters, capped at the section.
+                                val tdBefore = runCatching { Td.storageUsedBytes() }.getOrDefault(0L)
+                                val postersBefore = runCatching {
                                     com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L
-                                }.getOrDefault(postersBefore)
-                                val gone = (tdBefore - tdAfter).coerceAtLeast(0L) +
-                                    (postersBefore - postersAfter).coerceAtLeast(0L)
-                                freed += gone.coerceAtMost(section.bytes)
-                            } else skipped++
+                                }.getOrDefault(0L)
+                                if (runCatching { Td.clearPicturesAndPreviews() }.isSuccess) {
+                                    runCatching { com.tmplayer.online.OnlineMetadata.current?.purgeImages() }
+                                    val tdAfter = runCatching { Td.storageUsedBytes() }.getOrDefault(tdBefore)
+                                    val postersAfter = runCatching {
+                                        com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L
+                                    }.getOrDefault(postersBefore)
+                                    val gone = (tdBefore - tdAfter).coerceAtLeast(0L) +
+                                        (postersBefore - postersAfter).coerceAtLeast(0L)
+                                    freed += gone.coerceAtMost(section.bytes)
+                                } else skipped++
+                            }
                         }
                     }
+                    FreeUpReview.Outcome(freed, skipped)
                 }
-                FreeUpReview.Outcome(freed, skipped)
             }
             refresh(history)
             freeUpBusy = false

@@ -86,6 +86,27 @@ class WatchCacheTest {
     }
 
     @Test
+    fun `allocated falls back to the apparent size on the shared walk`() {
+        make("videos/part.mp4", 300)
+
+        // The shared walk is given no filesystem read, so a stray's allocated bytes are its
+        // apparent size: the honest fallback, never an invented smaller figure.
+        val found = WatchCache.straysIn(folder.root, emptySet())
+
+        assertEquals(300L, found.single().bytes)
+        assertEquals(300L, found.single().allocatedBytes)
+    }
+
+    @Test
+    fun `the Android allocated read falls back to the length when it cannot stat`() {
+        val file = make("videos/part.mp4", 300)
+
+        // In a plain unit test the Android stat call answers nothing, which is the same shape
+        // as a file that went mid walk on a device: the length stands in for the blocks.
+        assertEquals(300L, WatchCache.allocatedBytesOf(file))
+    }
+
+    @Test
     fun `a name is made from the file, since that is all there is`() {
         make("videos/Kerala_Crime_Files_S01E04.mkv", 100)
 

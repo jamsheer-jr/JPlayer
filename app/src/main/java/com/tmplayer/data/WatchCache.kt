@@ -36,6 +36,7 @@ object WatchCache {
                 playing = ::playingNow,
                 rule = { CacheRule.OneVideo },
                 sparePlaying = false,
+                allocatedOf = ::allocatedBytesOf,
             )
         }.also { rules = it }
     }
@@ -54,6 +55,33 @@ object WatchCache {
     /** [claim] for the byte pieces of one video cut into several files, kept together. */
     suspend fun claimAll(context: Context, pieces: List<MediaItem>, chatTitle: String) {
         rules(context).claimAll(pieces.map { it to it.fileId }, chatTitle)
+    }
+
+    /**
+     * Runs [block] under the cache's claim lock: the same lock [claim] and [sweep] hold, exposed
+     * for the Downloads page's manual Free up space, which deletes the same files a launch sweep
+     * deletes and must not race one over them. See [WatchCacheRules.withClaimLock].
+     */
+    suspend fun <T> withClaimLock(context: Context, block: suspend () -> T): T =
+        rules(context).withClaimLock(block)
+
+    /**
+     * What a file actually holds on disk, in bytes: its allocated blocks, not its length.
+     *
+     * TDLib writes streamed chunks at their offsets, so a part streamed file's length is its
+     * full size while the blocks it holds can be a small fraction of that: the length is the
+     * apparent size, and promising it as space a delete would return is how a review once
+     * promised gigabytes on a phone whose whole app weighed a couple of hundred megabytes.
+     *
+     * `Os.stat` has been there since API 21 and the floor here is API 23, so it needs no version
+     * guard of the LegacyApiCompat kind. Any failure (the file went between the walk and the
+     * stat, a filesystem that reports no blocks) falls back to the length, the figure every
+     * platform without this read uses.
+     */
+    internal fun allocatedBytesOf(file: java.io.File): Long {
+        val blocks = runCatching { android.system.Os.stat(file.absolutePath).st_blocks }.getOrNull()
+            ?: return file.length()
+        return (blocks * 512L).coerceAtLeast(0L)
     }
 
     /**
@@ -124,9 +152,11 @@ object WatchCache {
         for (root in roots) {
             val key = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
             if (!seen.add(key)) continue
-            found += WatchCacheRules.straysIn(root, knownPaths)
+            // The Android walk: each stray also carries what it actually holds on disk, read
+            // from its allocated blocks, beside the length the shared walk records.
+            found += WatchCacheRules.straysIn(root, knownPaths, allocatedOf = ::allocatedBytesOf)
         }
-        return found.sortedByDescending { it.bytes }
+        return found.sortedByDescending { it.allocatedBytes }
     }
 
     /** The same, against a directory rather than a device, so the rule can be tested. */

@@ -56,6 +56,11 @@ object DownloadShelf {
      * [rows] grouped by show. A show needs [SeriesShelf.MIN_EPISODES] downloaded episodes to be a
      * group: one episode alone reads better as a video of its own than as a heading over one line.
      *
+     * The group key is the parsed title's key plus its year, the same pairing [SeriesShelf]
+     * groups a chat on: two series that share a cleaned title but not a year (the original and
+     * a remake) are two shows and stay apart, while episodes of one title and year group
+     * however their file names were punctuated.
+     *
      * @param item the row as a [MediaItem], whose name is read for the show and the episode.
      * @param key a key unique to the row, for the list.
      * @param at when the row was downloaded, for the order.
@@ -92,7 +97,10 @@ object DownloadShelf {
         val found = rows.filter { key(it) !in inSets }.map { row ->
             val name = SeriesShelf.episodeOf(item(row), corrections)
             val episode = name.episode
-            val show = if (episode != null) SeriesShelf.keyOf(name.title).ifEmpty { null } else null
+            // The title key alone would fold a remake into the original: the year the name
+            // carries is part of the show's identity, and no year is its own group too.
+            val titleKey = if (episode != null) SeriesShelf.keyOf(name.title).ifEmpty { null } else null
+            val show = titleKey?.let { cleaned -> "$cleaned|${name.year ?: ""}" }
             Found(row, show, name.title, name.season ?: 1, episode ?: 0)
         }
         val byShow = found.filter { it.show != null }.groupBy { it.show!! }

@@ -76,6 +76,35 @@ class DownloadShelfTest {
     }
 
     @Test
+    fun `the same title in a different year is a different show`() {
+        val shelf = arrange(
+            Row(1, "Harbour.Notes.2019.S01E01.mkv", 40),
+            Row(2, "Harbour.Notes.2019.S01E02.mkv", 30),
+            Row(3, "Harbour.Notes.2024.S01E01.mkv", 20),
+            Row(4, "Harbour.Notes.2024.S01E02.mkv", 10),
+        )
+        assertEquals(2, shelf.size)
+        val shows = shelf.filterIsInstance<DownloadShelf.Entry.Show<Row>>()
+        assertEquals(2, shows.size)
+        assertEquals(
+            listOf(listOf(1L, 2L), listOf(3L, 4L)),
+            shows.map { show -> show.episodes.map { it.id } },
+        )
+    }
+
+    @Test
+    fun `episodes with no year of their own group apart from a dated series of the same title`() {
+        val shelf = arrange(
+            Row(1, "Harbour.Notes.S01E01.mkv", 40),
+            Row(2, "Harbour.Notes.S01E02.mkv", 30),
+            Row(3, "Harbour.Notes.2024.S01E01.mkv", 20),
+            Row(4, "Harbour.Notes.2024.S01E02.mkv", 10),
+        )
+        assertEquals(2, shelf.filterIsInstance<DownloadShelf.Entry.Show<Row>>().size)
+        assertEquals(2, shelf.size)
+    }
+
+    @Test
     fun `a lone episode stays a video of its own and singles run newest first`() {
         val shelf = arrange(
             Row(1, "Harbour.Notes.S01E02.1080p.mkv", 10),
