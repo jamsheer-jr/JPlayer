@@ -78,9 +78,19 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
+import com.tmplayer.data.BuiltInChannel
+import com.tmplayer.data.BuiltInChannels
+import com.tmplayer.data.ChannelNews
 import com.tmplayer.data.HomeRow
 import com.tmplayer.data.HomeRows
+import com.tmplayer.data.InvitePreview
 import com.tmplayer.data.MediaItem
+import com.tmplayer.data.StreamLink
+import com.tmplayer.data.StreamLinks
+import com.tmplayer.data.Td
+import com.tmplayer.data.TelegramLinkActions
 import com.tmplayer.ui.components.warmUpOnIntent
 import com.tmplayer.data.ResumeRecord
 import com.tmplayer.data.Series
@@ -173,6 +183,8 @@ internal fun HomePane(
     onPlayNow: (MediaItem, String) -> Unit = onPlay,
     /** A video's page, whatever "Open a video's page first" says: the carousel's Details on a television. */
     onDetails: (MediaItem, String) -> Unit = onHoldMedia,
+    /** A live or file stream from the built-in channel's posts (v1.0.10): plays in the player. */
+    onPlayStream: (StreamLink) -> Unit = {},
     /**
      * The television's page heading. With the carousel up it stands on the carousel's picture
      * (true: the words in the colours for art) and scrolls away with it; otherwise it sits over
@@ -626,6 +638,17 @@ internal fun HomePane(
                     item(key = BRAND_KEY, contentType = BRAND_KEY) {
                         PhoneHomeBrand(Modifier.padding(start = start, top = BRAND_TOP, bottom = 4.dp), onArt = false)
                     }
+                }
+                // The channels built into the app and the streams posted in one (v1.0.10),
+                // between the carousel and the rows: the owner's own channels, offered to
+                // every account alike, joined with that account alone.
+                item(key = BUILT_IN_KEY, contentType = BUILT_IN_KEY) {
+                    BuiltInHomeSections(
+                        start = start,
+                        end = end,
+                        onOpenChat = onOpenChat,
+                        onPlayStream = onPlayStream,
+                    )
                 }
                 if (touch && surpriseAvailable) {
                     item(key = SURPRISE_KEY, contentType = SURPRISE_KEY) {
@@ -1271,6 +1294,258 @@ private fun RowHeading(
     }
 }
 
+/** A built-in channel's card as its invite resolved: to join, or a member's (with its new videos). */
+private sealed interface BuiltInCard {
+    data class Join(val preview: InvitePreview, val failed: Boolean = false) : BuiltInCard
+    data class Member(val preview: InvitePreview, val newVideos: Int = 0) : BuiltInCard
+
+    /** The invite would not resolve at all (offline, expired, the kids lock): no card. */
+    data object Gone : BuiltInCard
+}
+
+/**
+ * The built-in channels' cards, the Share J Player line under them, and the Live row of the
+ * streams posted in J MOVIES (v1.0.10), as one Home item under the carousel.
+ *
+ * Each card resolves its invite once Home shows: a member's tap opens the channel like any
+ * chat, and anyone else gets the channel's name and a Join that joins with their own account
+ * ([TelegramLinkActions.joinInvite], the one join the app makes). The films channel's card
+ * also counts the video posts newer than the last visit's mark, and its posts give the Live
+ * row its streams; both read one bounded slice of the channel's recent posts, and only what
+ * the signed-in account can see. Nothing here is read until the invites answer, and a
+ * channel that will not resolve simply has no card.
+ */
+@Composable
+private fun BuiltInHomeSections(
+    start: Dp,
+    end: Dp,
+    onOpenChat: (Long) -> Unit,
+    onPlayStream: (StreamLink) -> Unit,
+) {
+    val s = LocalStrings.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settings = remember(context) { SettingsStore(context) }
+    var cards by remember { mutableStateOf<Map<String, BuiltInCard>>(emptyMap()) }
+    var streams by remember { mutableStateOf<List<StreamLink>>(emptyList()) }
+    var joining by remember { mutableStateOf<String?>(null) }
+    var round by remember { mutableStateOf(0) }
+
+    LaunchedEffect(round) {
+        val session = Td.awaitConnectedSessionOrNull() ?: return@LaunchedEffect
+        val actions = TelegramLinkActions(session.client)
+        val resolved = LinkedHashMap<String, BuiltInCard>()
+        for (channel in BuiltInChannels.ALL) {
+            val preview = actions.previewInvite(channel.invite).getOrNull()
+            if (preview == null) {
+                resolved[channel.inviteHash] = BuiltInCard.Gone
+                continue
+            }
+            if (!preview.alreadyMember || preview.chatId == 0L) {
+                resolved[channel.inviteHash] = BuiltInCard.Join(preview)
+                continue
+            }
+            var fresh = 0
+            if (channel == BuiltInChannels.J_MOVIES) {
+                val posts = runCatching { actions.recentPosts(preview.chatId) }.getOrDefault(emptyList())
+                val seen = runCatching { settings.builtInChannelSeenNow() }.getOrDefault(0L)
+                fresh = ChannelNews.newVideos(posts, seen)
+                runCatching { settings.setBuiltInChannelSeen(ChannelNews.seenAfter(posts, seen)) }
+                streams = StreamLinks.inPosts(posts, preview.title.ifBlank { channel.name })
+            }
+            resolved[channel.inviteHash] = BuiltInCard.Member(preview, fresh)
+        }
+        cards = resolved
+    }
+
+    fun join(channel: BuiltInChannel) {
+        if (joining != null) return
+        joining = channel.inviteHash
+        scope.launch {
+            val session = Td.awaitConnectedSessionOrNull()
+            val joined = session?.let {
+                runCatching { TelegramLinkActions(it.client).joinInvite(channel.invite) }.getOrNull()
+            }
+            joining = null
+            if (joined != null && joined.isSuccess) {
+                // A chat to open goes straight to it; a join the admins approve first (no
+                // chat yet) just turns the card over to what the preview says now.
+                joined.getOrNull()?.takeIf { it != 0L }?.let(onOpenChat)
+                round++
+            } else {
+                cards = cards.toMutableMap().also { map ->
+                    (map[channel.inviteHash] as? BuiltInCard.Join)?.let { map[channel.inviteHash] = it.copy(failed = true) }
+                }
+            }
+        }
+    }
+
+    val shown = BuiltInChannels.ALL.mapNotNull { channel ->
+        cards[channel.inviteHash]?.takeIf { it !is BuiltInCard.Gone }?.let { channel to it }
+    }
+    if (shown.isEmpty() && streams.isEmpty()) return
+    Column {
+        if (shown.isNotEmpty()) {
+            RowHeading(s.homeChannelsTitle, start = start, end = end, seeAll = null)
+            shown.forEach { (channel, card) ->
+                BuiltInChannelCard(
+                    channel = channel,
+                    card = card,
+                    joining = joining == channel.inviteHash,
+                    start = start,
+                    end = end,
+                    onJoin = { join(channel) },
+                    onOpen = onOpenChat,
+                )
+            }
+            // Share J Player, beside the channels it names: the app's release page and both
+            // invite links, as one short message (the About page stays name, icon, version).
+            Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Tone.surfaceHigh)
+                        .clickable {
+                            val text = buildString {
+                                append(s.shareAppLine)
+                                append('\n').append(BuiltInChannels.RELEASES_URL)
+                                BuiltInChannels.ALL.forEach { channel ->
+                                    append('\n').append(channel.name).append(": ").append(channel.inviteUrl)
+                                }
+                            }
+                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                            runCatching {
+                                context.startActivity(Intent.createChooser(send, s.commonShare).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(TmIcons.Share, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    M3Text(s.shareAppTitle, style = M3MaterialTheme.typography.titleSmall, color = Tone.text)
+                }
+            }
+        }
+        if (streams.isNotEmpty()) {
+            RowHeading(s.homeLiveTitle, start = start, end = end, seeAll = null)
+            LazyRow(
+                contentPadding = PaddingValues(start = start, end = end),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(streams, key = { it.url }) { link ->
+                    StreamCard(link) { onPlayStream(link) }
+                }
+            }
+        }
+    }
+}
+
+/** One built-in channel's card: its name and facts, a Join for a stranger, an open for a member. */
+@Composable
+private fun BuiltInChannelCard(
+    channel: BuiltInChannel,
+    card: BuiltInCard,
+    joining: Boolean,
+    start: Dp,
+    end: Dp,
+    onJoin: () -> Unit,
+    onOpen: (Long) -> Unit,
+) {
+    val s = LocalStrings.current
+    val preview = when (card) {
+        is BuiltInCard.Join -> card.preview
+        is BuiltInCard.Member -> card.preview
+        BuiltInCard.Gone -> return
+    }
+    val name = preview.title.ifBlank { channel.name }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = start, end = end, top = 4.dp, bottom = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tone.surfaceHigh)
+            .then(if (card is BuiltInCard.Member) Modifier.clickable { onOpen(preview.chatId) } else Modifier)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(Tone.accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            M3Text(
+                name.trim().firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
+                style = M3MaterialTheme.typography.titleMedium,
+                color = Tone.onAccent,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            M3Text(name, style = M3MaterialTheme.typography.titleSmall, color = Tone.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val line = when {
+                card is BuiltInCard.Join && card.failed -> s.homeChannelJoinFailed to Tone.danger
+                card is BuiltInCard.Join && preview.memberCount > 0 -> s.chatsInfoSubscribers(preview.memberCount) to Tone.muted
+                card is BuiltInCard.Member && card.newVideos > 0 -> s.homeChannelNewVideos(card.newVideos) to Tone.accent
+                else -> null
+            }
+            if (line != null) {
+                M3Text(line.first, style = M3MaterialTheme.typography.bodySmall, color = line.second, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (card is BuiltInCard.Join) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Tone.accent)
+                    .clickable(enabled = !joining, onClick = onJoin)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                M3Text(
+                    if (joining) s.commonLoading else s.linkJoinNamed(name),
+                    style = M3MaterialTheme.typography.labelLarge,
+                    color = Tone.onAccent,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** One stream's card in the Live row: the name it was posted with, and its badge. */
+@Composable
+private fun StreamCard(link: StreamLink, onClick: () -> Unit) {
+    val s = LocalStrings.current
+    Column(
+        Modifier
+            .width(200.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tone.surfaceHigh)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (link.live) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(Tone.danger).padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    M3Text(s.homeLiveBadge, style = M3MaterialTheme.typography.labelSmall, color = Color.White)
+                }
+            } else {
+                Icon(TmIcons.Play, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        M3Text(
+            link.name,
+            style = M3MaterialTheme.typography.titleSmall,
+            color = Tone.text,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 /**
  * A row still asking Telegram: blank cards the size of the real ones, so nothing jumps when it
  * fills. The caption is the cards' own, in the same type with nothing visible in it, rather than
@@ -1405,6 +1680,7 @@ private val STRIP_GAP = 12.dp
 /** The lazy key of the phone's featured carousel at the top of Home. */
 private const val FEATURED_KEY = "featured"
 private const val SURPRISE_KEY = "surprise"
+private const val BUILT_IN_KEY = "built-in"
 
 /** How far Home moves down on a television when Down finds no row on screen below the remote. */
 private val TV_DOWN_STEP = 200.dp

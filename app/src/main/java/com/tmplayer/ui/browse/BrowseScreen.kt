@@ -681,6 +681,13 @@ internal fun BrowseScreen(
                                     query = ""
                                 },
                                 onOpenChat = { id -> data.chats.firstOrNull { it.id == id }?.let(onOpenChat) },
+                                // A stream from the built-in channel's posts plays in the player
+                                // itself, live ones as live (v1.0.10).
+                                onPlayStream = { link ->
+                                    runCatching {
+                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
+                                    }
+                                },
                                 // Starred chats get a row each under Recently added (2026-10-23), so
                                 // with none the hint says how to add them; only once the rows are
                                 // built, since it flashed up while they were still coming in.

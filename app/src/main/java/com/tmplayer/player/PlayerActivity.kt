@@ -459,6 +459,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private var fileId = 0
 
     /**
+     * A stream link's address, when this player was opened on one from the built-in channel
+     * (v1.0.10): no Telegram file stands behind it at all, and [streamLive] says whether it
+     * is a live stream (an HLS address, joined at its live edge, badged LIVE, with no saved
+     * place ever read or written) or a plain file at the other end of a link.
+     */
+    private var streamUrl: String? = null
+    private var streamLive = false
+
+    /**
      * The video's file in the Downloads folder, when it is a download, and then the whole of
      * playback comes from it: no TDLib stream, no room check, no claim on the cache, no connection.
      * Set once, before the player is built.
@@ -1769,6 +1778,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** The video's own fields, from the intent that opened it or the one [continueUnseen] set. */
     private fun readItem(from: Intent) {
         fileId = from.getIntExtra(EXTRA_FILE_ID, 0)
+        streamUrl = from.getStringExtra(EXTRA_STREAM_URL)?.takeIf { it.isNotBlank() }
+        streamLive = streamUrl != null && from.getBooleanExtra(EXTRA_STREAM_LIVE, false)
         pressedAt = from.getLongExtra(EXTRA_PRESSED_AT, 0L)
         openedAt = SystemClock.elapsedRealtime()
         startStages.set(0)
@@ -1828,12 +1839,39 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
+     * Opens a stream link (v1.0.10): the address is the whole of it, so there is nothing to
+     * look up and nothing to remember. No saved place is read (a live stream joins at its
+     * live edge, and the player is simply never sought), no copies, episodes or skip times
+     * are looked for, and nothing is marked or written when it ends. The settings the player
+     * is built with keep the defaults a first open finds them with. The session is still
+     * awaited, so the player opens in the app's signed-in state like any other.
+     */
+    private fun openStream() {
+        statusTitle.text = mediaTitle.ifBlank { L.playerOpening }
+        showStatus(L.playerConnecting)
+        showArtwork()
+        statusMeta?.text = chatTitle.ifBlank { mediaSubtitle }
+        statusMeta?.visibility =
+            if (statusMeta?.text.isNullOrBlank()) View.GONE else View.VISIBLE
+        itemScope.launch {
+            val session = Td.awaitAuthorizedSession()
+            if (!session.isCurrent()) return@launch
+            markStart("session ready", STAGE_SESSION)
+            startPlayback(session.client)
+        }
+    }
+
+    /**
      * Everything one video asks for as it opens: the loading sheet, the searches for its episodes,
      * copies and skip times, its saved place, and the stream itself. Run from [onCreate], and again
      * by [continueUnseen] for the next episode played in place; the work that belongs to one video
      * runs in [itemScope], which a change of video cancels.
      */
     private fun openItem() {
+        if (streamUrl != null) {
+            openStream()
+            return
+        }
         if (fileId <= 0) {
             showError(L.playerNothingToPlay, retryable = false)
             return
@@ -2111,7 +2149,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             built.addListener(playerListener)
             // A plain file for a download, which the default data source reads directly; the TDLib
             // stream for everything else, carrying its type so the right reader is tried first.
-            val source = joinedSource ?: downloadedVideo?.uri()
+            // A stream link (v1.0.10) is its own address, ahead of all of those.
+            val source = streamUrl?.let { android.net.Uri.parse(it) } ?: joinedSource ?: downloadedVideo?.uri()
                 ?: tdFileUri(fileId, streamType(mediaMime, mediaFileName))
             // A stream also holds the Wi-Fi up while it plays, which matters once the screen is
             // off and the sound plays on ([PlaybackService]); a file on the disk needs only the CPU.
@@ -2121,7 +2160,19 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // notification): no video decoding until somebody can see it.
             if (inBackgroundAudio) hideVideoUnseen(built)
             subtitleFiles.metadata = sessionMetadata()
-            built.setMediaItem(subtitleFiles.item(source))
+            if (streamUrl != null) {
+                // A stream carries no subtitle files with it: the plain item. A live one is
+                // named as HLS, so the live reader is chosen even where a query string hides
+                // the address's ending, and it joins at the live edge by itself.
+                built.setMediaItem(
+                    androidx.media3.common.MediaItem.Builder()
+                        .setUri(source)
+                        .apply { if (streamLive) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8) }
+                        .build(),
+                )
+            } else {
+                built.setMediaItem(subtitleFiles.item(source))
+            }
             if (resumeMs > 0) built.seekTo(resumeMs)
             prepareStereo(built)
             // With a cast up (the next episode, or a video opened while casting) the TV plays it
@@ -2554,6 +2605,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * ([VideoCopies.heightOf]). Null, and no badge, when neither says what is playing.
      */
     private fun playingBadge(): String? {
+        // A live stream badges itself, the word every screen already knows it by (v1.0.10).
+        if (streamLive) return "LIVE"
         val height = if (playingQuality != 0) playingQuality else VideoCopies.heightOf(currentItem())
         return height?.let { VideoCopies.badgeForHeight(it) }
     }
@@ -3682,22 +3735,29 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // tdfile:// goes to TDLib; DefaultDataSource sends file:// (a subtitle file loaded from
             // the phone, copied into the cache) to the disk and passes every other scheme down.
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(
-                    DefaultDataSource.Factory(
-                        this,
-                        // A video joined from byte pieces reads each piece the way a whole file
-                        // is read: TDLib's stream, or the disk for a downloaded piece.
-                        JoinedDataSource.Factory(
-                            TdDataSource.Factory(client),
-                            DefaultDataSource.Factory(this, TdDataSource.Factory(client)),
-                            ::leftPiece,
-                        ),
-                    ).setTransferListener(byteCounter),
-                    extractors,
-                )
-                    // A text track saved in a Windows code page rather than UTF-8 reads in its
-                    // language's page instead of as mojibake ([SubtitleEncoding]).
-                    .setSubtitleParserFactory(SubtitleEncoding(androidx.media3.extractor.text.DefaultSubtitleParserFactory())),
+                if (streamUrl != null) {
+                    // A stream link (v1.0.10) reads off the network itself: the plain data
+                    // source, which speaks http and https, and the HLS reader for the live
+                    // ones. The Telegram chain below cannot open an https address at all.
+                    DefaultMediaSourceFactory(DefaultDataSource.Factory(this), extractors)
+                } else {
+                    DefaultMediaSourceFactory(
+                        DefaultDataSource.Factory(
+                            this,
+                            // A video joined from byte pieces reads each piece the way a whole file
+                            // is read: TDLib's stream, or the disk for a downloaded piece.
+                            JoinedDataSource.Factory(
+                                TdDataSource.Factory(client),
+                                DefaultDataSource.Factory(this, TdDataSource.Factory(client)),
+                                ::leftPiece,
+                            ),
+                        ).setTransferListener(byteCounter),
+                        extractors,
+                    )
+                        // A text track saved in a Windows code page rather than UTF-8 reads in its
+                        // language's page instead of as mojibake ([SubtitleEncoding]).
+                        .setSubtitleParserFactory(SubtitleEncoding(androidx.media3.extractor.text.DefaultSubtitleParserFactory()))
+                },
             )
             .setSeekBackIncrementMs(Skip.BACK_MS)
             .setSeekForwardIncrementMs(Skip.FORWARD_MS)
@@ -4291,10 +4351,20 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 }
                 // Already moved on from the credits; the file running out behind it changes nothing.
                 Player.STATE_ENDED -> {
-                    // Said to the service before Media3's notification hears of the end: the
-                    // foreground lasts through the gap only when another episode follows.
-                    if (inBackgroundAudio) PlaybackService.setPlayWhenReady(!creditsSkipped && endLeadsOn())
-                    if (!creditsSkipped) onVideoEnded()
+                    // A stream (v1.0.10) ends on its own terms: a live one running out is
+                    // the stream's end, said plainly on the sheet with a way to ask again;
+                    // a file at a link's end is simply finished, with nothing marked
+                    // watched and no next episode, there being none.
+                    if (streamLive) {
+                        showError(L.playerStreamEnded, retryable = true)
+                    } else if (streamUrl != null) {
+                        showFinished()
+                    } else {
+                        // Said to the service before Media3's notification hears of the end: the
+                        // foreground lasts through the gap only when another episode follows.
+                        if (inBackgroundAudio) PlaybackService.setPlayWhenReady(!creditsSkipped && endLeadsOn())
+                        if (!creditsSkipped) onVideoEnded()
+                    }
                 }
                 else -> Unit
             }
@@ -4330,6 +4400,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         }
 
         private fun handlePlayerError(error: PlaybackException) {
+            // A stream (v1.0.10) has no other decoder, fresher id or second copy to try: it
+            // is there or it is not, and the sheet says so plainly, with the one retry that
+            // asks the address again.
+            if (streamUrl != null) {
+                showError(L.playerStreamUnavailable, retryable = true)
+                return
+            }
             // Worked out before anything else looks at the failure: the sheet shows the button
             // only when the other decoder can take this format.
             decoderPlan = DecoderSwitch.planFor(player, error)
@@ -9124,6 +9201,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         private const val EXTRA_QUALITY_CODECS = "quality_codecs"
         private const val EXTRA_QUALITY_SIZES = "quality_sizes"
         private const val EXTRA_OUTSIDE_APP_TASK = "outside_app_task"
+
+        /** A stream link's address (v1.0.10): the player opened on a URL, not a Telegram file. */
+        private const val EXTRA_STREAM_URL = "stream_url"
+
+        /** Whether that stream is live: an HLS address, joined at its live edge. */
+        private const val EXTRA_STREAM_LIVE = "stream_live"
         /** How long the note about a missing piece stays up as the video starts. */
         private const val PIECES_NOTICE_MS = 6_000L
 
@@ -9429,6 +9512,19 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                         Translator.messages.formatter.size(item.sizeBytes),
                     ).filter { it.isNotEmpty() }.joinToString("  ·  "),
                 )
+            }
+
+        /**
+         * The player on a stream link from the built-in channel (v1.0.10): [link]'s address
+         * and the name it was posted with, and the channel it was posted in as the line
+         * under the name. No file id travels with it, because there is no Telegram file.
+         */
+        fun streamIntent(context: Context, link: com.tmplayer.data.StreamLink): Intent =
+            Intent(context, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_STREAM_URL, link.url)
+                putExtra(EXTRA_STREAM_LIVE, link.live)
+                putExtra(EXTRA_TITLE, link.name)
+                putExtra(EXTRA_CHAT_TITLE, com.tmplayer.data.BuiltInChannels.J_MOVIES.name)
             }
     }
 }

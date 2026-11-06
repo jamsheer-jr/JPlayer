@@ -384,6 +384,9 @@ dependencies {
     // tracks the stick can't decode natively. The transport UI and the track picker are the app's
     // own; leanback stays only for the TV player's theme (values-television/themes.xml).
     implementation(libs.androidx.media3.exoplayer)
+    // HLS, for the built-in channel's live streams (v1.0.10): ExoPlayer reads a live .m3u8
+    // only with this module, at the same pinned Media3 version as the rest.
+    implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
     // Only for 3D video: the anaglyph shader ([Stereo3dEffect]). Nothing goes through it otherwise.
     implementation(libs.androidx.media3.effect)
