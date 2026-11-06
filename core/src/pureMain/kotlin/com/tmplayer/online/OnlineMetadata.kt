@@ -661,6 +661,7 @@ class OnlineMetadata(
         val s = store.now
         if (!s.enabled || !tmdbUsable(s)) return emptyList()
         trendingKept?.let { (at, refs) -> if (now() - at < TRENDING_TTL_MS) return refs }
+        if (paused(MetaProvider.Tmdb)) return emptyList()
         val key = activeKey(s)
         val reply = retrying { tmdb.trending(key, tmdbLanguage()) }
         trouble(MetaProvider.Tmdb, reply, key)?.let { return emptyList() }
