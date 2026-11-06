@@ -360,6 +360,7 @@ class GarbageInputTest {
                     tmdb.season("k", "1", 1, "en")
                     tmdb.extras("k", true, "1", "en", "GB")
                     tmdb.extras("k", false, "1", "en", "GB")
+                    tmdb.trending("k", "en")
                 }
             }
             val maze = TvMazeApi(http, limiter, "t")

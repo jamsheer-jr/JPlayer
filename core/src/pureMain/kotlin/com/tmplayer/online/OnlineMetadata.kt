@@ -646,6 +646,29 @@ class OnlineMetadata(
         return rememberedExtras(extrasKey(info, tmdbLanguage(), region()), info)
     }
 
+    /** The last trending answer and when it landed, in memory only: [trending]. */
+    @Volatile
+    private var trendingKept: Pair<Long, List<MetaRef>>? = null
+
+    /**
+     * TMDB's trending titles this week, in TMDB's order, as their refs: Home's Trending now
+     * shelf matches the viewer's own cached titles against them by [MetaRef.matchKey]. Asked
+     * at most once in a few hours and kept in memory only (the list is the same for everyone
+     * and says nothing about any title of the viewer's). Lookups off, no usable TMDB key,
+     * TMDB refusing or unreachable: an empty list, and no shelf.
+     */
+    suspend fun trending(): List<MetaRef> {
+        val s = store.now
+        if (!s.enabled || !tmdbUsable(s)) return emptyList()
+        trendingKept?.let { (at, refs) -> if (now() - at < TRENDING_TTL_MS) return refs }
+        val key = activeKey(s)
+        val reply = retrying { tmdb.trending(key, tmdbLanguage()) }
+        trouble(MetaProvider.Tmdb, reply, key)?.let { return emptyList() }
+        val refs = (reply as MetaReply.Ok).value
+        trendingKept = now() to refs
+        return refs
+    }
+
     private val cardScores = LruMap<String, CardScore>(CARD_SCORE_ENTRIES)
 
     private fun rememberedExtras(key: String, info: MetaInfo): MetaExtras? {
@@ -1081,6 +1104,8 @@ class OnlineMetadata(
         const val ENGLISH = "en-US"
         const val REFUSED_RETRY_MS = 24L * 60 * 60 * 1000
         const val RETRY_MS = 1_000L
+        /** How long a trending answer is kept before Home asks again: the week's list barely moves. */
+        const val TRENDING_TTL_MS = 6L * 60 * 60 * 1000
         /** How long a detail page waits for OMDb's scores before showing the provider's alone. */
         const val OMDB_WAIT_MS = 4_000L
         /** How long the other sites' scores are kept before a visit asks for them again: 30 days. */

@@ -168,6 +168,31 @@ class TmdbApi(
         }
 
     /**
+     * What is trending this week, films and shows together, in TMDB's own order, as refs for
+     * matching against the titles a viewer already has (Home's Trending now shelf). People
+     * ride in the same list and are skipped: a person is not a title. Reading is garbage
+     * safe: an entry with no usable id, or a kind that is neither a film nor a show, is
+     * left out and the rest still read.
+     */
+    suspend fun trending(key: String, language: String): MetaReply<List<MetaRef>> =
+        get(key, "trending/all/week", "language=$language") { json ->
+            objects(json.optJSONArray("results")).mapNotNull { entry ->
+                val kind = when (entry.optString("media_type")) {
+                    "movie" -> MetaKind.Film
+                    "tv" -> MetaKind.Show
+                    else -> return@mapNotNull null
+                }
+                val id = entry.optInt("id").takeIf { it > 0 }?.toString() ?: return@mapNotNull null
+                MetaRef(
+                    provider = MetaProvider.Tmdb,
+                    kind = kind,
+                    id = id,
+                    title = entry.optString(if (kind == MetaKind.Film) "title" else "name"),
+                )
+            }
+        }
+
+    /**
      * The detail page's extras in one call: [MetaExtras] from the title's own page with its credits,
      * videos, age ratings and recommendations appended (and similar titles, for when nobody has
      * recommended any). Videos in the UI language and English, and those with no language.
