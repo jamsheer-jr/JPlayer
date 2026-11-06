@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -79,7 +80,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import android.content.Intent
 import androidx.compose.ui.platform.LocalContext
+import com.tmplayer.App
 import com.tmplayer.data.BuiltInChannels
+import com.tmplayer.data.HiddenStreams
 import com.tmplayer.data.HomeRow
 import com.tmplayer.data.HomeRows
 import com.tmplayer.data.MediaItem
@@ -96,6 +99,9 @@ import com.tmplayer.data.ShelfEntry
 import com.tmplayer.data.WatchLaterRecord
 import com.tmplayer.ui.components.ScrollToTop
 import com.tmplayer.ui.components.FastScroller
+import com.tmplayer.ui.components.MenuAction
+import com.tmplayer.ui.components.TvMenu
+import com.tmplayer.ui.components.holdable
 import com.tmplayer.ui.components.TmSecondaryButton
 import com.tmplayer.ui.components.WithinMargins
 import com.tmplayer.ui.components.edgeFade
@@ -104,6 +110,7 @@ import com.tmplayer.ui.i18n.LocalStrings
 import com.tmplayer.ui.icons.TmIcons
 import com.tmplayer.ui.online.LocalOnlineArt
 import com.tmplayer.ui.theme.Corner
+import com.tmplayer.ui.theme.Focus
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
 import kotlinx.coroutines.launch
@@ -1364,6 +1371,15 @@ private fun BuiltInHomeSections(
     onPlayStream: (StreamLink) -> Unit,
 ) {
     var streams by remember { mutableStateOf<List<StreamLink>>(emptyList()) }
+    // The streams the viewer took out of this row (v1.0.11, owner): kept in Settings by the
+    // post each one came from ([HiddenStreams]), so every later load leaves them out the same
+    // way, while a repost (a new post) shows again. The posts are read fresh from Telegram on
+    // every load and kept nowhere else, so a stream whose post is deleted in the channel is
+    // gone from the row on the next load with nothing to clear.
+    val context = LocalContext.current
+    val settings = remember { SettingsStore(context) }
+    val hidden by remember(settings) { settings.hiddenStreams }.collectAsState(initial = emptySet())
+    var menuFor by remember { mutableStateOf<StreamLink?>(null) }
 
     LaunchedEffect(Unit) {
         val session = Td.awaitConnectedSessionOrNull() ?: return@LaunchedEffect
@@ -1375,29 +1391,52 @@ private fun BuiltInHomeSections(
         // own post of a file wherever copies fold (owner, 2026-11-06).
         BuiltInChannels.jMoviesChatId = preview.chatId
         val posts = runCatching { actions.recentPosts(preview.chatId) }.getOrDefault(emptyList())
-        streams = StreamLinks.inPosts(posts, preview.title.ifBlank { channel.name })
+        streams = StreamLinks.inPosts(posts, preview.chatId, preview.title.ifBlank { channel.name })
     }
 
+    val shown = HiddenStreams.visible(streams, hidden)
     val touch = isTouch()
-    if (touch && streams.isEmpty()) return
+    if (touch && shown.isEmpty()) return
+    val s = LocalStrings.current
     Column {
         if (!touch) {
             Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
                 SharePlayerPill()
             }
         }
-        if (streams.isNotEmpty()) {
-            val s = LocalStrings.current
+        if (shown.isNotEmpty()) {
             RowHeading(s.homeLiveTitle, start = start, end = end, seeAll = null)
             LazyRow(
                 contentPadding = PaddingValues(start = start, end = end),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(streams, key = { it.url }) { link ->
-                    StreamCard(link) { onPlayStream(link) }
+                items(shown, key = { it.url }) { link ->
+                    StreamCard(link, onClick = { onPlayStream(link) }, onHold = { menuFor = link })
                 }
             }
         }
+    }
+    menuFor?.let { link ->
+        TvMenu(
+            title = link.name,
+            actions = listOf(
+                MenuAction(
+                    label = s.homeLiveRemove,
+                    icon = TmIcons.Delete,
+                    detail = s.homeLiveRemoveDetail,
+                    destructive = true,
+                ) {
+                    menuFor = null
+                    // Out of the row at once, and into the stored set on the app's scope, as
+                    // the other Home writes run, so leaving Home straight away keeps it.
+                    streams = streams.filterNot { it.url == link.url }
+                    App.backgroundScope.launch {
+                        runCatching { settings.setHiddenStreams(HiddenStreams.plus(settings.hiddenStreamsNow(), link)) }
+                    }
+                },
+            ),
+            onDismiss = { menuFor = null },
+        )
     }
 }
 
@@ -1454,16 +1493,27 @@ private fun OpenLinkPill(onClick: () -> Unit) {
     }
 }
 
-/** One stream's card in the Live row: the name it was posted with, and its badge. */
+/**
+ * One stream's card in the Live row: the name it was posted with, and its badge. A press
+ * plays it; a long press, or a hold of OK on the remote, opens its menu ([holdable], the
+ * tiles' own arrangement), whose one action takes the stream out of the row.
+ */
 @Composable
-private fun StreamCard(link: StreamLink, onClick: () -> Unit) {
+private fun StreamCard(link: StreamLink, onClick: () -> Unit, onHold: () -> Unit) {
     val s = LocalStrings.current
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
     Column(
         Modifier
             .width(200.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(Tone.surfaceHigh)
-            .clickable(onClick = onClick)
+            .border(
+                width = Focus.Edge,
+                color = if (focused) Tone.accent else Color.Transparent,
+                shape = RoundedCornerShape(16.dp),
+            )
+            .holdable(interactionSource = interactions, onClick = onClick, onHold = onHold)
             .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

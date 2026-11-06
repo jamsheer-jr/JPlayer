@@ -1038,6 +1038,8 @@
     "first_open_saved": "Open Saved Messages",
     "first_title": "Get your first video in",
     "live_badge": "LIVE",
+    "live_remove": "Remove from Live",
+    "live_remove_detail": "Hides this stream here. It stays in the channel, and a new post of it shows again",
     "live_title": "Live now",
     "new_badge": "New",
     "new_episode": "{code}, new",
