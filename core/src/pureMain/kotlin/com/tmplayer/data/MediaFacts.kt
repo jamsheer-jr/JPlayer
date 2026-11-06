@@ -160,7 +160,7 @@ data class MediaFacts(
             "Jio" to word("jc|jio|jiocinema"),
             "Aha" to word("aha"),
             "iQIYI" to word("iq|iqiyi"),
-            "Rakuten Viki" to word("viki"),
+            "Rakuten Viki" to word("viki|rakuten[ ._-]?viki"),
         )
 
         /**
