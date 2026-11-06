@@ -1,5 +1,6 @@
 package com.tmplayer.data
 
+import com.tmplayer.data.DetailAction.AddToCollection
 import com.tmplayer.data.DetailAction.AddWatchLater
 import com.tmplayer.data.DetailAction.CancelDownload
 import com.tmplayer.data.DetailAction.Download
@@ -36,6 +37,16 @@ class DetailActionsTest {
             listOf(Play, MarkWatched, Download),
             DetailActions.of(phoneGrid),
         )
+    }
+
+    @Test
+    fun `collections are offered only where the panel can take them`() {
+        assertFalse(AddToCollection in DetailActions.of(phoneGrid))
+        val actions = DetailActions.of(phoneGrid.copy(canCollect = true))
+        assertTrue(AddToCollection in actions)
+        // Nothing is copied by it, so a protected chat keeps the offer.
+        assertTrue(AddToCollection in DetailActions.of(phoneGrid.copy(canBeSaved = false, canCollect = true)))
+        assertFalse(DetailActions.keepsACopy(AddToCollection))
     }
 
     @Test

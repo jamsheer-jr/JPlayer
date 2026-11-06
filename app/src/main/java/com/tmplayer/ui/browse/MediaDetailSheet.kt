@@ -240,6 +240,62 @@ internal fun MediaDetailOpened(
         return
     }
 
+    // The viewer's own collections (J Player, 2026-11-06): pick one to put this title in or take
+    // it out, or name a new one. The write runs on the app's scope, as the Watch later write
+    // does, so closing the sheet at once does not lose it.
+    var collecting by remember { mutableStateOf(false) }
+    var namingCollection by remember { mutableStateOf(false) }
+    val collectionsNow by remember(settings) { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val itemKey = SettingsStore.progressKey(item.chatId, item.messageId)
+    if (namingCollection) {
+        com.tmplayer.player.BookmarkNoteSheet(
+            title = s.detailNewCollection,
+            initial = "",
+            saveLabel = s.gridRenameSave,
+            onSave = { text ->
+                val name = text.trim()
+                if (name.isNotEmpty()) {
+                    App.backgroundScope.launch {
+                        runCatching { settings.setCollections(com.tmplayer.data.Collections.toggled(settings.collectionsNow(), name, itemKey)) }
+                    }
+                }
+                namingCollection = false
+                collecting = false
+                if (asMenu) onDismiss()
+            },
+            onDismiss = { if (asMenu) onDismiss() else namingCollection = false },
+            onClose = { if (asMenu) onDismiss() else namingCollection = false },
+            hint = s.detailCollectionName,
+            maxLength = com.tmplayer.data.Collections.MAX_NAME,
+        )
+        return
+    }
+    if (collecting) {
+        TvMenu(
+            title = s.detailAddToCollection,
+            actions = buildList {
+                collectionsNow.forEach { collection ->
+                    add(
+                        MenuAction(
+                            collection.name,
+                            TmIcons.Folder,
+                            detail = if (itemKey in collection.keys) s.detailInCollection else null,
+                        ) {
+                            App.backgroundScope.launch {
+                                runCatching { settings.setCollections(com.tmplayer.data.Collections.toggled(settings.collectionsNow(), collection.name, itemKey)) }
+                            }
+                            collecting = false
+                            if (asMenu) onDismiss()
+                        },
+                    )
+                }
+                add(MenuAction(s.detailNewCollection, TmIcons.Add) { namingCollection = true })
+            },
+            onDismiss = { if (asMenu) onDismiss() else collecting = false },
+        )
+        return
+    }
+
     // The comments under a channel post (CP81).
     val comments = rememberCommentCount(item)
     var commentsOpen by remember { mutableStateOf(false) }
@@ -285,6 +341,7 @@ internal fun MediaDetailOpened(
             // television has no gallery anyone looks at.
             canExport = touch && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q,
             canRemoveFromHistory = true,
+            canCollect = true,
         ),
     )
     val free = DiskInfo.freeLabel(freeBytes)
@@ -375,6 +432,7 @@ internal fun MediaDetailOpened(
                 leave()
             } }
             DetailAction.Rename -> { { renaming = true } }
+            DetailAction.AddToCollection -> { { collecting = true } }
             DetailAction.CommentVideos -> { { commentsOpen = true } }
             DetailAction.ExportCopy -> { {
                 // A second press while this video is copying is the same press again.

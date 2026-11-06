@@ -21,6 +21,9 @@ enum class DetailAction {
     AddWatchLater,
     RemoveWatchLater,
 
+    /** Puts the title in one of the viewer's own collections, or takes it out. See [Collections]. */
+    AddToCollection,
+
     /**
      * Takes the video out of History: its saved place and its watched tick, every copy of it
      * ([HistoryEdits]). Offered while it is part way through.
@@ -81,6 +84,8 @@ data class DetailContext(
     val finished: Boolean = false,
     /** On Watch later; null where the panel does not offer that list at all. */
     val watchLater: Boolean? = null,
+    /** The panel can offer the viewer's own collections ([DetailAction.AddToCollection]). */
+    val canCollect: Boolean = false,
     /** In the Downloads folder. */
     val inDownloads: Boolean = false,
     /**
@@ -131,6 +136,9 @@ object DetailActions {
         add(if (context.finished) DetailAction.MarkUnwatched else DetailAction.MarkWatched)
         // Nothing is copied, only remembered, so a chat that restricts saving keeps this too.
         context.watchLater?.let { add(if (it) DetailAction.RemoveWatchLater else DetailAction.AddWatchLater) }
+        // The viewer's own lists: a name and a key remembered, nothing copied, so a chat that
+        // restricts saving keeps this one too.
+        if (context.canCollect) add(DetailAction.AddToCollection)
         when {
             // On the queue already: the one thing left to offer is taking it off again.
             context.downloading -> add(DetailAction.CancelDownload)

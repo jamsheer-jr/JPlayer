@@ -359,7 +359,7 @@ private fun DetailPane(state: ShellState, request: DetailRequest) {
                     runCatching { state.settings.correct(com.tmplayer.data.VideoCorrections.filesOf(item)) { it.copy(wrongMatch = wrong) } }
                 }
             }
-            DetailAction.Rename, DetailAction.CommentVideos -> Unit
+            DetailAction.Rename, DetailAction.CommentVideos, DetailAction.AddToCollection -> Unit
             DetailAction.ExportCopy -> outlives.launch {
                 val file = record?.localPath?.let(::File)?.takeIf { it.isFile }
                 if (file == null) {
