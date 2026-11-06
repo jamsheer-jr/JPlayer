@@ -32,6 +32,19 @@ class SubtitleStyleTest {
     }
 
     @Test
+    fun `size steps down as well as up, wrapping at both ends`() {
+        // The pinch on the lines steps the same sizes the panel offers, in both directions.
+        assertEquals(SubtitleSize.Medium, SubtitleStyle(SubtitleSize.Large).previousSize().size)
+        assertEquals(SubtitleSize.ExtraLarge, SubtitleStyle(SubtitleSize.Small).previousSize().size)
+        assertEquals(SubtitleSize.Small, SubtitleStyle(SubtitleSize.ExtraLarge).nextSize().size)
+        SubtitleSize.entries.forEach { size ->
+            val style = SubtitleStyle(size)
+            assertEquals(size, style.nextSize().previousSize().size)
+            assertEquals(size, style.previousSize().nextSize().size)
+        }
+    }
+
+    @Test
     fun `every choice reads back by name and a step beats the old box switch`() {
         val style = SubtitleStyle(
             size = SubtitleSize.Small,

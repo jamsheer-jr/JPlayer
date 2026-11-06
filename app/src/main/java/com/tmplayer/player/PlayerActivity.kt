@@ -2269,6 +2269,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 onZoom = ::zoomBy,
                 onZoomEnd = ::zoomEnded,
                 onPan = ::panZoom,
+                onSubtitles = ::onSubtitleLines,
+                subtitleLift = { subtitleStyleNow().lift },
+                onSubtitleLift = ::dragSubtitles,
+                onSubtitleSize = ::pinchSubtitleSize,
                 positionMs = { player?.currentPosition ?: 0L },
                 durationMs = { player?.duration?.takeIf { it > 0 } ?: 0L },
                 onSeekTo = { at -> if (!refuseSeek()) player?.seekTo(at) },
@@ -5646,6 +5650,55 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             view.setBottomPaddingFraction(subtitleBottomFraction())
             view.setStyle(SubtitleLook.captionStyle(subtitleStyle, subtitleScriptFace))
         }
+    }
+
+    /**
+     * Whether a touch point, in the window frame the gestures are fed in, lands on the
+     * subtitle lines as they stand: the band the lines showing occupy, from a little above
+     * the first of them down to the picture's bottom edge, across the picture the subtitle
+     * view is fitted to. False when no lines are showing, so a drag or a pinch there keeps
+     * its usual meaning on a video without subtitles on screen.
+     */
+    private fun onSubtitleLines(x: Float, y: Float): Boolean {
+        if (shownCues.isEmpty()) return false
+        val view = subtitleView
+        if (view.width <= 0 || view.height <= 0) return false
+        val root = findViewById<View>(R.id.player_root)
+        val origin = IntArray(2)
+        val at = IntArray(2)
+        root.getLocationInWindow(origin)
+        view.getLocationInWindow(at)
+        val left = (at[0] - origin[0]).toFloat()
+        val top = at[1] - origin[1] - view.translationY
+        val px = x - origin[0]
+        val py = y - origin[1]
+        if (px < left || px > left + view.width) return false
+        val lineHeight = 1.25f * subtitleTextFraction() * view.height
+        val textTop = top + view.height * (1f - subtitleBottomFraction()) - shownCues.size * lineHeight
+        val slack = 16f * resources.displayMetrics.density
+        return py >= textTop - slack && py <= top + view.height
+    }
+
+    /**
+     * A drag on the subtitle lines: the lift the panel's drag slider writes, through the
+     * same change the panel makes, so the two never disagree and the setting persists the
+     * way it always has. The readout says where the lines now stand.
+     */
+    private fun dragSubtitles(lift: Float) {
+        val style = subtitleStyleNow()
+        if (style.lift == lift) return
+        val next = style.copy(lift = lift)
+        changeSubtitleStyle(next)
+        showGestureFeedback(L.tracksSubtitlePosition + " " + Translator.messages.formatter.percent(next.bottomFraction.toDouble()))
+    }
+
+    /** One step of a pinch on the subtitle lines: one of the panel's own size steps. */
+    private fun pinchSubtitleSize(expanding: Boolean) {
+        val style = subtitleStyleNow()
+        val next = if (expanding) style.nextSize() else style.previousSize()
+        if (next == style) return
+        changeSubtitleStyle(next)
+        showGestureFeedback(next.size.label)
     }
 
     /**

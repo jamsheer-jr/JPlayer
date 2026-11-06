@@ -147,6 +147,9 @@ data class SubtitleStyle(
     /** The next size up, wrapping back to the smallest: what a single remote button can drive. */
     fun nextSize(): SubtitleStyle = copy(size = SubtitleSize.entries.cycle(size))
 
+    /** The next size down, wrapping back to the largest: a pinch closing on the lines. */
+    fun previousSize(): SubtitleStyle = copy(size = SubtitleSize.entries.cycleBack(size))
+
     fun nextPosition(): SubtitleStyle = copy(position = SubtitlePosition.entries.cycle(position))
 
     fun nextColour(): SubtitleStyle = copy(colour = SubtitleColour.entries.cycle(colour))
@@ -260,6 +263,8 @@ data class SubtitleStyle(
         )
 
         private fun <T> List<T>.cycle(current: T): T = this[(indexOf(current) + 1) % size]
+
+        private fun <T> List<T>.cycleBack(current: T): T = this[(indexOf(current) + size - 1) % size]
     }
 }
 

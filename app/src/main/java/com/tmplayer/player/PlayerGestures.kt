@@ -9,6 +9,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.Window
+import com.tmplayer.player.SubtitleStyle
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -24,7 +25,9 @@ import kotlin.math.roundToInt
  * freely around the fingers' centre, without the fingers' travel dragging the picture sideways
  * with it; enlarged, a mostly vertical drag moves the picture about, while a mostly sideways
  * drag still scrubs, as in MX Player, so zooming never takes seeking away (on Android 6, where
- * the video surface cannot follow a zoom, a pinch steps the fitting instead).
+ * the video surface cannot follow a zoom, a pinch steps the fitting instead). A drag that starts
+ * on the subtitle lines and reads mostly up or down moves the lines instead, and a pinch centred
+ * on them sizes their text: both write the subtitle style the panel's own controls write.
  *
  * Fed from the activity's own [android.app.Activity.dispatchTouchEvent] rather than attached to
  * the video view, because once the controller is up its buttons and scrub bar are the views under
@@ -67,6 +70,17 @@ class PlayerGestures(
     private val onZoomEnd: () -> Unit = {},
     /** A one finger drag on the enlarged picture, in pixels. */
     private val onPan: (dx: Float, dy: Float) -> Unit = { _, _ -> },
+    /**
+     * Whether a point, in the frame the events arrive in, lands on the subtitle lines as they
+     * stand: a drag or a pinch that starts there belongs to the subtitles, not to the picture.
+     */
+    private val onSubtitles: (Float, Float) -> Boolean = { _, _ -> false },
+    /** The subtitle lines' lift as a drag on them starts, as a share of the picture's height. */
+    private val subtitleLift: () -> Float = { 0f },
+    /** A drag on the subtitle lines: the lift to set, the same share [subtitleLift] reads. */
+    private val onSubtitleLift: (Float) -> Unit = {},
+    /** One step of a pinch on the subtitle lines: the text a step bigger, or a step smaller. */
+    private val onSubtitleSize: (expanding: Boolean) -> Unit = {},
     /** Where the video is now and how long it is, for the drag that scrubs. */
     private val positionMs: () -> Long = { 0L },
     private val durationMs: () -> Long = { 0L },
@@ -208,6 +222,31 @@ class PlayerGestures(
                     onPan(-distanceX, -distanceY)
                     return true
                 }
+                // A drag on the subtitle lines moves the lines (J Player, 2026-11-06): it
+                // writes the lift the subtitle panel's own slider writes, measured from
+                // where the finger went down, so a drag that wanders and comes back leaves
+                // the lines where they started.
+                if (dragKind == DRAG_SUBTITLE) {
+                    val travel = (from.y - event.y) / viewHeight
+                    onSubtitleLift((dragFrom + travel).coerceIn(0f, SubtitleStyle.MAX_LIFT))
+                    return true
+                }
+                // A drag that starts on the lines and reads mostly up or down is theirs.
+                // One that reads mostly sideways is not: it falls through and is filed
+                // below like any other drag, so seeking from over the subtitles still works.
+                if (dragKind == DRAG_NONE && !pinched && onSubtitles(from.x, from.y)) {
+                    val travelX = event.x - from.x
+                    val travelY = event.y - from.y
+                    val arm = viewHeight * ARM_FRACTION
+                    if (abs(travelX) < arm && abs(travelY) < arm) return false
+                    if (abs(travelY) > abs(travelX)) {
+                        dragKind = DRAG_SUBTITLE
+                        dragFrom = subtitleLift()
+                        val travel = (from.y - event.y) / viewHeight
+                        onSubtitleLift((dragFrom + travel).coerceIn(0f, SubtitleStyle.MAX_LIFT))
+                        return true
+                    }
+                }
                 // Enlarged, a mostly vertical drag moves the picture, but a mostly sideways
                 // one still scrubs (MX Player's way): zooming must not take seeking away.
                 // Until the travel is long enough to read, nothing is decided; once it reads
@@ -263,6 +302,12 @@ class PlayerGestures(
     /** True while the pinch under way drives the free zoom. */
     private var zooming = false
 
+    /** True while the pinch under way is the subtitle lines' own, sizing their text. */
+    private var subtitleScaling = false
+
+    /** How far the subtitle pinch has spread since its last size step, as a scale factor. */
+    private var subtitleScaleAcc = 1f
+
     private fun endZoom() {
         if (!zooming) return
         zooming = false
@@ -277,11 +322,33 @@ class PlayerGestures(
                 scaling = true
                 pinched = true
                 dragKind = DRAG_NONE
-                zooming = zoomAllowed()
+                // A pinch centred on the subtitle lines sizes their text instead of the
+                // picture (J Player, 2026-11-06): the fingers are on the lines, so the
+                // lines are what they are sizing.
+                subtitleScaling = onSubtitles(detector.focusX, detector.focusY)
+                zooming = !subtitleScaling && zoomAllowed()
+                subtitleScaleAcc = 1f
                 return true
             }
 
             override fun onScale(detector: ScaleGestureDetector): Boolean {
+                if (subtitleScaling) {
+                    // A step of size for every quarter the fingers spread or close past
+                    // the last step, so one long pinch can climb more than one size and
+                    // the panel's steps are never skipped past in a single frame.
+                    subtitleScaleAcc *= detector.scaleFactor
+                    if (subtitleScaleAcc >= SUBTITLE_STEP_UP) {
+                        subtitleScaleAcc = 1f
+                        onSubtitleSize(true)
+                        return true
+                    }
+                    if (subtitleScaleAcc <= SUBTITLE_STEP_DOWN) {
+                        subtitleScaleAcc = 1f
+                        onSubtitleSize(false)
+                        return true
+                    }
+                    return false
+                }
                 if (zooming) {
                     // Every step, so the picture follows the fingers; true resets the factor.
                     // Only the scale and the centre travel: the fingers moving sideways does
@@ -305,6 +372,7 @@ class PlayerGestures(
 
             override fun onScaleEnd(detector: ScaleGestureDetector) {
                 scaling = false
+                subtitleScaling = false
                 endZoom()
             }
         },
@@ -347,6 +415,7 @@ class PlayerGestures(
             fine = null
             dragKind = DRAG_NONE
             scaling = false
+            subtitleScaling = false
             pinched = false
             endZoom()
         }
@@ -369,6 +438,7 @@ class PlayerGestures(
         fine = null
         dragKind = DRAG_NONE
         scaling = false
+        subtitleScaling = false
         pinched = false
         endZoom()
         onChrome = false
@@ -484,6 +554,7 @@ class PlayerGestures(
         private const val DRAG_VOLUME = 2
         private const val DRAG_SEEK = 3
         private const val DRAG_PAN = 4
+        private const val DRAG_SUBTITLE = 5
 
         /**
          * Which side of the picture a figure belongs on: each gesture's indicator comes up where
@@ -518,5 +589,11 @@ class PlayerGestures(
 
         /** How far apart the fingers have to travel before it counts as a deliberate pinch. */
         private const val PINCH_THRESHOLD = 0.15f
+
+        /** How far a pinch on the subtitle lines must spread, from its last step, to size the text up. */
+        private const val SUBTITLE_STEP_UP = 1.25f
+
+        /** The same, closing, to size the text down. */
+        private const val SUBTITLE_STEP_DOWN = 0.8f
     }
 }
