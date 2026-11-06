@@ -1442,6 +1442,7 @@ fun SettingsScreen(
                     add(Triple(Notice.NewEpisodes, s.settingsAlertEpisodes, s.settingsAlertEpisodesDetail))
                     add(Triple(Notice.NewVideos, s.settingsNewVideos, s.settingsNewVideosDetail))
                     add(Triple(Notice.MissingPieces, s.settingsAlertPieces, s.settingsAlertPiecesDetail))
+                    add(Triple(Notice.Resume, s.settingsResumeNotice, s.settingsResumeNoticeDetail))
                     if (Updates.enabled) add(Triple(Notice.UpdateReady, s.settingsAlertUpdate, s.settingsAlertUpdateDetail))
                     if (SupportReminder.enabled && !supportCounters.finished) {
                         add(Triple(Notice.Support, s.settingsSponsorReminders, s.settingsSponsorRemindersDetail))

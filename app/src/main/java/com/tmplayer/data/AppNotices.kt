@@ -30,12 +30,14 @@ object AppNotices {
     const val CHANNEL_LOW_STORAGE = "low_storage"
     const val CHANNEL_PIECES = "missing_pieces"
     const val CHANNEL_UPDATES = "updates"
+    const val CHANNEL_RESUME = "carry_on"
 
     private const val ID_EPISODES = 0x200003
     private const val ID_LOW_STORAGE = 0x200004
     private const val ID_PIECES = 0x200005
     private const val ID_UPDATE = 0x200006
     private const val ID_UPDATED = 0x200007
+    private const val ID_RESUME = 0x200008
 
     /** Whether a notification of [notice] may go out at all on this device. */
     suspend fun allowed(context: Context, notice: Notice): Boolean =
@@ -56,6 +58,7 @@ object AppNotices {
             channel(CHANNEL_UPDATES, L.notifyChannelUpdates, L.notifyChannelUpdatesDescription, NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
             },
+            channel(CHANNEL_RESUME, L.notifyChannelResume, L.notifyChannelResumeDescription, NotificationManager.IMPORTANCE_DEFAULT),
         )
         manager(context).createNotificationChannels(channels)
     }
@@ -154,6 +157,41 @@ object AppNotices {
             builder.addAction(action(context, R.drawable.ic_notify_resume, L.commonPlay, playIntent(context, item, alert.chatTitle, id)))
         }
         runCatching { manager(context).notify(id, builder.build()) }
+    }
+
+    // ---- carry on watching -----------------------------------------------------------------------
+
+    /**
+     * The video just left part watched, offered back (J Player, 2026-11-06): the press opens the
+     * player on that very copy through the same launch as the other notices, and the player
+     * reads the saved place itself, so the tap lands where the viewer stopped. Only a place
+     * worth resuming from is offered ([ResumeRules.keeps]): a video barely started or all but
+     * finished gets none. The lock screen version says nothing of the title, as the others keep.
+     */
+    fun postResume(context: Context, item: MediaItem, chatTitle: String, positionMs: Long, durationMs: Long) {
+        if (!ResumeRules.keeps(positionMs, durationMs)) return
+        ensureChannels(context)
+        val left = (durationMs - positionMs).takeIf { durationMs > 0 && it > 0 }
+            ?.let { com.tmplayer.i18n.Translator.messages.formatter.clock(it) }
+        val builder = notificationBuilder(context, CHANNEL_RESUME, OldAndroid.IMPORTANCE_DEFAULT)
+            .setSmallIcon(R.drawable.ic_stat_new_videos)
+            .setContentTitle(L.notifyResumeTitle)
+            .setContentText(if (left != null) L.notifyResumeBody(item.title, left) else item.title)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                notificationBuilder(context, CHANNEL_RESUME, OldAndroid.IMPORTANCE_DEFAULT)
+                    .setSmallIcon(R.drawable.ic_stat_new_videos)
+                    .setContentTitle(L.notifyResumeTitle)
+                    .build(),
+            )
+            .setContentIntent(playIntent(context, item, chatTitle, ID_RESUME))
+            .setAutoCancel(true)
+        runCatching { manager(context).notify(ID_RESUME, builder.build()) }
+    }
+
+    /** The offer taken up, or the video finished another way: no stale way back stays in the shade. */
+    fun clearResume(context: Context) {
+        runCatching { manager(context).cancel(ID_RESUME) }
     }
 
     // ---- low storage, update ready -------------------------------------------------------------

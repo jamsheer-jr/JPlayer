@@ -176,6 +176,7 @@ object Backups {
         "notify_episodes" to Kind.BOOL,
         "notify_low_storage" to Kind.BOOL,
         "notify_pieces" to Kind.BOOL,
+        "notify_resume" to Kind.BOOL,
         "notify_update" to Kind.BOOL,
         "open_last_chat" to Kind.BOOL,
         "preferred_audio_language" to Kind.TEXT,

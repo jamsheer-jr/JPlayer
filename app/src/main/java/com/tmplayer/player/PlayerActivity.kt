@@ -8730,6 +8730,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     override fun onStart() {
         super.onStart()
+        // Back in the player, by the notification's tap or any other way: its offer is spent.
+        com.tmplayer.data.AppNotices.clearResume(applicationContext)
         if (openingFilm) watchOpening()
         // Back in front: the session comes home from the notification, the sound never stopped,
         // and the picture comes back on (turned off only while nobody could see it).
@@ -8766,6 +8768,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         saveResumePosition(leaving = !inPictureInPicture)
         // This place out to the other devices, once the saves have settled (ResumeSync).
         com.tmplayer.data.ResumeSync.pushSoon(settings)
+        // Left part watched, the way back is offered in the shade (J Player, 2026-11-06). Not
+        // in picture in picture or while casting, where the video is still on a screen.
+        if (!inPictureInPicture && cast?.casting != true) offerResumeNotice()
         // On a TV the video carries on with the phone put away; nothing here to pause.
         if (cast?.casting == true) return
         // In picture in picture the activity is stopped while the video is still on screen and
@@ -8958,6 +8963,29 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     /** Whether this video came from a message, which is what the Watched list is keyed by. */
     private fun hasMessage(): Boolean = chatId != 0L && messageId != 0L
+
+    /**
+     * The "carry on watching" offer for the video being left (J Player, 2026-11-06): posted off
+     * the main thread once its switch and the notification permission allow, with the place
+     * just saved by [saveResumePosition]. The record itself is what a tap resumes from, and
+     * [currentItem] is the copy actually watched, so the offer is for that copy, not another.
+     */
+    private fun offerResumeNotice() {
+        if (!hasMessage()) return
+        val exo = player ?: return
+        val item = currentItem()
+        val title = chatTitle
+        val position = exo.currentPosition
+        val duration = exo.duration
+        val context = applicationContext
+        App.backgroundScope.launch {
+            runCatching {
+                if (com.tmplayer.data.AppNotices.allowed(context, com.tmplayer.data.Notice.Resume)) {
+                    com.tmplayer.data.AppNotices.postResume(context, item, title, position, duration)
+                }
+            }
+        }
+    }
 
     /** This video as the Watched list keeps it, with the player's length when the message had none. */
     private fun watchedRecord(manual: Boolean): WatchedRecord {

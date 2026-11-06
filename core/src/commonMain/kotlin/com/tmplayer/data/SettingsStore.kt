@@ -217,6 +217,7 @@ private val NOTIFY_EPISODES = booleanPreferencesKey("notify_episodes")
 private val NOTIFY_LOW_STORAGE = booleanPreferencesKey("notify_low_storage")
 private val NOTIFY_PIECES = booleanPreferencesKey("notify_pieces")
 private val NOTIFY_UPDATE = booleanPreferencesKey("notify_update")
+private val NOTIFY_RESUME = booleanPreferencesKey("notify_resume")
 private val EPISODE_SEEN = stringPreferencesKey("episode_alert_seen")
 private val EPISODE_TOLD = stringPreferencesKey("episode_alert_told")
 private val LOW_STORAGE_ALERT = stringPreferencesKey("low_storage_alert")
@@ -1368,6 +1369,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         Notice.LowStorage -> NOTIFY_LOW_STORAGE
         Notice.MissingPieces -> NOTIFY_PIECES
         Notice.UpdateReady -> NOTIFY_UPDATE
+        Notice.Resume -> NOTIFY_RESUME
         Notice.Support -> SPONSOR_REMINDERS
     }
 

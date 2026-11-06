@@ -31,6 +31,9 @@ enum class Notice(val defaultOn: Boolean) {
     /** A new version, said while the app is closed (the popup covers an open one). */
     UpdateReady(defaultOn = true),
 
+    /** The video left part watched, offered back so one tap carries on from the same place. */
+    Resume(defaultOn = true),
+
     /** Now and then a star on GitHub, or a coffee. */
     Support(defaultOn = true),
 }
