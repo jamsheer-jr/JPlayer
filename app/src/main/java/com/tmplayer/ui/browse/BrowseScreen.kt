@@ -320,6 +320,11 @@ internal fun BrowseScreen(
     val sections = remember(folders) { browseSections(folders) }
     // Where Telegram puts "All chats" among the folder chips.
     val mainListPosition by com.tmplayer.data.Td.mainListPosition.collectAsState()
+    // The viewer's own chat choice (the picker's set), for the mark on a chosen chat's row and
+    // nothing else here: the list itself is already gated by it, and the choice is changed from
+    // the picker's own screen or a chat menu's Remove, never from a second store.
+    val addedChoice by com.tmplayer.data.AddedChats.choice.collectAsState()
+    val chosenIds = addedChoice.ids
     // "Only my folders" is retired: somebody who had it on lands once on their first folder's chip.
     LaunchedEffect(folders.isNotEmpty()) {
         val first = folders.firstOrNull() ?: return@LaunchedEffect
@@ -821,6 +826,13 @@ internal fun BrowseScreen(
                     } else {
                         if (!touch) {
                             val chatActions: @Composable () -> Unit = {
+                                // The picked chats are chosen here too, not only in Settings: the
+                                // one picker, opened over Chats, and Back returns to this list.
+                                HeaderAction(
+                                    label = s.pickerChooseChats,
+                                    icon = TmIcons.Checklist,
+                                    onClick = { AddChatsRequest.ask() },
+                                )
                                 // Refresh is in the account's menu on the top bar.
                                 // Stars are added one at a time from a menu, so the only way back
                                 // from a tab full of them is here, beside the tab they fill.
@@ -861,6 +873,7 @@ internal fun BrowseScreen(
                             ChatSection(
                                 chats = visible,
                                 favorites = favorites,
+                                chosenIds = chosenIds,
                                 sort = chatSort,
                                 // Recency order comes straight from Telegram, so the top of the
                                 // unfiltered list already is "recent".
@@ -968,9 +981,16 @@ internal fun BrowseScreen(
                 }
             },
             // Home refreshes with a pull, and a page with nothing to offer has no pill at all.
-            actions = unlessHidden(
-                tab.isHome || !(tab.listsVideos || (tab == BrowseSection.of(BrowseTab.Favorites) && favorites.isNotEmpty())),
-            ) actions@{
+            actions = unlessHidden(tab.isHome) actions@{
+                // The chat pages carry the chat choice in the bar: the one picker, opened over
+                // Chats, and Back returns to this list.
+                if (!tab.listsVideos) {
+                    BarIcon(label = s.pickerChooseChats, icon = TmIcons.Checklist, onClick = { AddChatsRequest.ask() })
+                }
+                // History's Select and Clear sit in the bar, one press each: a clear here is said
+                // with Undo, so a mis-tap costs nothing. Favourites' clear has no Undo and stays
+                // behind the overflow, asked first.
+                if (tab.listsVideos && historyHas && !selecting) {
                 // History's Select and Clear sit in the bar, one press each: a clear here is said
                 // with Undo, so a mis-tap costs nothing. Favourites' clear has no Undo and stays
                 // behind the overflow, asked first.
@@ -2420,6 +2440,8 @@ private const val MORE_CHATS_PLACEHOLDERS = 2
 private fun ChatSection(
     chats: List<ChatSummary>,
     favorites: Set<Long>,
+    /** The picked chats, for their rows' chosen mark; null while every chat is shown unpicked. */
+    chosenIds: Set<Long>? = null,
     recent: List<ChatSummary>,
     insets: BrowseInsets,
     /** Only a remote needs somewhere to stand; on a phone a stolen focus only opens the keyboard. */
@@ -2570,6 +2592,7 @@ private fun ChatSection(
                     ChatRow(
                         chat = chat,
                         favorite = chat.id in favorites,
+                        chosen = chosenIds != null && chat.id in chosenIds,
                         opensOnLaunch = chat.id == launchChatId,
                         onClick = { open(chat, chat.id) },
                         onHold = { onHold(chat) },
@@ -2604,6 +2627,7 @@ private fun ChatSection(
                     ChatRow(
                         chat = chat,
                         favorite = chat.id in favorites,
+                        chosen = chosenIds != null && chat.id in chosenIds,
                         opensOnLaunch = chat.id == launchChatId,
                         onClick = { open(chat, chat.id) },
                         onHold = { onHold(chat) },
@@ -2845,6 +2869,8 @@ private fun PrefetchWhileFocused(chatId: Long, focused: Boolean) {
 private fun ChatRow(
     chat: ChatSummary,
     favorite: Boolean,
+    /** One of the viewer's picked chats ([com.tmplayer.data.AddedChats]): its row carries the mark. */
+    chosen: Boolean = false,
     opensOnLaunch: Boolean,
     onClick: () -> Unit,
     onHold: () -> Unit,
@@ -2854,7 +2880,7 @@ private fun ChatRow(
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
     if (isTouch()) {
-        TouchChatRow(chat, favorite, opensOnLaunch, onClick, onHold, modifier, interactions)
+        TouchChatRow(chat, favorite, chosen, opensOnLaunch, onClick, onHold, modifier, interactions)
         return
     }
     PrefetchWhileFocused(chat.id, focused)
@@ -2913,6 +2939,14 @@ private fun ChatRow(
         ) {
             UnreadBadge(chat)
             ChatMarkers(chat, size = 20.dp)
+            if (chosen) {
+                Icon(
+                    TmIcons.Check,
+                    contentDescription = s.pickerRowTitle,
+                    tint = Tone.accent,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
             if (favorite) {
                 Icon(
                     TmIcons.Star,
@@ -3009,6 +3043,7 @@ private const val UNREAD_CAP = 999
 private fun TouchChatRow(
     chat: ChatSummary,
     favorite: Boolean,
+    chosen: Boolean,
     opensOnLaunch: Boolean,
     onClick: () -> Unit,
     onHold: () -> Unit,
@@ -3049,7 +3084,7 @@ private fun TouchChatRow(
                 modifier = Modifier.size(TOUCH_AVATAR).clip(CircleShape),
             )
         },
-        trailingContent = if (favorite || chat.unreadCount > 0 || chat.isPinned || chat.isMuted) {
+        trailingContent = if (favorite || chosen || chat.unreadCount > 0 || chat.isPinned || chat.isMuted) {
             {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3057,6 +3092,14 @@ private fun TouchChatRow(
                 ) {
                     UnreadBadge(chat)
                     ChatMarkers(chat, size = 16.dp)
+                    if (chosen) {
+                        M3Icon(
+                            TmIcons.Check,
+                            contentDescription = s.pickerRowTitle,
+                            tint = Tone.accent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                     if (favorite) {
                         // Starred a moment ago from the hold menu: the star pops in on a spring.
                         // Any other time (a scroll, a launch) it is simply there.
