@@ -18,6 +18,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.MaterialTheme as M3
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
@@ -91,7 +92,17 @@ fun PaneField(
             visualTransformation = visualTransformation,
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
-            shape = M3.shapes.medium,
+            // A filled panel ground and a rounder corner than the rest of the app's fields
+            // (J Player, 2026-11-06): the sign-in screens' fields sit on the scheme's panel
+            // colour, so inside the brand theme they read as navy panels with a neon edge
+            // when focused, and anywhere else as that screen's own panel colour.
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Tone.surface,
+                unfocusedContainerColor = Tone.surface,
+                disabledContainerColor = Tone.surface,
+                errorContainerColor = Tone.surface,
+            ),
+            shape = M3.shapes.large,
             modifier = modifier,
         )
         return

@@ -1,13 +1,18 @@
 package com.tmplayer.ui.theme
 
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.tmplayer.ui.i18n.ProvideStrings
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -274,3 +279,68 @@ private fun Typography.withTvFamily(family: androidx.compose.ui.text.font.FontFa
         labelLarge = labelLarge.f(), labelMedium = labelMedium.f(), labelSmall = labelSmall.f(),
     )
 }
+
+/**
+ * The sign-in and first-run setup look (J Player, 2026-11-06): the app mark's own colours,
+ * the logo tile's dark navy ground and its neon, worn by those screens alone whatever theme
+ * the viewer picked for the rest of the app. Every sign-in and setup surface already reads
+ * its colours from the scheme (Tone, TmButton, the fields), so the redesign is this scoped
+ * scheme over a navy ground: the ambient shapes and typography pass through untouched, and
+ * with them every field, button, focus order and callback inside. Touch only: on a
+ * television this draws nothing of its own and the screens keep theirs exactly, D-pad and
+ * all, so a caller wraps both devices and only a phone changes.
+ */
+@Composable
+fun BrandTheme(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    if (FormFactor.isTv(context)) {
+        content()
+        return
+    }
+    val scheme = brandScheme()
+    M3MaterialTheme(
+        colorScheme = scheme,
+        shapes = M3MaterialTheme.shapes,
+        typography = M3MaterialTheme.typography,
+    ) {
+        MaterialTheme(
+            colorScheme = tvColors(scheme, dark = true),
+            typography = MaterialTheme.typography,
+        ) {
+            CompositionLocalProvider(
+                LocalContentColor provides scheme.onSurface,
+                LocalDarkTheme provides true,
+                LocalPureBlack provides false,
+            ) {
+                Box(Modifier.background(scheme.background)) { content() }
+            }
+        }
+    }
+}
+
+/**
+ * The brand colours as a dark Material scheme: navy #050C1C ground (the logo tile), neon
+ * #22E6FF as the accent and as the primary button's fill with navy on it (a dark theme's
+ * button reads its container pair, [com.tmplayer.ui.components.TmButton]), and lifted navy
+ * containers for the panels, fields and chips the screens sit on.
+ */
+private fun brandScheme() = darkColorScheme(
+    primary = Color(0xFF22E6FF),
+    onPrimary = Color(0xFF050C1C),
+    primaryContainer = Color(0xFF22E6FF),
+    onPrimaryContainer = Color(0xFF050C1C),
+    secondaryContainer = Color(0xFF16334F),
+    onSecondaryContainer = Color(0xFFD8F5FF),
+    background = Color(0xFF050C1C),
+    onBackground = Color(0xFFF2F8FF),
+    surface = Color(0xFF050C1C),
+    onSurface = Color(0xFFF2F8FF),
+    surfaceContainerLowest = Color(0xFF040A16),
+    surfaceContainerLow = Color(0xFF0A1729),
+    surfaceContainer = Color(0xFF0D1E35),
+    surfaceContainerHigh = Color(0xFF122741),
+    surfaceContainerHighest = Color(0xFF18334F),
+    onSurfaceVariant = Color(0xFFA8C6DE),
+    outline = Color(0xFF33567D),
+    outlineVariant = Color(0xFF1E3A57),
+)

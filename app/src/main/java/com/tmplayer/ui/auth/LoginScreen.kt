@@ -844,12 +844,18 @@ private fun CodeBoxes(
     )
 }
 
-/** The touch pane's top row: an arrow out, and nothing at all on a television. */
+/** The touch pane's top row: an arrow out and the app's mark beside it, and nothing at all on a television. */
 @Composable
 private fun PaneHeader(onBack: () -> Unit) {
     if (!isTouch()) return
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         BackArrow(onBack = onBack)
+        // Every step of the sign in opens on the mark (J Player, 2026-11-06), the phone
+        // pane's first screen included; this header is the one the other panes share.
+        com.tmplayer.ui.components.BrandLockup(
+            size = com.tmplayer.ui.components.BrandSize.Small,
+            layout = com.tmplayer.ui.components.BrandLayout.Row,
+        )
     }
 }
 
