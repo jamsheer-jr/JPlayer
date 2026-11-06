@@ -1,5 +1,6 @@
 package com.tmplayer.player
 
+import com.tmplayer.data.PartyLinks
 import com.tmplayer.i18n.L
 
 /**
@@ -106,6 +107,12 @@ enum class PhoneMenuEntry {
     /** Asks for an optional note, then saves the moment the note was asked at. */
     AddBookmark,
     Bookmarks,
+    /**
+     * Shares a Watch party link to this video at this moment ([PartyLinks]): whoever opens
+     * it watches the same video from that place, with their own account. Only for a video
+     * that came from a message, whose chat and post ids are what the link carries.
+     */
+    WatchParty,
     OpenInAnotherApp,
     LoadSubtitleFile,
     LoadSubtitleUrl,
@@ -163,6 +170,7 @@ fun PhoneMenuEntry.label(
     PhoneMenuEntry.MarkWatched -> if (watched) L.playerMarkUnwatched else L.playerMarkWatched
     PhoneMenuEntry.AddBookmark -> L.playerAddBookmark
     PhoneMenuEntry.Bookmarks -> if (bookmarks > 0) L.commonWithDetail(L.playerBookmarks, L.messages.formatter.number(bookmarks)) else L.playerBookmarks
+    PhoneMenuEntry.WatchParty -> L.playerWatchParty
     PhoneMenuEntry.PlaybackDetails -> L.playerPlaybackDetails
 }
 
@@ -254,8 +262,9 @@ object PlayerMenu {
      * chat that restricts saving (or while that is still being asked), whose frames stay in it.
      * [pictureShape] is whether there is a picture to shape (not sound alone, not a cast), and
      * [stereo] offers 3D video beside it; Speed follows them. [zoomed] adds Reset zoom under the
-     * shape while a pinch has the picture enlarged. The lock stays first: the line people come
-     * here for.
+     * shape while a pinch has the picture enlarged. [watchParty] is the video having come from a
+     * message, as [markWatched] needs: a Watch party link is made of that message's ids. The lock
+     * stays first: the line people come here for.
      */
     fun phoneEntries(
         pictureInPicture: Boolean,
@@ -269,6 +278,7 @@ object PlayerMenu {
         pictureShape: Boolean = false,
         stereo: Boolean = false,
         zoomed: Boolean = false,
+        watchParty: Boolean = false,
     ): List<PhoneMenuEntry> = buildList {
         add(PhoneMenuEntry.LockScreen)
         if (pictureInPicture) add(PhoneMenuEntry.PictureInPicture)
@@ -300,6 +310,7 @@ object PlayerMenu {
             add(PhoneMenuEntry.AddBookmark)
             add(PhoneMenuEntry.Bookmarks)
         }
+        if (watchParty) add(PhoneMenuEntry.WatchParty)
         if (openInAnotherApp) add(PhoneMenuEntry.OpenInAnotherApp)
         if (saveToDownloads) add(PhoneMenuEntry.SaveToDownloads)
         if (markWatched) add(PhoneMenuEntry.MarkWatched)

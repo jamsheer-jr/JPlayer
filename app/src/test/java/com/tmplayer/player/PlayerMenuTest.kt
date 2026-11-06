@@ -95,6 +95,13 @@ class PlayerMenuTest {
     }
 
     @Test
+    fun `watch party is only offered on the phone, for a video that came from a message`() {
+        assertFalse(PhoneMenuEntry.WatchParty in PlayerMenu.phoneEntries(true, true, true, true))
+        assertTrue(PhoneMenuEntry.WatchParty in PlayerMenu.phoneEntries(true, true, true, true, watchParty = true))
+        assertEquals("Watch party", PhoneMenuEntry.WatchParty.label())
+    }
+
+    @Test
     fun `save to downloads is only offered for a video that is not a download already`() {
         assertFalse(PlayerMenuEntry.SaveToDownloads in PlayerMenu.tvEntries(pictureInPicture = true))
         assertTrue(PlayerMenuEntry.SaveToDownloads in PlayerMenu.tvEntries(pictureInPicture = true, saveToDownloads = true))

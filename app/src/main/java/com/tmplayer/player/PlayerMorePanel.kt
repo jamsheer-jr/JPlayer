@@ -398,7 +398,7 @@ class PlayerMorePanel(
     private enum class Kind {
         LockScreen, PictureInPicture, PlaybackDetails, StartOver, PictureShape, ResetZoom, Stereo, Speed,
         VolumeBoost, NightMode, EvenVolume, SleepTimer, AbLoop, NextChapter, PreviousChapter,
-        NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, OpenInAnotherApp,
+        NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, WatchParty, OpenInAnotherApp,
         LoadSubtitleFile, LoadSubtitleUrl, TranslateSubtitles, SubtitleSize, SubtitlePosition, SubtitleSync, SaveToDownloads, MarkWatched, RemoteKeys,
     }
 
@@ -553,6 +553,7 @@ class PlayerMorePanel(
             Kind.SaveFrame -> Line(kind, s.playerSaveFrame, TmIcons.Image, null)
             Kind.AddBookmark -> Line(kind, s.playerAddBookmark, TmIcons.Add, null)
             Kind.Bookmarks -> Line(kind, s.playerBookmarks, TmIcons.Bookmark, bookmarkCount.takeIf { it > 0 }?.let { s.playerBookmarksCount(it) })
+            Kind.WatchParty -> Line(kind, s.playerWatchParty, TmIcons.Group, null)
             Kind.OpenInAnotherApp -> Line(kind, s.playerOpenInAnotherApp, TmIcons.OpenExternal, null)
             Kind.LoadSubtitleFile -> Line(kind, s.playerLoadSubtitleFile, TmIcons.Subtitles, null)
             Kind.LoadSubtitleUrl -> Line(kind, s.playerLoadSubtitleUrl, TmIcons.Download, null)

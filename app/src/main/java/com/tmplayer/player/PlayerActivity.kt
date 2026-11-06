@@ -78,6 +78,7 @@ import com.tmplayer.App
 import com.tmplayer.R
 import com.tmplayer.data.ChatRepository
 import com.tmplayer.data.CopyHandoff
+import com.tmplayer.data.PartyLinks
 import com.tmplayer.data.VideoCopies
 import com.tmplayer.data.copyQuality
 import com.tmplayer.data.hasPictureInPicture
@@ -6417,6 +6418,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             pictureShape = stereoOffered(),
             stereo = stereoOffered(),
             zoomed = zoom.zoomed,
+            // A Watch party link is made of the message's ids, as the Watched list is keyed by one.
+            watchParty = hasMessage(),
         )
         override fun zoomDetail(): String? =
             zoom.takeIf { it.zoomed }?.let { L.messages.formatter.scalePercent(it.percent) }
@@ -6481,6 +6484,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             PhoneMenuEntry.NextFrame -> frameStep(forward = true)
             PhoneMenuEntry.PreviousFrame -> frameStep(forward = false)
             PhoneMenuEntry.SaveFrame -> saveFrame()
+            PhoneMenuEntry.WatchParty -> shareWatchParty()
             PhoneMenuEntry.OpenInAnotherApp -> openInAnotherApp()
             PhoneMenuEntry.LoadSubtitleFile -> subtitleFiles.pick()
             PhoneMenuEntry.LoadSubtitleUrl -> showSheet { it.showSubtitleUrl { link -> subtitleFiles.loadFromUrl(link) } }
@@ -6615,6 +6619,20 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         runCatching { startActivity(Intent.createChooser(send, null)) }
+    }
+
+    /**
+     * Watch party: offers a link to this video at this moment ([PartyLinks]) through the share
+     * sheet. The link is only a reference: whoever opens it watches with their own account,
+     * from this place, and an account that is not in the chat is refused when it opens.
+     */
+    private fun shareWatchParty() {
+        if (!hasMessage()) return
+        val atSec = ((player?.currentPosition ?: 0L) / 1000L).toInt()
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, PartyLinks.build(chatId, messageId, atSec))
+        runCatching { startActivity(Intent.createChooser(send, L.commonShare)) }
     }
 
     /** Runs [seek] as one the viewer did not ask for: no "Back to" offer comes of it. */
