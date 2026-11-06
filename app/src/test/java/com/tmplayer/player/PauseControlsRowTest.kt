@@ -171,4 +171,15 @@ class PauseControlsRowTest {
         val copy = disc.rootView.findViewById<View>(R.id.control_copy)
         assertFalse("a television's copies pill is not moved", copy.parent === transport)
     }
+
+    @Test
+    fun `the quality badge is a switch on a phone and only a badge on a television`() {
+        val (_, phoneDisc) = row(tv = false)
+        val phoneBadge = phoneDisc.rootView.findViewById<View>(R.id.control_quality)
+        assertTrue("a tap on the badge switches quality on a phone", phoneBadge.isClickable)
+        val (_, tvDisc) = row(tv = true)
+        val tvBadge = tvDisc.rootView.findViewById<View>(R.id.control_quality)
+        assertFalse("the television's badge stays a badge", tvBadge.isClickable)
+        assertFalse("the television's badge takes no focus", tvBadge.isFocusable)
+    }
 }

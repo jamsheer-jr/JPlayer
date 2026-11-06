@@ -1561,6 +1561,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             onPlayEpisode = ::playEpisode,
             onEpisodes = ::openEpisodes,
             onCopies = ::openCopies,
+            onCycleQuality = ::cycleQuality,
             // The row's picture shape button: the next shape along, as W does on the desktop.
             onCycleShape = { applyScale(videoScale.next()) },
             onLock = ::lockScreen,
@@ -2639,6 +2640,24 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 qualities = qualities, playingQuality = playingQuality, onQuality = ::switchQuality,
             )
         }
+    }
+
+    /**
+     * A tap on the quality badge (phone): climb to the next quality tier this video's
+     * copies have ([VideoCopies.nextTierCopy]), through the same switch the copies list
+     * makes, so the place carries over and the pick is remembered the same way, and the
+     * badge then names the new copy's tier as it always has. One tier only: the badge
+     * just says what is playing, and nothing changes.
+     */
+    private fun cycleQuality() {
+        val next = VideoCopies.nextTierCopy(copies, currentItem().id)
+        if (next == null) {
+            playingBadge()?.let { showGestureFeedback(it) }
+            return
+        }
+        switchCopy(next)
+        val name = next.copyQuality() ?: VideoCopies.heightOf(next)?.let { VideoCopies.badgeForHeight(it) }
+        name?.let { showGestureFeedback(it) }
     }
 
     /** Telegram's lighter copies of the upload playing (CP80); none for a download or a joined video. */

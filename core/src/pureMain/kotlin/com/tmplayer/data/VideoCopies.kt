@@ -212,6 +212,31 @@ object VideoCopies {
         else -> null
     }
 
+    /** The badge's tiers, lowest first: the order a tap on the badge climbs them. */
+    private val TIERS = listOf("SD", "HD", "UHD")
+
+    /**
+     * The copy a tap on the quality badge switches to (J Player, 2026-11-06): the next tier
+     * up from the one playing that [copies] actually has, wrapping from the top tier back
+     * to the lowest, so SD climbs to HD, HD to UHD and UHD wraps to SD. Within the tier,
+     * the tier's own best by the order copies are always offered in: the tallest picture,
+     * then the largest file. Null when every copy whose height is known sits in one tier:
+     * the badge then only names what is playing, and a tap changes nothing.
+     */
+    fun nextTierCopy(copies: List<MediaItem>, currentId: String): MediaItem? {
+        fun tierOf(item: MediaItem): String? = heightOf(item)?.let { badgeForHeight(it) }
+        val present = copies.mapNotNull { tierOf(it) }.distinct()
+        if (present.size < 2) return null
+        val current = copies.firstOrNull { it.id == currentId }?.let { tierOf(it) } ?: return null
+        val start = TIERS.indexOf(current)
+        val nextTier = (1..TIERS.size)
+            .map { TIERS[(start + it) % TIERS.size] }
+            .firstOrNull { it in present } ?: return null
+        return copies
+            .filter { tierOf(it) == nextTier }
+            .maxWithOrNull(compareBy<MediaItem> { heightOf(it) ?: 0 }.thenBy { it.sizeBytes })
+    }
+
     /**
      * Which of [copies] to play without asking, in this order:
      * 1. the one the viewer chose for this video before ([chosen], an [MediaItem.id]);

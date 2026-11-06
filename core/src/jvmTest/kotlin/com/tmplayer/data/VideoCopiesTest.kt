@@ -349,4 +349,30 @@ class VideoCopiesTest {
         assertEquals(2, group.fileCount)
         assertEquals(VideoCopies.distinctFiles(group.asItem().versions).size, group.fileCount)
     }
+
+    // ---- the badge's tier climb ---------------------------------------------------------------
+
+    @Test
+    fun `the badge climbs to the next tier the copies have, and wraps at the top`() {
+        val copies = listOf(sd, hd, uhd)
+        assertEquals(hd.id, VideoCopies.nextTierCopy(copies, sd.id)?.id)
+        assertEquals(uhd.id, VideoCopies.nextTierCopy(copies, hd.id)?.id)
+        assertEquals(sd.id, VideoCopies.nextTierCopy(copies, uhd.id)?.id)
+    }
+
+    @Test
+    fun `the badge skips a tier the copies do not have, and takes the tier's largest`() {
+        assertEquals(uhd.id, VideoCopies.nextTierCopy(listOf(sd, uhd), sd.id)?.id)
+        assertEquals(sd.id, VideoCopies.nextTierCopy(listOf(sd, uhd), uhd.id)?.id)
+        val hdBig = video(2, 60, "Night.Train.2019.1080p.BluRay.mkv", size = 2_000L shl 20)
+        assertEquals(hdBig.id, VideoCopies.nextTierCopy(listOf(sd, hd, hdBig), sd.id)?.id)
+    }
+
+    @Test
+    fun `one tier only, or the playing copy unknown, the badge changes nothing`() {
+        assertNull(VideoCopies.nextTierCopy(listOf(hd, other), hd.id))
+        assertNull(VideoCopies.nextTierCopy(listOf(hd), hd.id))
+        assertNull(VideoCopies.nextTierCopy(emptyList(), hd.id))
+        assertNull(VideoCopies.nextTierCopy(listOf(sd, hd), "no-such-copy"))
+    }
 }

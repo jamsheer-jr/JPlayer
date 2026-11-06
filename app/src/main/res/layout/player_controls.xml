@@ -171,7 +171,9 @@
 
         <!-- The quality badge (J Player, 2026-11-06): UHD, HD or SD for the copy playing,
              named by PlayerControls from the copy's own height once it is known. Which
-             decoder plays the picture is not badged here. -->
+             decoder plays the picture is not badged here. On a phone it is also a switch:
+             PlayerControls makes it clickable there, and a tap climbs to the next quality
+             tier the copies have. On a television it stays a badge, unfocusable as here. -->
         <TextView
             android:id="@+id/control_quality"
             android:layout_width="wrap_content"

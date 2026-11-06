@@ -75,6 +75,8 @@ class PlayerControls(
     private val onEpisodes: () -> Unit = {},
     /** The row's copy button: opens the list of this video's copies. */
     private val onCopies: () -> Unit = {},
+    /** The top bar's quality badge tapped (phone only): switch to the next quality tier. */
+    private val onCycleQuality: () -> Unit = {},
     /** The row's picture shape button: the next of Fit, Crop and Stretch. */
     private val onCycleShape: () -> Unit = {},
     /** The phone row's lock, shown while the row has room for it. */
@@ -281,6 +283,14 @@ class PlayerControls(
         wire(pipButton) { onPip() }
         wire(episodesButton) { onEpisodes() }
         wire(copyButton) { onCopies() }
+        // The quality badge is a switch on a phone (owner, 2026-11-06): a tap climbs to
+        // the next quality tier the copies have. On a television it stays a badge only:
+        // it has no focusable path in the top bar today and none is added, so the TV bar
+        // and its focus order are exactly as they were.
+        if (!isTv) {
+            qualityBadge.isClickable = true
+            qualityBadge.setOnClickListener { onCycleQuality() }
+        }
         episodesButton.text = L.episodesTitle
         rotate.visibility = if (isTv) View.GONE else View.VISIBLE
         // The scrims on five stops, which their XML stand-ins cannot hold without a seam.
