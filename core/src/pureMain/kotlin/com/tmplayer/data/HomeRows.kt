@@ -545,9 +545,9 @@ object HomeRows {
         metaOf(entry, titleMeta)?.providers?.firstOrNull()
             ?: MediaFacts.read(leadNameOf(entry)).platform
 
-    /** A file name's platform slug for its OTT row kind: the label's letters and numbers, lowered. */
+    /** A platform's slug for its OTT row kind: lowered, runs of other characters as one dash. */
     private fun ottKind(platform: String): String =
-        "ott-" + platform.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-')
+        "ott-" + platform.lowercase().replace(Regex("""[^a-z0-9]+"""), "-").trim('-')
 
     /** The name an entry is filed under: a file's own name, a show's cover's. */
     private fun leadNameOf(entry: ShelfEntry): String = when (entry) {
