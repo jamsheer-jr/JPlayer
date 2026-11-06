@@ -97,6 +97,10 @@ data class SeriesProgress(
  * a bare "E05" the parser would not trust on its own, a caption titled in another script or by a
  * shorter name ("Family Full House Episode 5" for "Family Full House With Rohit Sharma").
  *
+ * Bare episodes can establish a show on their own too: two or more distinct bare episode
+ * numbers under one cleaned title and one year, with no season written, count as season one.
+ * A single bare episode, or copies of one, still establishes nothing.
+ *
  * A name is a guess, so the name alone never folds two files together; the facts have to agree
  * too, as [SameVideo] weighs them: the same file, matching lengths, or a year with no length to
  * contradict it. A remake (the same title, another year) stays apart. A trailer, a teaser or a sample is an extra ([MediaItem.extra]): never folded in,
@@ -290,10 +294,30 @@ object SeriesShelf {
             }
         }
         // A show is two episodes or more, not two files: three copies of one episode are one.
-        val showKeys = strict.filterNotNull()
+        val strictShowKeys = strict.filterNotNull()
             .groupBy { it.key }
             .filterValues { files -> files.distinctBy { (it.name.season ?: 1) to it.episode }.size >= MIN_EPISODES }
             .keys
+
+        // Files the strict parse left alone, read the lenient way once, so the answer serves
+        // both the establishment below and the second look that follows it. A file the viewer
+        // renamed, or one that is a trailer, is not read loosely, and neither is one whose
+        // caption is a line the chat puts under most of its posts.
+        val looseFound = items.indices.map { index ->
+            val readLoosely = corrections[items[index].id]?.title == null && names[index].extra == null && trusted[index]
+            if (strict[index] != null || !readLoosely) null else loose(items[index])
+        }
+
+        // A chat where every file is named with a bare episode only ("My Show E05", no season
+        // written) establishes its show this way: two or more distinct bare episode numbers
+        // under one title and one year. Grouped by the title key and the year together, so a
+        // remake of the same title stays apart. The loose parse leaves the season unwritten,
+        // and the grouping in [series] defaults a seasonless episode to season one.
+        val looseShowPairs = looseFound.filterNotNull()
+            .groupBy { it.key to it.name.year }
+            .filterValues { files -> files.distinctBy { (it.name.season ?: 1) to it.episode }.size >= MIN_EPISODES }
+            .keys
+        val showKeys = strictShowKeys + looseShowPairs.map { it.first }
 
         // The same season uploaded twice under two names, "Kerala Crime Files" and "Kerala Crime
         // Files Shiju Parayil Veedu Neendakara", is one show: the longer name joins the shorter
@@ -301,19 +325,28 @@ object SeriesShelf {
         // sequel under a longer name has episodes of its own and stays apart.
         val numbersOf = strict.filterNotNull().groupBy { it.key }
             .mapValues { (_, files) -> files.mapTo(HashSet()) { (it.name.season ?: 1) to it.episode } }
-        val alias = showKeys.associateWith { key ->
+        val strictAlias = strictShowKeys.associateWith { key ->
             val mine = numbersOf[key].orEmpty()
-            showKeys.filter { other -> other != key && key.startsWith("$other ") && other.split(' ').size >= 2 }
+            strictShowKeys.filter { other -> other != key && key.startsWith("$other ") && other.split(' ').size >= 2 }
                 .maxByOrNull { it.length }
                 ?.takeIf { other -> mine.count { it in numbersOf[other].orEmpty() } * 2 >= mine.size }
                 ?: key
         }
+        // A show established by bare episodes alone is known by its own name as it stands.
+        val alias = strictAlias + (showKeys - strictShowKeys).associateWith { it }
 
         // Everything else gets a second look, now that the chat has said which shows it holds. A
-        // file the viewer renamed, or one that is a trailer, is read only as it now reads.
+        // file the viewer renamed, or one that is a trailer, is read only as it now reads. A
+        // bare episode whose title a loose show established only for another year does not join
+        // that show: its own title and year pair has to be the established one, unless a strict
+        // show takes it as before, or a shortened name joins a show as before.
         val placedUnder = items.indices.map { index ->
-            val readLoosely = corrections[items[index].id]?.title == null && names[index].extra == null && trusted[index]
-            val found = strict[index] ?: if (readLoosely && showKeys.isNotEmpty()) loose(items[index]) else null
+            val found = strict[index] ?: looseFound[index]?.takeIf { candidate ->
+                val paired = (candidate.key to candidate.name.year) in looseShowPairs
+                val strictHit = candidate.key in strictShowKeys
+                val looseOnlyHit = !paired && !strictHit && candidate.key in showKeys
+                paired || strictHit || (!looseOnlyHit && joining(candidate, showKeys) != null)
+            }
             when {
                 found == null -> null
                 found.key in showKeys -> alias.getValue(found.key).let { key ->
@@ -559,7 +592,8 @@ object SeriesShelf {
 
     /**
      * A file the parser would not call an episode on its own, read the lenient way: "Show E05",
-     * "Show, E5. Vlog", which only counts once [joining] finds the show it names.
+     * "Show, E5. Vlog". It counts once a show it names is established, by the strict files or
+     * by a run of bare episodes of its own title and year, or once [joining] finds that show.
      */
     private fun loose(item: MediaItem): Found? {
         // Most files carry no bare "E05" at all, and finding that out is cheaper than a parse.

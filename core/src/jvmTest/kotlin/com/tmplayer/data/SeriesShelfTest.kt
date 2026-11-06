@@ -245,6 +245,73 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `an all bare E chat forms a series in season one, episodes in order`() {
+        val items = listOf(
+            video("My Show E03.mkv"),
+            video("My Show E01.mkv"),
+            video("My Show E02.mkv"),
+        )
+        val entries = SeriesShelf.arrange(items)
+        val show = shows(entries).single()
+        assertEquals("my show", show.key)
+        assertEquals("My Show", show.title)
+        assertEquals(listOf(1), show.seasons.map { it.number })
+        assertEquals(3, show.episodeCount)
+        assertEquals(listOf(1, 2, 3), show.episodes.map { it.episode })
+        assertEquals(listOf("S01E01", "S01E02", "S01E03"), show.episodes.map { it.code })
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
+    fun `a single bare E file forms no series`() {
+        val entries = SeriesShelf.arrange(listOf(video("My Show E01.mkv")))
+        assertTrue(shows(entries).isEmpty())
+        assertEquals(listOf("My Show E01.mkv"), files(entries))
+    }
+
+    @Test
+    fun `bare E files and S01E01 files of one title land in one series, copies merged`() {
+        val items = listOf(
+            video("Harbour Notes S01E01 1080p.mkv"),
+            video("Harbour Notes S01E02.mkv"),
+            video("Harbour Notes E01 720p.mkv"),
+            video("Harbour Notes E03.mkv"),
+        )
+        val entries = SeriesShelf.arrange(items)
+        val show = shows(entries).single()
+        assertEquals(3, show.episodeCount)
+        assertEquals(listOf(1, 2, 3), show.episodes.map { it.episode })
+        val firstEpisode = show.episodes.single { it.episode == 1 }
+        assertEquals(2, firstEpisode.copies.size)
+        assertEquals(
+            setOf("Harbour Notes S01E01 1080p.mkv", "Harbour Notes E01 720p.mkv"),
+            firstEpisode.copies.map { it.fileName }.toSet(),
+        )
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
+    fun `same title E-only files of different years stay apart`() {
+        val mixed = listOf(
+            video("My Show 2019 E01.mkv"),
+            video("My Show 2024 E02.mkv"),
+        )
+        val mixedEntries = SeriesShelf.arrange(mixed)
+        assertTrue(shows(mixedEntries).isEmpty())
+        assertEquals(mixed.map { it.fileName }, files(mixedEntries))
+
+        val items = listOf(
+            video("My Show 2019 E01.mkv"),
+            video("My Show 2019 E02.mkv"),
+            video("My Show 2024 E01.mkv"),
+        )
+        val entries = SeriesShelf.arrange(items)
+        val show = shows(entries).single()
+        assertEquals(listOf(1, 2), show.episodes.map { it.episode })
+        assertEquals(listOf("My Show 2024 E01.mkv"), files(entries))
+    }
+
+    @Test
     fun `a lone episode stays a file, and so does a season pack`() {
         val items = listOf(
             video("Studio.Sessions.S01E01.mkv"),
