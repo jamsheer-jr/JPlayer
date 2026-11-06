@@ -395,7 +395,7 @@ internal fun HomePane(
     }
     val surpriseAvailable = touch && surpriseEntries.any { it is ShelfEntry.File || it is ShelfEntry.Show }
     val onSurprise: () -> Unit = {
-        com.tmplayer.data.SurprisePick.pick(surpriseEntries, watch.finished) { watch.point(it)?.fraction ?: 0f }
+        com.tmplayer.data.SurprisePick.pick(surpriseEntries, watch.finished, { watch.point(it)?.fraction ?: 0f })
             ?.let { item -> onPlayNow(item, chatTitle(item.chatId)) }
     }
 

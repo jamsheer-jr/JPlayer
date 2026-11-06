@@ -1528,7 +1528,6 @@ private fun WatchLaterRecord.cardText() = VideoCardText(
     item = toMediaItem(),
 )
 
-@Composable
 /**
  * "My stats" over the Watched list (J Player, 2026-11-06): the hours watched, the finished and
  * on the go counts, and the fullest genres and chats, added up from the same records the tab
