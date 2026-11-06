@@ -5,11 +5,11 @@ import android.graphics.Canvas
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import com.tmplayer.data.FormFactor
 import com.tmplayer.i18n.L
 import com.tmplayer.ui.theme.TmMaterialTheme
-import com.tmplayer.ui.theme.TmSchemes
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -26,8 +26,8 @@ import java.io.File
  * The loader after the splash on a phone held upright and on a television at 1920 by 1080, in
  * both themes, with the light held at points through its sweep. The frames go to
  * `build/device-test/review/`, and to TMPLAYER_SHOTS=<dir> as well when that is set. Each one
- * checks that its corners are the window's own colour, which is what makes the hand-over from the
- * system splash seamless.
+ * checks that its corners are the loader's own navy ground, the colour the system splash paints
+ * as well, which is what makes the hand-over from the splash seamless.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -58,7 +58,9 @@ class BrandLoaderRenderTest {
         val theme = if (dark) "dark" else "light"
         for (at in listOf(0.15f, 0.35f, 0.5f, 0.65f, 0.85f)) {
             val bitmap = render(tv, dark, at)
-            val ground = TmSchemes.of(dark).background.toArgb()
+            // The loader paints its own navy ground in every theme (loaderGround in
+            // BrandLoader.kt), so the splash and the loader read as one sequence.
+            val ground = Color(0xFF050C1C).toArgb()
             assertEquals(ground, bitmap.getPixel(2, 2))
             assertEquals(ground, bitmap.getPixel(bitmap.width - 3, bitmap.height - 3))
             save("loader-$device-$theme-${(at * 100).toInt()}.png", bitmap)

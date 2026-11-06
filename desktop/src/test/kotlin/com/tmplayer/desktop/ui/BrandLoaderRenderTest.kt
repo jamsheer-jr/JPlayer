@@ -16,7 +16,6 @@ import com.tmplayer.ui.components.BrandLoader
 import com.tmplayer.ui.components.BrandLoaderHandOff
 import com.tmplayer.ui.theme.Motion
 import com.tmplayer.ui.theme.TmMaterialTheme
-import com.tmplayer.ui.theme.TmSchemes
 import androidx.compose.ui.graphics.toArgb
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.EncodedImageFormat
@@ -37,7 +36,9 @@ class BrandLoaderRenderTest {
     @Test
     fun `the spinner turns in the middle and leaves the ground alone`() {
         for (dark in listOf(true, false)) {
-            val ground = TmSchemes.of(dark).background.toArgb()
+            // The loader paints its own navy ground in every theme (loaderGround in
+            // BrandLoader.kt), so the corners are that navy, not the theme background.
+            val ground = Color(0xFF050C1C).toArgb()
             val w = 1366
             val h = 768
             val first = pixels(render(w, h, dark, sweepAt = 0.3f))
@@ -82,7 +83,7 @@ class BrandLoaderRenderTest {
             }
         }.use { scene ->
             scene.render(0)
-            val ground = TmSchemes.Dark.background.toArgb()
+            val ground = Color(0xFF050C1C).toArgb()
             assertEquals(ground, corner(scene.render(100_000_000L)))
             label.value = null
             Snapshot.sendApplyNotifications()

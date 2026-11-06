@@ -61,7 +61,7 @@ class DownloadLocationPhoneTest {
         open()
 
         rule.onAllNodesWithText("Other folder").assertCountEquals(1)
-        rule.onAllNodesWithText("Pick or create a folder, such as Download/TMPlayer").assertCountEquals(1)
+        rule.onAllNodesWithText("Pick or create a folder, such as Download/J Player").assertCountEquals(1)
         rule.onAllNodesWithText("Internal storage").assertCountEquals(2)
     }
 
