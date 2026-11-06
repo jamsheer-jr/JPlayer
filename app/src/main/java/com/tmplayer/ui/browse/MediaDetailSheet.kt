@@ -216,7 +216,8 @@ internal fun MediaDetailOpened(
     // The viewer's corrections to this file, and whether a provider's match is showing for it.
     val corrections by com.tmplayer.data.VideoCorrections.state.collectAsStateWithLifecycle()
     val correction = corrections[item.id]
-    val matched = com.tmplayer.ui.online.rememberMatched(item) != null
+    val matchedMeta = com.tmplayer.ui.online.rememberMatched(item)
+    val matched = matchedMeta != null
     var renaming by remember { mutableStateOf(false) }
     if (renaming) {
         com.tmplayer.player.BookmarkNoteSheet(
@@ -342,6 +343,9 @@ internal fun MediaDetailOpened(
             canExport = touch && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q,
             canRemoveFromHistory = true,
             canCollect = true,
+            // A poster card (v1.0.10) where a matched poster is there to draw: the phone
+            // only, like the other hand-offs, since a television has no share sheet to speak of.
+            canSharePoster = touch && matchedMeta?.info?.posterUrl != null,
         ),
     )
     val free = DiskInfo.freeLabel(freeBytes)
@@ -418,6 +422,7 @@ internal fun MediaDetailOpened(
             DetailAction.SelectVideos -> { { onDismiss(); onSelectVideos?.invoke() } }
             // Back from the other app, or after the copy, the page is still there.
             DetailAction.Share -> { { scope.launch { shareVideo(context, item, send = true); if (asMenu) onDismiss() } } }
+            DetailAction.SharePoster -> { { scope.launch { sharePosterCard(context, item); if (asMenu) onDismiss() } } }
             DetailAction.OpenElsewhere -> { { scope.launch { shareVideo(context, item, send = false); if (asMenu) onDismiss() } } }
             DetailAction.CopyLink -> { { scope.launch { MessageLink.copy(context, item.chatId, item.messageId); if (asMenu) onDismiss() } } }
             DetailAction.OpenChat -> { { onDismiss(); onOpenChat?.invoke() } }

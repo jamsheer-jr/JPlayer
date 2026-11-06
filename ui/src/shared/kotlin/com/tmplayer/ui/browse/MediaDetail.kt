@@ -148,6 +148,7 @@ fun detailRow(
         DetailAction.CancelDownload -> DetailRow(action, s.gridCancelRunning, TmIcons.Close, onSelect = onSelect)
         DetailAction.SelectVideos -> DetailRow(action, s.gridSelectVideos, TmIcons.Checklist, s.gridSelectVideosDetail, onSelect = onSelect)
         DetailAction.Share -> DetailRow(action, s.commonShare, TmIcons.Share, onSelect = onSelect)
+        DetailAction.SharePoster -> DetailRow(action, s.detailSharePoster, TmIcons.Image, onSelect = onSelect)
         DetailAction.OpenElsewhere -> DetailRow(action, s.gridOpenInOtherPlayer, TmIcons.OpenExternal, onSelect = onSelect)
         DetailAction.CopyLink -> DetailRow(action, s.gridCopyLink, TmIcons.Share, s.gridCopyLinkDetail, onSelect = onSelect)
         DetailAction.OpenChat -> DetailRow(

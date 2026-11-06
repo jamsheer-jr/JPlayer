@@ -359,7 +359,8 @@ private fun DetailPane(state: ShellState, request: DetailRequest) {
                     runCatching { state.settings.correct(com.tmplayer.data.VideoCorrections.filesOf(item)) { it.copy(wrongMatch = wrong) } }
                 }
             }
-            DetailAction.Rename, DetailAction.CommentVideos, DetailAction.AddToCollection -> Unit
+            // No poster card on the desktop: its panels never offer one (canSharePoster stays off there).
+            DetailAction.Rename, DetailAction.CommentVideos, DetailAction.AddToCollection, DetailAction.SharePoster -> Unit
             DetailAction.ExportCopy -> outlives.launch {
                 val file = record?.localPath?.let(::File)?.takeIf { it.isFile }
                 if (file == null) {
