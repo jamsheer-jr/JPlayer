@@ -438,6 +438,7 @@
   "detail": {
     "about": "About",
     "add_to_collection": "Add to collection",
+    "ai_enhanced": "AI Enhanced",
     "airs_on": "Airs {date}",
     "audio": "Audio",
     "bookmark_at": "Play from {time}",
@@ -482,8 +483,10 @@
     "open_chat_detail": "Every video in that chat",
     "open_details": "Details",
     "open_details_detail": "Overview, cast, episodes and more",
+    "platform": "Platform",
     "posted": "Posted",
     "protected": "This chat does not allow saving, so it plays here only.",
+    "remastered": "Remastered",
     "resolution": "Resolution",
     "resume_at": "Resume {time}",
     "resume_at_detail": "Carries on from where you stopped",

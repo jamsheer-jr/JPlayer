@@ -430,6 +430,7 @@
   "detail": {
     "about": "വിവരണം",
     "add_to_collection": "കളക്ഷനിലേക്ക് ചേർക്കുക",
+    "ai_enhanced": "AI Enhanced",
     "airs_on": "{date}-ന് സംപ്രേഷണം",
     "audio": "ഓഡിയോ",
     "bookmark_at": "{time}-ൽ നിന്ന് പ്ലേ ചെയ്യുക",
@@ -474,8 +475,10 @@
     "open_chat_detail": "ആ ചാറ്റിലെ എല്ലാ വീഡിയോകളും",
     "open_details": "വിശദാംശങ്ങൾ",
     "open_details_detail": "സംഗ്രഹം, അഭിനേതാക്കൾ, എപ്പിസോഡുകൾ എന്നിവയും മറ്റും",
+    "platform": "പ്ലാറ്റ്ഫോം",
     "posted": "പോസ്റ്റ് ചെയ്തത്",
     "protected": "ഈ ചാറ്റ് സേവ് ചെയ്യാൻ അനുവദിക്കുന്നില്ല, അതിനാൽ ഇവിടെ മാത്രമേ പ്ലേ ചെയ്യാനാകൂ.",
+    "remastered": "Remastered",
     "resolution": "റെസല്യൂഷൻ",
     "resume_at": "{time}-ൽ നിന്ന് തുടരുക",
     "resume_at_detail": "നിർത്തിയിടത്ത് നിന്ന് തുടരും",

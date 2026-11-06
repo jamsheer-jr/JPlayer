@@ -464,8 +464,15 @@ internal fun DetailFacts(
     val lines = buildList {
         add(s.detailFileName to item.fileName.ifBlank { item.title })
         facts.resolution?.let { add(s.detailResolution to listOfNotNull(it, facts.pixels).joinToString("  ·  ")) }
-        listOfNotNull(facts.videoCodec, facts.dynamicRange, facts.container).takeIf { it.isNotEmpty() }
+        listOfNotNull(
+            facts.videoCodec,
+            facts.dynamicRange,
+            facts.container,
+            s.detailAiEnhanced.takeIf { facts.aiEnhanced },
+            s.detailRemastered.takeIf { facts.remastered },
+        ).takeIf { it.isNotEmpty() }
             ?.let { add(s.detailVideo to it.joinToString("  ·  ")) }
+        facts.platform?.let { add(s.detailPlatform to it) }
         facts.audio?.let { add(s.detailAudio to it) }
         facts.tracks.takeIf { it.isNotEmpty() }?.let { tracks ->
             add(
