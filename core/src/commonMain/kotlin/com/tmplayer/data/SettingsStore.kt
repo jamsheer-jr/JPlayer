@@ -38,6 +38,7 @@ private val OPEN_LAST_CHAT = booleanPreferencesKey("open_last_chat")
 private val DOWNLOAD_FIRST = booleanPreferencesKey("download_before_playing")
 private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
 private val DETAIL_FIRST = booleanPreferencesKey("detail_first")
+private val HERO_TRAILER_AUTOPLAY = booleanPreferencesKey("hero_trailer_autoplay")
 private val HIDE_RIP_TAGS = booleanPreferencesKey("hide_rip_tags")
 private val HIDE_CAM_COPIES = booleanPreferencesKey("hide_cam_copies")
 private val HIDE_SHORT_VIDEOS = booleanPreferencesKey("hide_short_videos")
@@ -622,6 +623,19 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setDetailFirst(value: Boolean) {
         prefs.edit { it[DETAIL_FIRST] = value }
+    }
+
+    /**
+     * Whether a detail page's hero plays its trailer by itself, muted, in place of the still
+     * backdrop (owner, v1.0.15, item 24): on by default, the streaming app behaviour the
+     * owner asked for. The rest of the rule (never on a metered connection, never on a
+     * television, never with reduced motion) is [com.tmplayer.online.HeroPreview]'s, not
+     * this switch's: turning this off is the viewer's own no, and nothing turns it back on.
+     */
+    val heroTrailerAutoplay: Flow<Boolean> = read { it[HERO_TRAILER_AUTOPLAY] ?: true }
+
+    suspend fun setHeroTrailerAutoplay(value: Boolean) {
+        prefs.edit { it[HERO_TRAILER_AUTOPLAY] = value }
     }
 
     /**
