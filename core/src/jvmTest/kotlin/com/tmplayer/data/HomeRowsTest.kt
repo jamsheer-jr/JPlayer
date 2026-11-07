@@ -665,7 +665,7 @@ class HomeRowsTest {
     }
 
     @Test
-    fun newShelvesGroupByPlatformYearAndWeek() {
+    fun newShelvesGroupByPlatformAndWeek() {
         val films = listOf(
             video(1, "Alpha HS 2026.mkv", date = 1_700_000_000),
             video(1, "Beta HS 2026.mkv", date = 1_700_000_100),
@@ -684,12 +684,11 @@ class HomeRowsTest {
             recent = emptyList(),
             layout = HomeLayout(catalogRows = true),
             nowMs = 1_700_000_200_000L,
-            shelfYear = 2026,
         )
         val kinds = rows.filterIsInstance<HomeRow.Catalog>().map { it.kind }
         assertTrue("ott-disney-hotstar" in kinds)
         assertTrue("ott-netflix" in kinds)
-        assertTrue("year-2026" in kinds)
+        assertFalse(kinds.any { it.startsWith("year-") })
         assertTrue("weekly" in kinds)
         assertTrue("top10" in kinds)
         val ott = rows.filterIsInstance<HomeRow.Catalog>().first { it.kind == "ott-netflix" }
@@ -861,39 +860,50 @@ class HomeRowsTest {
     }
 
     @Test
-    fun theYearShelfGathersTheChosenYearAndDefaultsToTheCurrentOne() {
-        val older = listOf(
+    fun noYearShelfIsBuiltHoweverManyTitlesShareAYear() {
+        val films = listOf(
             video(1, "Alpha 2024.mp4"),
             video(1, "Beta 2024.mp4"),
             video(1, "Gamma 2024.mp4"),
         )
-        val chosen = HomeRows.build(
+        val rows = HomeRows.build(
             continueWatching = emptyList(),
             favourites = listOf(chat(1)),
-            loaded = mapOf(1L to older),
-            recent = emptyList(),
-            layout = HomeLayout(catalogRows = true),
-            shelfYear = 2024,
-        )
-        val yearRow = chosen.filterIsInstance<HomeRow.Catalog>().single { it.kind == "year-2024" }
-        assertEquals("2024", yearRow.label)
-        assertEquals(older.map { it.messageId }.toSet(), ids(yearRow).toSet())
-        // Nothing passed: the shelf is the current year's, as it has always been.
-        val now = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-        val current = listOf(
-            video(1, "Alpha $now.mp4"),
-            video(1, "Beta $now.mp4"),
-            video(1, "Gamma $now.mp4"),
-        )
-        val defaulted = HomeRows.build(
-            continueWatching = emptyList(),
-            favourites = listOf(chat(1)),
-            loaded = mapOf(1L to current),
+            loaded = mapOf(1L to films),
             recent = emptyList(),
             layout = HomeLayout(catalogRows = true),
         )
-        val defaultRow = defaulted.filterIsInstance<HomeRow.Catalog>().single { it.kind == "year-$now" }
-        assertEquals(now.toString(), defaultRow.label)
-        assertEquals(3, defaultRow.all.size)
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        assertTrue(catalogs.none { it.kind.startsWith("year-") })
+        // The titles themselves are untouched: they stand in Movies as before.
+        val movies = catalogs.single { it.kind == "movies" }
+        assertEquals(films.map { it.messageId }.toSet(), ids(movies).toSet())
+    }
+
+    @Test
+    fun aStoredYearCategoryReferenceIsSkippedGracefully() {
+        // A layout stored while the year shelf existed can still name its group, in the
+        // hidden set or in the viewer's order: the build must not crash or wedge on it,
+        // and the shelves that remain keep their places.
+        val films = listOf(
+            video(1, "Alpha 2024.mp4"),
+            video(1, "Beta 2024.mp4"),
+            video(1, "Gamma 2024.mp4"),
+            video(1, "Delta 2024.mp4"),
+        )
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(
+                catalogRows = true,
+                hiddenCatalog = setOf("year"),
+                catalogOrder = listOf("year", "movies"),
+            ),
+        )
+        val kinds = rows.filterIsInstance<HomeRow.Catalog>().map { it.kind }
+        assertTrue("movies" in kinds)
+        assertFalse(kinds.any { it.startsWith("year-") })
     }
 }

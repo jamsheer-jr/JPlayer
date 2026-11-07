@@ -119,7 +119,6 @@ import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
 import kotlinx.coroutines.launch
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
-import androidx.compose.material3.Icon as M3Icon
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -318,12 +317,6 @@ internal fun HomePane(
     var catalogKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     // The Categories index sheet (phone, v1.0.13): opened from the category row's last pill.
     var categoriesOpen by remember { mutableStateOf(false) }
-    // The year shelf's own picker sheet (phone, v1.0.13): opened from the year row's heading.
-    var yearSheet by remember { mutableStateOf(false) }
-    // The year the year shelf gathers, as stored (0 is no pick: the current year). Read here,
-    // beside the banner's own reads off the same store, since the heading's picker shows the
-    // pick and the row already holds it.
-    val shelfYear by remember(bannerSettings) { bannerSettings.homeShelfYear }.collectAsState(initial = 0)
     val catalogRow = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
     // Open link (v1.0.11): an address pasted on Home, played through the same stream mode
     // the built-in channel's posts use.
@@ -837,14 +830,6 @@ internal fun HomePane(
                             start = start,
                             end = end,
                             seeAll = seeAll.takeIf { touch },
-                            // The year shelf's heading is its own toggle on a phone
-                            // (v1.0.13): tapping it opens the years. A television passes
-                            // null here by construction, its heading untouched.
-                            onYear = if (touch && row is HomeRow.Catalog && row.kind.startsWith("year-")) {
-                                { yearSheet = true }
-                            } else {
-                                null
-                            },
                         )
                         if (!loaded) {
                             PlaceholderRow(start, poster = row is HomeRow.Recent || row is HomeRow.Chat || row is HomeRow.Catalog)
@@ -997,53 +982,6 @@ internal fun HomePane(
                         categoriesOpen = false
                         val index = listed.indexOf(row)
                         if (index >= 0) scope.launch { listState.animateScrollToItem(index + 4) }
-                    }
-                }
-            }
-        }
-    }
-
-    // The year shelf's picker (phone, v1.0.13): the years the pool on this Home actually
-    // holds, read off the tiles' own names (the matched years stay inside the row building,
-    // which shows the same titles), newest first, with the year the shelf gathers now marked;
-    // a pick is stored and the shelf retitles and refills itself.
-    if (yearSheet) {
-        val currentYear = com.tmplayer.platform.currentYear()
-        val effectiveYear = if (shelfYear > 0) shelfYear else currentYear
-        val years = remember(listed, effectiveYear, currentYear) {
-            val found = sortedSetOf<Int>(reverseOrder())
-            for (row in listed) {
-                val entries = when (row) {
-                    is HomeRow.Chat -> row.entries
-                    is HomeRow.Catalog -> row.entries
-                    is HomeRow.Recent -> row.entries
-                    else -> emptyList()
-                }
-                for (entry in entries) {
-                    val item = when (entry) {
-                        is ShelfEntry.File -> entry.item
-                        is ShelfEntry.Show -> entry.series.cover
-                    }
-                    item.parsedName.year?.let { found.add(it) }
-                }
-            }
-            found.add(effectiveYear)
-            found.add(currentYear)
-            found.toList()
-        }
-        ChoiceSheet(
-            title = s.settingsCatYear,
-            onDismiss = { yearSheet = false },
-            onClose = { yearSheet = false },
-        ) {
-            ChoiceList {
-                years.forEach { year ->
-                    ChoiceLine(
-                        title = year.toString(),
-                        selected = year == effectiveYear,
-                    ) {
-                        scope.launch { bannerSettings.setHomeShelfYear(year) }
-                        yearSheet = false
                     }
                 }
             }
@@ -1731,13 +1669,6 @@ private fun RowHeading(
     end: Dp,
     /** A phone's See all; a television's is the row's last tile ([SeeAllTile]). */
     seeAll: (() -> Unit)?,
-    /**
-     * The year shelf's picker (phone only, v1.0.13): when set, the title itself is the toggle
-     * and tapping it opens the years. Null everywhere else, and always null on a television,
-     * whose heading keeps exactly its old shape and focus behaviour; the stored year still
-     * reaches the television's shelf through the rows themselves.
-     */
-    onYear: (() -> Unit)? = null,
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
@@ -1750,31 +1681,7 @@ private fun RowHeading(
             .heightIn(min = if (touch) SEE_ALL_CHIP else TV_SEE_ALL_HEIGHT),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (touch && onYear != null) {
-            Row(
-                Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onYear)
-                    .padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                M3Text(
-                    title,
-                    style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = Tone.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.width(4.dp))
-                M3Icon(
-                    imageVector = TmIcons.ChevronDown,
-                    contentDescription = null,
-                    tint = Tone.muted,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        } else if (touch) {
+        if (touch) {
             M3Text(
                 title,
                 style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),

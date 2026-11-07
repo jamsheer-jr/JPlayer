@@ -1834,16 +1834,11 @@ private fun Root() {
         // Null until the setting is read, so no row that is off is fetched for the first frame.
         val homeLayout by remember { settings.homeLayout }.collectAsStateWithLifecycle(initialValue = null)
         val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
-        // The year shelf's picked year (v1.0.13): 0 in the store is no pick, and the shelf
-        // takes the current year, on the phone and the television alike, since both read
-        // their rows from this one call.
-        val homeShelfYear by remember { settings.homeShelfYear }.collectAsStateWithLifecycle(initialValue = 0)
         val homeRows = rememberHomeRows(
             homeViewModel, chats, favorites, continueWatching, watchLater, watchedVideos.values,
             recentMinStarred = 1,
             layout = homeLayout,
             collections = collections,
-            shelfYear = if (homeShelfYear > 0) homeShelfYear else com.tmplayer.platform.currentYear(),
         )
         val tvChannelsOn by settings.tvChannels.collectAsStateWithLifecycle(initialValue = null)
         TvHomeChannels(

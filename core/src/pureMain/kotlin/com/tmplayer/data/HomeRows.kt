@@ -1,7 +1,5 @@
 package com.tmplayer.data
 
-import com.tmplayer.platform.currentYear
-
 /**
  * One row on Home: what the viewer was part way through, the newest videos in a starred chat, or
  * the newest videos across the starred chats together.
@@ -125,8 +123,7 @@ sealed interface HomeRow {
      * same way; their headings come from the catalog too. Since v1.0.13 a shelf can also be
      * "anime" (the titles the online match calls Animation in Japanese, or whose name
      * carries the word on its own where nobody matched them), which stands apart from
-     * Movies and Series, and the year shelf's kind names the chosen year ("year-" and
-     * the year, its label the year itself).
+     * Movies and Series.
      */
     data class Catalog(
         val kind: String,
@@ -277,9 +274,6 @@ object HomeRows {
      *   run) already has videos: Home's chats cannot be picked, so Recently added holds its place
      *   as loading. Without it a cold start drew Continue watching alone and the carousel landed
      *   over it seconds later, pushing it down (Mi TV, caches cleared, 2026-10-23).
-     * @param shelfYear the year the year shelf gathers: the current year unless the viewer
-     *   picked another (the Settings year toggle, v1.0.13). Callers that pass nothing see
-     *   the shelf they have always seen.
      */
     fun build(
         continueWatching: List<ResumeRecord>,
@@ -305,8 +299,6 @@ object HomeRows {
         phoneOrder: Boolean = false,
         /** Now, for the Weekly shelf (new arrivals this week); zero turns that shelf off. */
         nowMs: Long = 0L,
-        /** The year shelf's year; the current year unless the viewer picked another. */
-        shelfYear: Int = currentYear(),
     ): List<HomeRow> {
         // A phone's catalog shelves, held back until Recently added stands (owner, v1.0.13):
         // the series shelves and the foot shelves are gathered here and laid down together,
@@ -456,7 +448,7 @@ object HomeRows {
             val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
                 .distinctBy { it.id }
             val foot = ArrayList<HomeRow.Catalog>()
-            foot += catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys, nowMs, shelfYear)
+            foot += catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys, nowMs)
             // The viewer's own collections under the shelves (J Player, 2026-11-06): a title is
             // in a collection by its progress key, and any copy of it stands for it, the way a
             // folded tile stands for its copies everywhere else on Home. One tile is enough:
@@ -496,7 +488,6 @@ object HomeRows {
         kind.startsWith("lang-") -> "lang"
         kind.startsWith("genre-") -> "genre"
         kind.startsWith("ott-") -> "ott"
-        kind.startsWith("year-") -> "year"
         kind.startsWith("collection-") -> "collections"
         kind == "multi-lang" -> "multi"
         else -> kind
@@ -605,14 +596,6 @@ object HomeRows {
         is ShelfEntry.Show -> entry.series.cover.fileName.ifBlank { entry.series.cover.title }
     }
 
-    /** A year named in a file's name, the way release names carry it; null where none stands. */
-    private fun nameYearOf(entry: ShelfEntry): Int? =
-        Regex("""(?:^|[ ._\[(])(19\d\d|20\d\d)(?:[ ._\])]|$)""").find(leadNameOf(entry))?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-    /** An entry's year: the match's where it gave one, else the one its name carries. */
-    private fun yearOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): Int? =
-        metaOf(entry, titleMeta)?.year ?: nameYearOf(entry)
-
     /** Whether an entry carries more than one soundtrack language, by its names or its copies. */
     private fun isMultiLanguage(entry: ShelfEntry): Boolean {
         if (Regex("""(?i)(?<![A-Za-z])multi(?![A-Za-z])""").containsMatchIn(leadNameOf(entry))) return true
@@ -679,8 +662,7 @@ object HomeRows {
      * Anime shelf holds every anime title in the pool, films and shows together (see
      * [isAnime]), and anime titles stand in neither Movies nor the language shelves; the
      * discovery shelves (Trending, Top 10, the genre shelves, Top Rated, Because, the OTT
-     * rows, Multi Language, the year shelf and Weekly) keep them as they always have. The
-     * year shelf gathers [shelfYear], the current year unless the viewer picked another.
+     * rows, Multi Language and Weekly) keep them as they always have.
      */
     private fun catalogShelves(
         pool: List<MediaItem>,
@@ -691,7 +673,6 @@ object HomeRows {
         watchedGenres: Set<String> = emptySet(),
         watchedKeys: Set<String> = emptySet(),
         nowMs: Long = 0L,
-        shelfYear: Int = currentYear(),
     ): List<HomeRow.Catalog> {
         if (pool.isEmpty()) return emptyList()
         val all = arranged(pool, HashSet(inProgress), continuing, inProgress)
@@ -776,11 +757,6 @@ object HomeRows {
             // soundtrack language, by name or by their copies' tracks.
             val multi = all.filter { isMultiLanguage(it) }
             if (multi.size >= CATALOG_MIN) add(HomeRow.Catalog("multi-lang", "", multi.take(LIMIT), all = multi))
-            // The year row (owner, 2026-11-06): titles that came out in the chosen year
-            // ([shelfYear], the current year unless the viewer picked another), by their
-            // match's year or the year their name carries.
-            val chosenYear = all.filter { yearOf(it, titleMeta) == shelfYear }
-            if (chosenYear.size >= CATALOG_MIN) add(HomeRow.Catalog("year-$shelfYear", shelfYear.toString(), chosenYear.take(LIMIT), all = chosenYear))
             // Weekly (owner, 2026-11-06): what arrived in the chats in the last seven
             // days, by the posts' own dates. No clock handed in, no row.
             if (nowMs > 0) {
