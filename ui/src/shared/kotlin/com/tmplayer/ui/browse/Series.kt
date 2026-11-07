@@ -19,6 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -364,6 +365,12 @@ fun EpisodeRow(
      * so the cards do not grow (and the list under them move) when the words arrive.
      */
     holdOverview: Boolean = false,
+    /**
+     * The episode's file facts (owner, v1.0.14): where a page wants them, an (i) at the
+     * card's end opens the facts for the copy the card plays. Null, as in the player's
+     * own episode list, draws no button.
+     */
+    onInfo: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(Corner.Medium)
     val card = modifier
@@ -377,6 +384,7 @@ fun EpisodeRow(
         overview = guide?.overview?.trim()?.takeIf { showOverview && it.isNotEmpty() },
         large = large,
         holdOverview = showOverview && holdOverview,
+        onInfo = onInfo,
     )
 }
 
@@ -477,6 +485,7 @@ private fun EpisodeLine(
     overview: String? = null,
     large: Boolean = false,
     holdOverview: Boolean = false,
+    onInfo: (() -> Unit)? = null,
 ) {
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -596,6 +605,56 @@ private fun EpisodeLine(
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
+        }
+        if (onInfo != null) {
+            val infoInteractions = remember { MutableInteractionSource() }
+            val infoFocused by infoInteractions.collectIsFocusVisibleAsState()
+            Box(
+                Modifier
+                    .size(if (tv) 44.dp else 40.dp)
+                    .clip(CircleShape)
+                    .background(if (infoFocused) Tone.focusFill else Tone.surfaceHigh)
+                    .focusRing(infoFocused, CircleShape)
+                    .clickable(
+                        interactionSource = infoInteractions,
+                        indication = if (tv) null else androidx.compose.foundation.LocalIndication.current,
+                        onClick = onInfo,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    TmIcons.Info,
+                    contentDescription = s.detailHeading,
+                    tint = if (infoFocused) Tone.onFocusFill else Tone.muted,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One episode's file facts (owner, v1.0.14): the movie page's facts table for the copy the
+ * episode's card plays, in the show menu's own card shape, opened by the (i) on the card.
+ * The episode's own page already carries the same table inline under its About; this is
+ * for reading the facts without leaving the show's page. Back or a press outside leaves.
+ */
+@Composable
+private fun EpisodeFactsDialog(item: MediaItem, onDismiss: () -> Unit) {
+    val s = LocalStrings.current
+    val facts = remember(item) { com.tmplayer.data.MediaFacts.of(item) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .widthIn(min = 280.dp, max = 440.dp)
+                .clip(com.tmplayer.ui.theme.Floating.DialogShape)
+                .background(com.tmplayer.ui.theme.FloatingTone.dialog)
+                .border(com.tmplayer.ui.theme.floatingBorder(), com.tmplayer.ui.theme.Floating.DialogShape)
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        ) {
+            DetailFacts(item, facts, s, overview = null, showSynopsis = false)
         }
     }
 }
@@ -771,6 +830,8 @@ fun SeriesPanel(
     val marking = remember(series.key) { mutableStateOf(false) }
     // A cast member pressed: their titles in the chats (owner, v1.0.14).
     var person by remember { mutableStateOf<com.tmplayer.online.MetaPerson?>(null) }
+    // An episode's (i) pressed: that copy's file facts (owner, v1.0.14).
+    var infoItem by remember { mutableStateOf<MediaItem?>(null) }
     val progress = watch.progress(series)
     val next = progress.next
     var season by rememberSaveable(series.key) {
@@ -1265,6 +1326,7 @@ fun SeriesPanel(
                         showOverview = true,
                         large = large,
                         holdOverview = holdEpisodeWords,
+                        onInfo = { infoItem = chosen },
                     )
             }
         }
@@ -1386,6 +1448,9 @@ fun SeriesPanel(
             onDismiss = { person = null },
             onOpenItem = { opened -> person = null; onOpenItem?.invoke(opened) },
         )
+    }
+    infoItem?.let { chosen ->
+        EpisodeFactsDialog(chosen, onDismiss = { infoItem = null })
     }
 }
 
