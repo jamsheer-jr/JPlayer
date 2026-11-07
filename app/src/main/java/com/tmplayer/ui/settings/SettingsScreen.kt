@@ -3615,7 +3615,6 @@ internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): St
     "top-rated" -> s.settingsCatTopRated
     "ott" -> s.settingsCatOtt
     "multi" -> s.settingsCatMulti
-    "year" -> s.settingsCatYear
     "weekly" -> s.settingsCatWeekly
     "because" -> s.settingsCatBecause
     "collections" -> s.settingsCatCollections
