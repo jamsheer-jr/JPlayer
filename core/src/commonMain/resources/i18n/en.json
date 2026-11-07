@@ -1069,6 +1069,7 @@
     "new_badge": "New",
     "new_episode": "{code}, new",
     "new_episode_tag": "New Episode",
+    "new_hot": "New & Hot",
     "none_added": "None of the chats you added has videos to show here yet. Pick more in Add chats.",
     "none_added_chosen": "None of your chosen chats has videos to show here yet. J Player shows videos only from the chats you choose, so choose more to see more.",
     "none_chosen": "No chosen chats to show here. Pick the chats for Recently added in Home settings.",
@@ -1086,6 +1087,7 @@
     "row_chat_movies": "Movies in {chat}",
     "row_chat_shows": "Shows in {chat}",
     "row_continue": "Continue watching",
+    "row_dubbed": "{language} Dubbed",
     "row_kdrama": "K-Drama",
     "row_movies": "Movies",
     "row_multi_lang": "Multi Language",
@@ -1096,6 +1098,7 @@
     "row_scroll_on": "Scroll on",
     "row_shows": "Shows",
     "row_top10": "Top 10",
+    "row_top_picks": "Top picks for you",
     "row_top_rated": "Top Rated",
     "row_trending": "Trending now",
     "row_uhd": "UHD",
@@ -1104,7 +1107,8 @@
     "see_all": "See all",
     "see_all_count": "{count, plural, one {# video} other {# videos}}",
     "see_all_count_at_least": "{count, plural, one {#+ video} other {#+ videos}}",
-    "surprise_me": "Surprise me"
+    "surprise_me": "Surprise me",
+    "watch_now": "Watch now"
   },
   "install": {
     "appimage": "AppImage",

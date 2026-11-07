@@ -26,7 +26,8 @@ fun homeRowTitle(row: HomeRow, s: Messages): String = when (row) {
         "top10" -> s.homeRowTop10
         "weekly" -> s.homeRowWeekly
         "multi-lang" -> s.homeRowMultiLang
-        else -> row.label
+        "top-picks" -> s.homeRowTopPicks
+        else -> if (row.kind.startsWith("dub-") && row.label.isNotEmpty()) s.homeRowDubbed(row.label) else row.label
     }
 }
 

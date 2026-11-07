@@ -123,7 +123,10 @@ sealed interface HomeRow {
      * same way; their headings come from the catalog too. Since v1.0.13 a shelf can also be
      * "anime" (the titles the online match calls Animation in Japanese, or whose name
      * carries the word on its own where nobody matched them), which stands apart from
-     * Movies and Series.
+     * Movies and Series. Since v1.0.15 a shelf can also be "dub-" and a language code
+     * (that language's dubbed titles, from their file names' own dub markers alone)
+     * or "top-picks" (unwatched titles picked from what the viewer has watched and
+     * what rates well, in one row).
      */
     data class Catalog(
         val kind: String,
@@ -511,6 +514,7 @@ object HomeRows {
     fun catalogGroupOf(kind: String): String = when {
         kind == "series" || kind.startsWith("series-lang-") -> "series"
         kind == "anime" -> "anime"
+        kind.startsWith("dub-") -> "lang"
         kind.startsWith("lang-") -> "lang"
         kind.startsWith("genre-") -> "genre"
         kind.startsWith("ott-") -> "ott"
@@ -606,6 +610,29 @@ object HomeRows {
      */
     private fun languageOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): String? =
         metaOf(entry, titleMeta)?.originalLanguage?.takeIf { it in LANGUAGE_NAMES } ?: languageOf(entry)
+
+    /** The word "dub" or "dubbed" standing on its own in a name, the shape [isMultiLanguage] reads. */
+    private val DUB_WORD = Regex("""(?i)(?<![A-Za-z])(?:dubbed|dub)(?![A-Za-z])""")
+
+    /**
+     * The language an entry is dubbed into, where its name says so: the names the
+     * entry is filed under (a show: its cover's, then an episode copy's) are read for
+     * a standalone dub marker, and the language named in that same name
+     * ([VideoCopies.languagesIn]) is the dub's. A name with the marker and no language
+     * in it, and a name with a language and no marker, both say nothing: the first
+     * does not name the dub, the second is the title's own language, not a dub.
+     */
+    private fun dubbedLanguageOf(entry: ShelfEntry): String? {
+        val names = when (entry) {
+            is ShelfEntry.File -> listOf(leadNameOf(entry))
+            is ShelfEntry.Show -> listOfNotNull(
+                leadNameOf(entry),
+                entry.series.episodes.firstOrNull()?.copies?.firstOrNull()?.let { it.fileName.ifBlank { it.title } },
+            )
+        }
+        val dubbed = names.firstOrNull { DUB_WORD.containsMatchIn(it) } ?: return null
+        return VideoCopies.languagesIn(dubbed).firstOrNull()?.takeIf { it in LANGUAGE_NAMES }
+    }
 
     /** The platform an entry belongs to: the match's providers first, else its name's own tag ([MediaFacts]). */
     private fun platformOf(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): String? =
@@ -744,6 +771,21 @@ object HomeRows {
                 .forEach { (code, entries) ->
                     add(HomeRow.Catalog("lang-$code", LANGUAGE_NAMES.getValue(code!!), entries.take(LIMIT), all = entries))
                 }
+            // Dubbed rows (owner, v1.0.15, item 29): the language shelves in the dubbed
+            // shape, one row per dubbed language, from the file names' own markers
+            // alone (see [dubbedLanguageOf]): a name that says a title is dubbed into a
+            // language, never the match's original language, which names where the
+            // title came from rather than the copy the viewer holds. Capped and gated
+            // like the language shelves, and grouped with them in the Categories
+            // picker ([catalogGroupOf]), so hiding languages hides these with them.
+            val byDub = all.groupBy { dubbedLanguageOf(it) }
+            byDub.entries
+                .filter { (code, entries) -> code != null && entries.size >= CATALOG_MIN }
+                .sortedWith(compareByDescending<Map.Entry<String?, List<ShelfEntry>>> { it.value.size }.thenBy { LANGUAGE_NAMES[it.key] })
+                .take(CATALOG_LANGUAGES)
+                .forEach { (code, entries) ->
+                    add(HomeRow.Catalog("dub-$code", LANGUAGE_NAMES.getValue(code!!), entries.take(LIMIT), all = entries))
+                }
             if (titleMeta.isNotEmpty()) {
                 val byGenre = LinkedHashMap<String, MutableList<ShelfEntry>>()
                 all.forEach { entry ->
@@ -772,6 +814,26 @@ object HomeRows {
                         compareByDescending<Triple<ShelfEntry, Int, Double>> { it.second }.thenByDescending { it.third },
                     )
                     if (scored.size >= CATALOG_MIN) add(HomeRow.Catalog("because", "", scored.take(LIMIT).map { it.first }, all = scored.map { it.first }))
+                }
+                // Top picks (owner, v1.0.15, item 29): the two readings above in one
+                // row, what the viewer watches and what rates well together: an
+                // unwatched title stands here for sharing a genre with what was
+                // watched or for a rating at the Top Rated bar, most shared genres
+                // first, then best rated. It stands only where there is watching to
+                // pick from: with none, Top Rated alone is the honest row, and a
+                // second copy of it would say nothing new.
+                if (watchedGenres.isNotEmpty()) {
+                    val wanted = watchedGenres.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
+                    val picks = all.mapNotNull { entry ->
+                        val meta = metaOf(entry, titleMeta) ?: return@mapNotNull null
+                        if (itemsOf(entry).any { it.progressKey in watchedKeys }) return@mapNotNull null
+                        val shared = meta.genres.count { it.trim().lowercase() in wanted }
+                        val rated = meta.rating?.takeIf { it >= TOP_RATED_MIN }
+                        if (shared == 0 && rated == null) null else Triple(entry, shared, rated ?: 0.0)
+                    }.sortedWith(
+                        compareByDescending<Triple<ShelfEntry, Int, Double>> { it.second }.thenByDescending { it.third },
+                    )
+                    if (picks.size >= CATALOG_MIN) add(HomeRow.Catalog("top-picks", "", picks.take(LIMIT).map { it.first }, all = picks.map { it.first }))
                 }
             }
             // OTT rows (owner, 2026-11-06): one per platform, from the match's providers
