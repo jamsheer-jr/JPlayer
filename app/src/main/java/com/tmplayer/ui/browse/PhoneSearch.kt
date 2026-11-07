@@ -198,8 +198,9 @@ internal fun PhoneSearchScreen(
 
     val query = text.text
     // A popup left over from the empty page (the cleared recents, with their Undo) does not
-    // follow the viewer into the results: once words are typed, it goes. While the words stay
-    // blank it stays up, and Undo works there as it always has.
+    // follow the viewer into the results: once words are typed, it goes. On the blank page it
+    // goes by itself after a few seconds (see RECENT_CLEARED_MS where it is shown); Undo works
+    // until either way out fires.
     LaunchedEffect(query) {
         if (query.isNotBlank()) snackbar.currentSnackbarData?.dismiss()
     }
@@ -264,7 +265,17 @@ internal fun PhoneSearchScreen(
                         onClearAll = {
                             val before = onClearRecent()
                             scope.launch {
+                                // Away by itself after a few seconds (owner, v1.0.14): with
+                                // Long alone the popup sat on the search home for good, since
+                                // the only other way out is typing, which an idle home never
+                                // does. The timer is this popup's own; Undo works until it
+                                // fires, and the host's Long stays as the outer bound.
+                                val timer = launch {
+                                    delay(RECENT_CLEARED_MS)
+                                    snackbar.currentSnackbarData?.dismiss()
+                                }
                                 val answer = snackbar.showSnackbar(s.searchRecentCleared, actionLabel = s.searchUndo, duration = SnackbarDuration.Long)
+                                timer.cancel()
                                 if (answer == SnackbarResult.ActionPerformed) onRestoreRecent(before)
                             }
                         },
@@ -845,6 +856,9 @@ private const val PULL_ACK_MS = 900L
 
 /** The longest the pull's spinner waits on a fresh run that says it is still going. */
 private const val PULL_HOLD_MS = 8_000L
+
+/** How long the "Recent searches cleared" popup stays before it dismisses itself, its Undo live throughout. */
+private const val RECENT_CLEARED_MS = 4_500L
 
 /** A search row's landscape thumbnail: wide enough to recognise, narrow enough to leave the title its room. */
 private val SEARCH_THUMB_WIDTH = 132.dp
