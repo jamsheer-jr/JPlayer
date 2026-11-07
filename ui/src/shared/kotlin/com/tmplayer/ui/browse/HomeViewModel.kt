@@ -1141,6 +1141,37 @@ fun rememberHomeRows(
         val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
+        // The first build on a cold start (owner, v1.0.14): the full build below waits on
+        // [homeTitleMeta], which reads the online lookups' disk cache title by title for
+        // the genre, rating and language facts. Movies and Series need none of that: a
+        // series is a name that parses as episodes ([com.tmplayer.data.SeriesShelf]) and
+        // a film is a file that does not, so on an empty Home the rows are built and
+        // shown first from name parsing and the matches already in memory
+        // ([homeTitleMetaMemoryOnly], no disk, no network), and the full build that
+        // follows in this same pass replaces them once the cached facts are read. Only
+        // the timing changes: which titles end up in Movies or Series once matching
+        // completes, and the shelf order on either form factor, are the full build's.
+        // A Home that already has rows skips this: its rows stay up through the settle
+        // delay above while the full build runs, as they always have.
+        if (value.isEmpty() && layout.catalogRows) {
+            val early = withContext(homeBuild) {
+                HomeRows.build(
+                    continueWatching, home, loaded, recent, partial = partial, watchLater = watchLater, fresh = fresh,
+                    recentMinStarred = recentMinStarred, starred = favourites, autoFill = autoFill,
+                    chatsPending = chatsPending, layout = layout, recentFrom = recentFrom, noneChosen = noneChosen,
+                    titleMeta = homeTitleMetaMemoryOnly(home, loaded, recent),
+                    collections = collections,
+                    watchedKeys = watched.mapTo(HashSet()) { it.key },
+                    phoneOrder = phoneOrder,
+                    nowMs = System.currentTimeMillis(),
+                )
+            }
+            if (early.isNotEmpty()) {
+                model.lastRows = early
+                value = early
+                model.rowsSettled = true
+            }
+        }
         val built = withContext(homeBuild) {
             HomeRows.build(
                 continueWatching, home, loaded, recent, partial = partial, watchLater = watchLater, fresh = fresh,
@@ -1269,6 +1300,34 @@ private fun PrefetchHomeArt(rows: List<HomeRow>, model: HomeViewModel) {
             }
         }
     }
+}
+
+/**
+ * The slice of [homeTitleMeta] that is already in memory, for the first cold start build
+ * in [rememberHomeRows] (owner, v1.0.14): [com.tmplayer.online.OnlineMetadata.peek] never
+ * touches the disk or the network, and the one fact it can settle on its own is an anime
+ * catalogue match, so an AniList matched title is kept out of Movies from the first
+ * emission instead of moving shelves when the full build lands. Every other fact (genres,
+ * rating, language, providers) lives in the extras [homeTitleMeta] reads from the disk,
+ * and arrives with that build. Same pool and keying as [homeTitleMeta].
+ */
+private fun homeTitleMetaMemoryOnly(
+    home: List<ChatSummary>,
+    loaded: Map<Long, List<MediaItem>>,
+    recent: List<MediaItem>?,
+): Map<String, com.tmplayer.data.TitleMeta> {
+    val online = com.tmplayer.online.OnlineMetadata.current ?: return emptyMap()
+    if (!online.settings.value.enabled) return emptyMap()
+    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty()).distinctBy { it.id }
+    val out = LinkedHashMap<String, com.tmplayer.data.TitleMeta>()
+    for (item in pool) {
+        val query = item.metaQuery?.showOnly() ?: continue
+        val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info ?: continue
+        if (info.provider == com.tmplayer.online.MetaProvider.AniList) {
+            out[item.id] = com.tmplayer.data.TitleMeta(anime = true)
+        }
+    }
+    return out
 }
 
 /**

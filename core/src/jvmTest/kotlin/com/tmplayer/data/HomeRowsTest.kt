@@ -712,6 +712,54 @@ class HomeRowsTest {
     }
 
     @Test
+    fun moviesAndSeriesShelvesComeFromNameParsingAloneWithNoMetadata() {
+        // The first cold start build (v1.0.14) hands in no cached facts at all: a series
+        // is still a series because its names parse as episodes, and a file that does
+        // not parse as an episode is still a movie candidate, so both shelves stand
+        // before any online matching over the pool has been read.
+        val films = listOf(
+            video(1, "Alpha Peak 2024.mp4"),
+            video(1, "Beta Peak 2024.mp4"),
+            video(1, "Gamma Peak 2024.mp4"),
+        )
+        val episodes = (1..3).map { video(1, "Harbour.Notes.S01E%02d.mkv".format(it)) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films + episodes),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = emptyMap(),
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        val movies = catalogs.single { it.kind == "movies" }
+        assertEquals(films.map { it.messageId }.toSet(), ids(movies).toSet())
+        val series = catalogs.single { it.kind == "series" }
+        assertEquals(episodes.map { it.messageId }.toSet(), ids(series).toSet())
+        // Once matching completes the same pool is classified by the facts as well:
+        // a film the match calls Japanese Animation leaves Movies for Anime, which is
+        // the full build's call, unchanged by the early one.
+        val meta = HashMap<String, TitleMeta>()
+        films.forEach { meta[it.id] = TitleMeta(listOf("Animation"), 8.0, "ja") }
+        val matched = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films + episodes),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val matchedCatalogs = matched.filterIsInstance<HomeRow.Catalog>()
+        assertTrue(matchedCatalogs.none { it.kind == "movies" })
+        val anime = matchedCatalogs.single { it.kind == "anime" }
+        assertEquals(films.map { it.messageId }.toSet(), ids(anime).toSet())
+        assertEquals(
+            episodes.map { it.messageId }.toSet(),
+            ids(matchedCatalogs.single { it.kind == "series" }).toSet(),
+        )
+    }
+
+    @Test
     fun phoneOrderPutsRecentAboveTop10MoviesAndTheSeriesGroup() {
         val started = video(1, "Started Peak 2024.mp4")
         val films = listOf(
