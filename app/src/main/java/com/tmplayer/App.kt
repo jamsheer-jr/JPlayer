@@ -145,6 +145,10 @@ class App : Application() {
             launch { store.touchPrefs.collect { com.tmplayer.ui.components.Micro.haptics = it.haptics } }
             // Cam and rip junk out of titles, while the viewer has the switch on.
             launch { store.hideRipTags.collect { com.tmplayer.data.TitleCleaning.hideTags = it } }
+            // The active viewer profile (v1.0.15, item 1), for the stores that keep their
+            // records in a file of their own and read this instead: set here at start, and
+            // kept in step whenever the stored choice changes (a switch, a restore).
+            launch { store.activeProfileId.collect { com.tmplayer.data.ProfileScope.set(it) } }
             // The viewer's own title words ride on that same switch.
             launch { store.hiddenTitleWords.collect { com.tmplayer.data.TitleCleaning.customWords = it } }
         }

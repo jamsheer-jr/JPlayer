@@ -100,6 +100,12 @@ private val MAX_SIZE = longPreferencesKey("max_size_bytes")
 private val CHAT_FILTER = stringPreferencesKey("chat_filter")
 private val CHAT_SORT = stringPreferencesKey("chat_sort")
 private val COLLECTIONS = stringPreferencesKey("collections")
+// Viewer profiles inside the one account (v1.0.15, item 1): the list (names and the Simple
+// flag, never a PIN: see ViewerProfiles) and which one is active. The active id is stored
+// only for a profile after the default; its absence IS the default profile, whose records
+// keep the unprefixed keys they have always had.
+private val VIEWER_PROFILES = stringPreferencesKey("viewer_profiles")
+private val ACTIVE_PROFILE = stringPreferencesKey("active_profile")
 private val HIDDEN_STREAMS = stringPreferencesKey("hidden_streams")
 private val HIDDEN_TITLE_WORDS = stringPreferencesKey("hidden_title_words")
 private val LINK_HISTORY = stringPreferencesKey("link_history")
@@ -340,16 +346,26 @@ private fun speedKey(scope: String) = floatPreferencesKey(
     "speed_" + scope.lowercase(java.util.Locale.ROOT).filter { it.isLetterOrDigit() || it == ':' || it == '-' }.take(80),
 )
 
-/** Where playback stopped, so the next launch can offer to continue. */
-private fun resumeKey(chatId: Long, messageId: Long) =
-    longPreferencesKey("resume_${chatId}_$messageId")
+/**
+ * The viewer profile [prefs] says is active, as a key prefix ([ViewerProfiles.prefixFor]):
+ * empty for the default profile, whose resume, duration and meta keys are the ones an install
+ * has always had. Every reader and writer of those families takes the prefix from the same
+ * preferences it is already reading, so a profile switch and the records it shows can never
+ * be a beat apart.
+ */
+private fun profilePrefixOf(prefs: Preferences): String =
+    ViewerProfiles.prefixFor(prefs[ACTIVE_PROFILE] ?: ViewerProfiles.DEFAULT_ID)
 
-private fun durationKey(chatId: Long, messageId: Long) =
-    longPreferencesKey("duration_${chatId}_$messageId")
+/** Where playback stopped, so the next launch can offer to continue. */
+private fun resumeKey(prefix: String, chatId: Long, messageId: Long) =
+    longPreferencesKey(prefix + "resume_${chatId}_$messageId")
+
+private fun durationKey(prefix: String, chatId: Long, messageId: Long) =
+    longPreferencesKey(prefix + "duration_${chatId}_$messageId")
 
 /** Title, chat and file id, so a half-watched video can be reopened without its chat loaded. */
-private fun metaKey(chatId: Long, messageId: Long) =
-    stringPreferencesKey("meta_${chatId}_$messageId")
+private fun metaKey(prefix: String, chatId: Long, messageId: Long) =
+    stringPreferencesKey(prefix + "meta_${chatId}_$messageId")
 
 /** The forum topic last browsed in one group, so it opens where the viewer left it. 0 is all. */
 private fun topicKey(chatId: Long) = longPreferencesKey("topic_$chatId")
@@ -570,6 +586,112 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
                 migrated?.let { prefs[DOWNLOADS_MIGRATED] = it }
             }
         }
+    }
+
+    // ---- viewer profiles (v1.0.15, item 1) --------------------------------------------------
+
+    /**
+     * The viewer profiles after the default, as stored ([ViewerProfiles]): the default itself
+     * appears here only once it has been renamed. Favourites are NOT per profile, on purpose:
+     * a starred chat is the account's own curation of its chats, like the added chats, and every
+     * profile of the family sees the same stars. What splits is what a viewer did: resume
+     * points, watched history, Watch later, Collections, and so My Stats, which reads those.
+     */
+    val viewerProfiles: Flow<List<ViewerProfile>> = read { ViewerProfiles.decode(it[VIEWER_PROFILES]) }
+
+    /** The active profile's id: the default's empty id while no other profile has been picked. */
+    val activeProfileId: Flow<String> = read { it[ACTIVE_PROFILE] ?: ViewerProfiles.DEFAULT_ID }
+
+    /** Every profile, the default first, with its stored name or the empty name it starts with. */
+    val allProfiles: Flow<List<ViewerProfile>> = read { prefs ->
+        val stored = ViewerProfiles.decode(prefs[VIEWER_PROFILES])
+        if (stored.any { it.isDefault }) stored
+        else listOf(ViewerProfile(ViewerProfiles.DEFAULT_ID, "")) + stored
+    }
+
+    suspend fun viewerProfilesNow(): List<ViewerProfile> =
+        ViewerProfiles.decode(prefs.data.first()[VIEWER_PROFILES])
+
+    suspend fun activeProfileIdNow(): String =
+        prefs.data.first()[ACTIVE_PROFILE] ?: ViewerProfiles.DEFAULT_ID
+
+    /** Whether the default profile is the active one, read off the disk (see [ResumeSync]). */
+    suspend fun defaultProfileActiveNow(): Boolean =
+        activeProfileIdNow() == ViewerProfiles.DEFAULT_ID
+
+    /**
+     * Makes [id] the active profile: the stored choice and [ProfileScope] move together, so
+     * the stores reading their own file ([WatchedStore]) follow in the same moment. An id that
+     * names no profile is refused rather than pointed at an empty set of records.
+     */
+    suspend fun setActiveProfile(id: String) {
+        if (id != ViewerProfiles.DEFAULT_ID && viewerProfilesNow().none { it.id == id }) return
+        prefs.edit { prefs ->
+            if (id == ViewerProfiles.DEFAULT_ID) prefs.remove(ACTIVE_PROFILE) else prefs[ACTIVE_PROFILE] = id
+        }
+        ProfileScope.set(id)
+    }
+
+    /** Adds a profile under [name]; the profile made, or null for a blank name or at the cap. */
+    suspend fun addViewerProfile(name: String, simple: Boolean): ViewerProfile? {
+        val cleaned = ViewerProfiles.cleanName(name)
+        if (cleaned.isEmpty()) return null
+        val now = viewerProfilesNow()
+        if (!ViewerProfiles.canAdd(now)) return null
+        val profile = ViewerProfile(
+            id = ViewerProfiles.newId(now.map { it.id }),
+            name = cleaned,
+            simple = simple,
+        )
+        setViewerProfiles(now + profile)
+        return profile
+    }
+
+    /** Renames a profile; the default may be renamed before it has a line of its own. */
+    suspend fun renameViewerProfile(id: String, name: String) {
+        val cleaned = ViewerProfiles.cleanName(name)
+        if (cleaned.isEmpty()) return
+        val now = viewerProfilesNow()
+        setViewerProfiles(
+            if (now.any { it.id == id }) now.map { if (it.id == id) it.copy(name = cleaned) else it }
+            else now + ViewerProfile(id, cleaned),
+        )
+    }
+
+    /** Marks a profile Simple or full (item 7g). The default is never Simple: see [ViewerProfiles]. */
+    suspend fun setViewerProfileSimple(id: String, simple: Boolean) {
+        if (id == ViewerProfiles.DEFAULT_ID) return
+        val now = viewerProfilesNow()
+        if (now.none { it.id == id }) return
+        setViewerProfiles(now.map { if (it.id == id) it.copy(simple = simple) else it })
+    }
+
+    private suspend fun setViewerProfiles(profiles: List<ViewerProfile>) {
+        prefs.edit { it[VIEWER_PROFILES] = ViewerProfiles.encode(profiles) }
+    }
+
+    /**
+     * Deletes a profile and every record it owns in this file: its resume, duration and meta
+     * lines and its Collections line. The watched file's share is [WatchedStore.clearProfile]'s,
+     * which the caller runs beside this. The default profile cannot be deleted. Deleting the
+     * active profile lands the viewer back on the default first.
+     */
+    suspend fun removeViewerProfile(id: String) {
+        if (id == ViewerProfiles.DEFAULT_ID) return
+        val now = viewerProfilesNow()
+        if (now.none { it.id == id }) return
+        if (activeProfileIdNow() == id) setActiveProfile(ViewerProfiles.DEFAULT_ID)
+        val prefix = ViewerProfiles.prefixFor(id)
+        prefs.edit { prefs ->
+            val doomed = prefs.asMap().keys.filter { key ->
+                if (ViewerProfiles.prefixOf(key.name) != prefix) return@filter false
+                val rest = ViewerProfiles.stripPrefix(key.name)
+                rest.startsWith("resume_") || rest.startsWith("duration_") || rest.startsWith("meta_")
+            }
+            for (key in doomed) prefs.remove(key)
+            prefs.remove(stringPreferencesKey(prefix + "collections"))
+        }
+        setViewerProfiles(now.filterNot { it.id == id })
     }
 
     /**
@@ -986,11 +1108,15 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun importResume(entry: ResumeSyncDoc.Entry, fileId: Int): Boolean {
         var wrote = false
         prefs.edit { prefs ->
-            val local = ResumeRecord.updatedAtOf(prefs[metaKey(entry.chatId, entry.messageId)]) ?: Long.MIN_VALUE
-            if (local >= entry.updatedAt && prefs[resumeKey(entry.chatId, entry.messageId)] != null) return@edit
-            prefs[resumeKey(entry.chatId, entry.messageId)] = entry.positionMs
-            if (entry.durationMs > 0) prefs[durationKey(entry.chatId, entry.messageId)] = entry.durationMs
-            prefs[metaKey(entry.chatId, entry.messageId)] = ResumeRecord.encode(
+            // ResumeSync runs only while the default profile is active (see [ResumeSync]), so
+            // this prefix is the default's own in practice; it is taken from the preferences
+            // like every other writer, so the rule holds by construction, not by habit.
+            val prefix = profilePrefixOf(prefs)
+            val local = ResumeRecord.updatedAtOf(prefs[metaKey(prefix, entry.chatId, entry.messageId)]) ?: Long.MIN_VALUE
+            if (local >= entry.updatedAt && prefs[resumeKey(prefix, entry.chatId, entry.messageId)] != null) return@edit
+            prefs[resumeKey(prefix, entry.chatId, entry.messageId)] = entry.positionMs
+            if (entry.durationMs > 0) prefs[durationKey(prefix, entry.chatId, entry.messageId)] = entry.durationMs
+            prefs[metaKey(prefix, entry.chatId, entry.messageId)] = ResumeRecord.encode(
                 fileId = fileId,
                 title = entry.title,
                 chatTitle = entry.chatTitle,
@@ -1008,11 +1134,12 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     /** A place another device removed after this one last saved it ([ResumeSync]): gone here too. */
     suspend fun dropSyncedResume(tomb: ResumeSyncDoc.Tomb) {
         prefs.edit { prefs ->
-            val local = ResumeRecord.updatedAtOf(prefs[metaKey(tomb.chatId, tomb.messageId)]) ?: return@edit
+            val prefix = profilePrefixOf(prefs)
+            val local = ResumeRecord.updatedAtOf(prefs[metaKey(prefix, tomb.chatId, tomb.messageId)]) ?: return@edit
             if (local >= tomb.at) return@edit
-            prefs.remove(resumeKey(tomb.chatId, tomb.messageId))
-            prefs.remove(durationKey(tomb.chatId, tomb.messageId))
-            prefs.remove(metaKey(tomb.chatId, tomb.messageId))
+            prefs.remove(resumeKey(prefix, tomb.chatId, tomb.messageId))
+            prefs.remove(durationKey(prefix, tomb.chatId, tomb.messageId))
+            prefs.remove(metaKey(prefix, tomb.chatId, tomb.messageId))
         }
     }
 
@@ -1094,6 +1221,9 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun cachedVideosNow(): List<ResumeRecord> = decodeCachedList(prefs.data.first())
 
     private fun decodeCachedList(prefs: Preferences): List<ResumeRecord> = buildList {
+        // The cache itself is the device's, one file whoever watched it; the place shown on
+        // its row is the active profile's place for that video.
+        val prefix = profilePrefixOf(prefs)
         for ((key, value) in prefs.asMap()) {
             val name = key.name
             if (!name.startsWith(CACHED_PREFIX)) continue
@@ -1101,8 +1231,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             val record = ResumeRecord.decode(
                 key = ids,
                 encoded = value as? String,
-                positionMs = prefs[longPreferencesKey("resume_$ids")] ?: 0L,
-                durationMs = prefs[longPreferencesKey("duration_$ids")] ?: 0L,
+                positionMs = prefs[longPreferencesKey(prefix + "resume_$ids")] ?: 0L,
+                durationMs = prefs[longPreferencesKey(prefix + "duration_$ids")] ?: 0L,
             ) ?: continue
             add(record)
         }
@@ -1113,8 +1243,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             ResumeRecord.decode(
                 key = legacy,
                 encoded = prefs[CACHED_VIDEO],
-                positionMs = prefs[longPreferencesKey("resume_$legacy")] ?: 0L,
-                durationMs = prefs[longPreferencesKey("duration_$legacy")] ?: 0L,
+                positionMs = prefs[longPreferencesKey(prefix + "resume_$legacy")] ?: 0L,
+                durationMs = prefs[longPreferencesKey(prefix + "duration_$legacy")] ?: 0L,
             )?.let(::add)
         }
     }.sortedByDescending { it.updatedAt }
@@ -1334,7 +1464,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun touchResume(chatId: Long, messageId: Long) {
         prefs.edit { prefs ->
             val record = recordOf(prefs, chatId, messageId, null) ?: return@edit
-            prefs[metaKey(chatId, messageId)] = ResumeRecord.encode(
+            prefs[metaKey(profilePrefixOf(prefs), chatId, messageId)] = ResumeRecord.encode(
                 fileId = record.fileId,
                 title = record.title,
                 chatTitle = record.chatTitle,
@@ -2098,14 +2228,30 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         prefs.edit { it[CHAT_SORT] = name }
     }
 
-    /** The viewer's own collections, decoded from their one stored value: see [Collections]. */
-    val collections: Flow<List<VideoCollection>> = read { it[COLLECTIONS] }.map { raw -> Collections.decode(raw) }
+    /**
+     * The viewer's own collections, decoded from their one stored value: see [Collections].
+     * One value per viewer profile (item 1): the default profile's is the `collections` key an
+     * install has always had, a later profile's is the same name under its prefix, so the
+     * backup's collections (which travel under the plain name) are the default profile's, and
+     * [Backups]' join counts those. Another profile's collections stay on the device, as its
+     * resume points do.
+     */
+    val collections: Flow<List<VideoCollection>> = read { prefs ->
+        Collections.decode(prefs[collectionsKey(profilePrefixOf(prefs))])
+    }
 
-    suspend fun collectionsNow(): List<VideoCollection> = Collections.decode(prefs.data.first()[COLLECTIONS])
+    suspend fun collectionsNow(): List<VideoCollection> {
+        val prefs = prefs.data.first()
+        return Collections.decode(prefs[collectionsKey(profilePrefixOf(prefs))])
+    }
 
     suspend fun setCollections(collections: List<VideoCollection>) {
-        prefs.edit { it[COLLECTIONS] = Collections.encode(collections) }
+        prefs.edit { it[collectionsKey(profilePrefixOf(it))] = Collections.encode(collections) }
     }
+
+    /** The collections line of the profile [prefix] names: the plain key for the default. */
+    private fun collectionsKey(prefix: String) =
+        if (prefix.isEmpty()) COLLECTIONS else stringPreferencesKey(prefix + "collections")
 
     /** The streams the viewer took out of Home's Live row, by the posts that carried them: see [HiddenStreams]. */
     val hiddenStreams: Flow<Set<String>> = read { it[HIDDEN_STREAMS] }.map { raw -> HiddenStreams.decode(raw) }
@@ -2572,8 +2718,10 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     // ---- resume -----------------------------------------------------------------------------
 
-    suspend fun resumePosition(chatId: Long, messageId: Long): Long =
-        prefs.data.first()[resumeKey(chatId, messageId)] ?: 0L
+    suspend fun resumePosition(chatId: Long, messageId: Long): Long {
+        val prefs = prefs.data.first()
+        return prefs[resumeKey(profilePrefixOf(prefs), chatId, messageId)] ?: 0L
+    }
 
     /**
      * Where [item] was left, whichever copy of it was playing: its own record, or the newest of its
@@ -2705,12 +2853,13 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
      */
     suspend fun resumeRecord(chatId: Long, messageId: Long): ResumeRecord? {
         val prefs = prefs.data.first()
-        val positionMs = prefs[resumeKey(chatId, messageId)] ?: return null
+        val prefix = profilePrefixOf(prefs)
+        val positionMs = prefs[resumeKey(prefix, chatId, messageId)] ?: return null
         return ResumeRecord.decode(
             key = SettingsStore.progressKey(chatId, messageId),
-            encoded = prefs[metaKey(chatId, messageId)],
+            encoded = prefs[metaKey(prefix, chatId, messageId)],
             positionMs = positionMs,
-            durationMs = prefs[durationKey(chatId, messageId)] ?: 0L,
+            durationMs = prefs[durationKey(prefix, chatId, messageId)] ?: 0L,
         )
     }
 
@@ -2721,13 +2870,14 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
      * one disk read per item on a device with very little to spare.
      */
     val watchProgress: Flow<Map<String, WatchPoint>> = read { prefs ->
+        val prefix = profilePrefixOf(prefs)
         buildMap {
             for ((key, value) in prefs.asMap()) {
                 val name = key.name
-                if (!name.startsWith("resume_")) continue
-                val ids = name.removePrefix("resume_")
+                if (!name.startsWith(prefix + "resume_")) continue
+                val ids = name.removePrefix(prefix + "resume_")
                 val positionMs = value as? Long ?: continue
-                val durationMs = prefs[longPreferencesKey("duration_$ids")] ?: 0L
+                val durationMs = prefs[longPreferencesKey(prefix + "duration_$ids")] ?: 0L
                 put(ids, WatchPoint(positionMs, durationMs))
             }
         }
@@ -2741,19 +2891,21 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
      */
     val continueWatching: Flow<List<ResumeRecord>> = read { prefs ->
         // The kids lock reads its chats off the same map, so the row can never be drawn for a
-        // moment with the lock and the records out of step.
+        // moment with the lock and the records out of step. The active profile's prefix is read
+        // off the same map too, for the same reason.
         val allowed = allowedChatsOf(prefs)
+        val prefix = profilePrefixOf(prefs)
         buildList {
             for ((key, value) in prefs.asMap()) {
                 val name = key.name
-                if (!name.startsWith("resume_")) continue
-                val ids = name.removePrefix("resume_")
+                if (!name.startsWith(prefix + "resume_")) continue
+                val ids = name.removePrefix(prefix + "resume_")
                 val positionMs = value as? Long ?: continue
                 val record = ResumeRecord.decode(
                     key = ids,
-                    encoded = prefs[stringPreferencesKey("meta_$ids")],
+                    encoded = prefs[stringPreferencesKey(prefix + "meta_$ids")],
                     positionMs = positionMs,
-                    durationMs = prefs[longPreferencesKey("duration_$ids")] ?: 0L,
+                    durationMs = prefs[longPreferencesKey(prefix + "duration_$ids")] ?: 0L,
                 ) ?: continue
                 if (KidsLock.allows(allowed, record.chatId)) add(record)
             }
@@ -2827,13 +2979,17 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         }
     }.sortedByDescending { it.updatedAt }
 
-    private fun decodeDownload(prefs: Preferences, ids: String, encoded: String?): ResumeRecord? =
-        ResumeRecord.decode(
+    private fun decodeDownload(prefs: Preferences, ids: String, encoded: String?): ResumeRecord? {
+        // Downloads are the account's, shared by every profile; the place on a row is the
+        // active profile's place for that video, as on the watch cache's rows.
+        val prefix = profilePrefixOf(prefs)
+        return ResumeRecord.decode(
             key = ids,
             encoded = encoded,
-            positionMs = prefs[longPreferencesKey("resume_$ids")] ?: 0L,
-            durationMs = prefs[longPreferencesKey("duration_$ids")] ?: 0L,
+            positionMs = prefs[longPreferencesKey(prefix + "resume_$ids")] ?: 0L,
+            durationMs = prefs[longPreferencesKey(prefix + "duration_$ids")] ?: 0L,
         )
+    }
 
     /**
      * The unfinished downloads, as the last write of the queue left them.
@@ -2899,7 +3055,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         description: String? = null,
     ) {
         prefs.edit { prefs ->
-            val key = resumeKey(chatId, messageId)
+            val prefix = profilePrefixOf(prefs)
+            val key = resumeKey(prefix, chatId, messageId)
             // Watch time for the support ladder, read off the same heartbeat.
             noteSupportProgress(prefs, progressKey(chatId, messageId), positionMs, System.currentTimeMillis())
             // Still inside the few seconds the resume rewound: the place saved before stands, or
@@ -2913,8 +3070,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             if (!ResumeRules.keeps(positionMs, durationMs)) {
                 val played = recordOf(prefs, chatId, messageId, description)?.toMediaItem()
                 prefs.remove(key)
-                prefs.remove(durationKey(chatId, messageId))
-                prefs.remove(metaKey(chatId, messageId))
+                prefs.remove(durationKey(prefix, chatId, messageId))
+                prefs.remove(metaKey(prefix, chatId, messageId))
                 // Finished in this copy is finished in all of them: an older place in another copy
                 // would otherwise come back to Continue watching in its stead.
                 if (played != null) forgetCopies(prefs, played)
@@ -2922,8 +3079,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
                 // Only this copy's own line is written. The other copies keep theirs, and the
                 // newest of them is the one read (VideoCopies.resumeOf, HomeRows.foldCopies).
                 prefs[key] = positionMs
-                if (durationMs > 0) prefs[durationKey(chatId, messageId)] = durationMs
-                if (description != null) prefs[metaKey(chatId, messageId)] = description
+                if (durationMs > 0) prefs[durationKey(prefix, chatId, messageId)] = durationMs
+                if (description != null) prefs[metaKey(prefix, chatId, messageId)] = description
                 evictOldestHistory(prefs)
             }
         }
@@ -2933,46 +3090,50 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     private fun recordOf(prefs: Preferences, chatId: Long, messageId: Long, description: String?): ResumeRecord? {
         val ids = progressKey(chatId, messageId)
         return description?.let { ResumeRecord.decode(ids, it, 0L, 0L) }
-            ?: ResumeRecord.decode(ids, prefs[metaKey(chatId, messageId)], 0L, 0L)
+            ?: ResumeRecord.decode(ids, prefs[metaKey(profilePrefixOf(prefs), chatId, messageId)], 0L, 0L)
     }
 
     /**
      * Removes the places of every other copy of [played], in this chat or any other: whatever
      * [VideoCopies.sameVideo] calls the same video. The copy's own line is the caller's to remove.
+     * Only the active profile's lines are walked: another profile's place for the same video is
+     * that profile's own business.
      */
     private fun forgetCopies(prefs: MutablePreferences, played: MediaItem) {
+        val prefix = profilePrefixOf(prefs)
         val copies = prefs.asMap().keys.mapNotNull { key ->
-            val ids = key.name.removePrefixOrNull("meta_") ?: return@mapNotNull null
+            val ids = key.name.removePrefixOrNull(prefix + "meta_") ?: return@mapNotNull null
             ResumeRecord.decode(ids, prefs[stringPreferencesKey(key.name)], 0L, 0L)
         }.filter { it.messageId != played.messageId || it.chatId != played.chatId }
             .filter { VideoCopies.sameVideo(played, it) }
         for (copy in copies) {
-            prefs.remove(resumeKey(copy.chatId, copy.messageId))
-            prefs.remove(durationKey(copy.chatId, copy.messageId))
-            prefs.remove(metaKey(copy.chatId, copy.messageId))
+            prefs.remove(resumeKey(prefix, copy.chatId, copy.messageId))
+            prefs.remove(durationKey(prefix, copy.chatId, copy.messageId))
+            prefs.remove(metaKey(prefix, copy.chatId, copy.messageId))
         }
     }
 
     /**
-     * Keeps the history to [MAX_HISTORY] entries, oldest out first.
+     * Keeps the active profile's history to [MAX_HISTORY] entries, oldest out first.
      *
      * Unbounded, every key would be walked on every read of Continue watching and rewritten on every
      * ten-second heartbeat. The cap is generous: nobody scrolls past two hundred half-watched videos.
      */
     private fun evictOldestHistory(prefs: MutablePreferences) {
+        val prefix = profilePrefixOf(prefs)
         val stamps = prefs.asMap().keys
-            .mapNotNull { it.name.removePrefixOrNull("meta_") }
+            .mapNotNull { it.name.removePrefixOrNull(prefix + "meta_") }
             .mapNotNull { ids ->
-                val meta = prefs[stringPreferencesKey("meta_$ids")] ?: return@mapNotNull null
+                val meta = prefs[stringPreferencesKey(prefix + "meta_$ids")] ?: return@mapNotNull null
                 ids to (ResumeRecord.updatedAtOf(meta) ?: 0L)
             }
         if (stamps.size <= MAX_HISTORY) return
         stamps.sortedBy { it.second }
             .take(stamps.size - MAX_HISTORY)
             .forEach { (ids, _) ->
-                prefs.remove(longPreferencesKey("resume_$ids"))
-                prefs.remove(longPreferencesKey("duration_$ids"))
-                prefs.remove(stringPreferencesKey("meta_$ids"))
+                prefs.remove(longPreferencesKey(prefix + "resume_$ids"))
+                prefs.remove(longPreferencesKey(prefix + "duration_$ids"))
+                prefs.remove(stringPreferencesKey(prefix + "meta_$ids"))
                 prefs.remove(stringPreferencesKey("delay_$ids"))
             }
     }
@@ -2981,17 +3142,25 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         if (startsWith(prefix)) removePrefix(prefix) else null
 
     /**
-     * Forgets every half-watched video in one pass, emptying Continue watching.
+     * Forgets every half-watched video of the active profile in one pass, emptying its
+     * Continue watching. Another profile's places stand: clearing the list in front of you is
+     * not a wipe of the account, which is [clearEverything]'s job.
      *
      * The keys are collected before anything is removed: [MutablePreferences] is being written to
      * while its own map is walked otherwise.
      */
     suspend fun clearWatchHistory() {
         prefs.edit { prefs ->
+            // The active profile's lines only, plus the sync delay lines of the videos it
+            // held: the delays are one set per video, shared by every profile, and a cleared
+            // video's delay has nothing left to delay. Other profiles keep their places.
+            val prefix = profilePrefixOf(prefs)
+            val ids = prefs.asMap().keys.mapNotNull { it.name.removePrefixOrNull(prefix + "resume_") }.toSet()
             val doomed = prefs.asMap().keys.filter { key ->
                 val name = key.name
-                name.startsWith("resume_") || name.startsWith("duration_") || name.startsWith("meta_") ||
-                    name.startsWith("delay_")
+                name.startsWith(prefix + "resume_") || name.startsWith(prefix + "duration_") ||
+                    name.startsWith(prefix + "meta_") ||
+                    (name.startsWith("delay_") && name.removePrefix("delay_") in ids)
             }
             for (key in doomed) prefs.remove(key)
         }
@@ -3008,27 +3177,28 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun pruneBrokenHistory(): Int {
         var removed = 0
         prefs.edit { prefs ->
+            val prefix = profilePrefixOf(prefs)
             // Collected before anything is removed: [MutablePreferences] is being written to while
             // its own map is walked otherwise.
             val doomed = prefs.asMap().keys
                 .map { it.name }
-                .filter { it.startsWith("resume_") }
+                .filter { it.startsWith(prefix + "resume_") }
                 .mapNotNull { name ->
-                    val ids = name.removePrefix("resume_")
+                    val ids = name.removePrefix(prefix + "resume_")
                     val positionMs = prefs[longPreferencesKey(name)] ?: return@mapNotNull ids
                     val record = ResumeRecord.decode(
                         key = ids,
-                        encoded = prefs[stringPreferencesKey("meta_$ids")],
+                        encoded = prefs[stringPreferencesKey(prefix + "meta_$ids")],
                         positionMs = positionMs,
-                        durationMs = prefs[longPreferencesKey("duration_$ids")] ?: 0L,
+                        durationMs = prefs[longPreferencesKey(prefix + "duration_$ids")] ?: 0L,
                     )
                     if (record == null) ids else null
                 }
 
             for (ids in doomed) {
-                prefs.remove(longPreferencesKey("resume_$ids"))
-                prefs.remove(longPreferencesKey("duration_$ids"))
-                prefs.remove(stringPreferencesKey("meta_$ids"))
+                prefs.remove(longPreferencesKey(prefix + "resume_$ids"))
+                prefs.remove(longPreferencesKey(prefix + "duration_$ids"))
+                prefs.remove(stringPreferencesKey(prefix + "meta_$ids"))
                 removed++
             }
         }
@@ -3061,10 +3231,11 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
      */
     suspend fun clearResumePosition(chatId: Long, messageId: Long, item: MediaItem? = null) {
         prefs.edit {
+            val prefix = profilePrefixOf(it)
             val played = item ?: recordOf(it, chatId, messageId, null)?.toMediaItem()
-            it.remove(resumeKey(chatId, messageId))
-            it.remove(durationKey(chatId, messageId))
-            it.remove(metaKey(chatId, messageId))
+            it.remove(resumeKey(prefix, chatId, messageId))
+            it.remove(durationKey(prefix, chatId, messageId))
+            it.remove(metaKey(prefix, chatId, messageId))
             if (played != null) forgetCopies(it, played)
         }
     }
@@ -3076,10 +3247,11 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun clearResumeCopies(record: ResumeRecord) {
         val copies = HomeRows.copiesOf(record, continueWatching.first())
         prefs.edit {
+            val prefix = profilePrefixOf(it)
             for (copy in copies) {
-                it.remove(resumeKey(copy.chatId, copy.messageId))
-                it.remove(durationKey(copy.chatId, copy.messageId))
-                it.remove(metaKey(copy.chatId, copy.messageId))
+                it.remove(resumeKey(prefix, copy.chatId, copy.messageId))
+                it.remove(durationKey(prefix, copy.chatId, copy.messageId))
+                it.remove(metaKey(prefix, copy.chatId, copy.messageId))
             }
         }
     }
@@ -3095,9 +3267,10 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         val wanted = ids.toHashSet()
         val taken = LinkedHashMap<String, Any>()
         prefs.edit { prefs ->
+            val lines = resumeLines(profilePrefixOf(prefs))
             // Collected before anything is removed: the map cannot be walked while it is written.
             val doomed = prefs.asMap().entries.filter { (key, _) ->
-                val ids = RESUME_LINES.firstNotNullOfOrNull { key.name.removePrefixOrNull(it) }
+                val ids = lines.firstNotNullOfOrNull { key.name.removePrefixOrNull(it) }
                 ids != null && ids in wanted
             }
             for ((key, value) in doomed) {
@@ -3116,21 +3289,28 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun putBackResume(taken: Map<String, Any>) {
         if (taken.isEmpty()) return
         prefs.edit { prefs ->
-            val byIds = taken.entries.groupBy { (name, _) -> RESUME_LINES.firstNotNullOfOrNull { name.removePrefixOrNull(it) }.orEmpty() }
-            for ((ids, lines) in byIds) {
+            val prefix = profilePrefixOf(prefs)
+            val lines = resumeLines(prefix)
+            val byIds = taken.entries.groupBy { (name, _) -> lines.firstNotNullOfOrNull { name.removePrefixOrNull(it) }.orEmpty() }
+            for ((ids, linesForId) in byIds) {
                 if (ids.isEmpty()) continue
-                val then = ResumeRecord.updatedAtOf(taken["meta_$ids"] as? String) ?: Long.MIN_VALUE
-                val now = prefs[stringPreferencesKey("meta_$ids")]?.let(ResumeRecord::updatedAtOf)
-                if (prefs[longPreferencesKey("resume_$ids")] != null && now != null && now > then) continue
-                for ((name, value) in lines) prefs.putRaw(name, value)
+                val then = ResumeRecord.updatedAtOf(taken[prefix + "meta_$ids"] as? String) ?: Long.MIN_VALUE
+                val now = prefs[stringPreferencesKey(prefix + "meta_$ids")]?.let(ResumeRecord::updatedAtOf)
+                if (prefs[longPreferencesKey(prefix + "resume_$ids")] != null && now != null && now > then) continue
+                for ((name, value) in linesForId) prefs.putRaw(name, value)
             }
             evictOldestHistory(prefs)
         }
     }
 
     companion object {
-        /** What one video's place is kept in, each followed by its [progressKey]. */
-        private val RESUME_LINES = listOf("resume_", "duration_", "meta_", "delay_")
+        /**
+         * What one video's place is kept in under [prefix], each followed by its [progressKey]:
+         * the place, the length and the description under the profile's prefix, and the sync
+         * delays under the one unprefixed name every profile shares.
+         */
+        private fun resumeLines(prefix: String) =
+            listOf(prefix + "resume_", prefix + "duration_", prefix + "meta_", "delay_")
 
         /**
          * The file name Android's `preferencesDataStore("tmplayer")` delegate has always used, in

@@ -230,6 +230,13 @@ class GarbageInputTest {
                 StreamManifest.classify(text, null)
             }
             survive("LinkHistory.decode", text) { LinkHistory.decode(text) }
+            survive("ViewerProfiles.decode", text) {
+                ViewerProfiles.decode(text)
+                ViewerProfiles.decode(null)
+                ViewerProfiles.cleanName(text)
+                ViewerProfiles.prefixOf(text)
+                ViewerProfiles.stripPrefix(text)
+            }
             survive("StreamResume.decode", text) { StreamResume.decode(text) }
             survive("SeenStreams.decode", text) { SeenStreams.decode(text) }
             survive("TitleCleaning.parseCustomWords", text) { TitleCleaning.parseCustomWords(text) }

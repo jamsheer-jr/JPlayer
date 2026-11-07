@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import okio.Path.Companion.toPath
 import java.io.File
 
@@ -35,14 +34,20 @@ class WatchedStore(private val store: DataStore<Preferences>) {
      */
     val watchLater: WatchLaterStore = WatchLaterStore(store)
 
-    private fun <T> read(transform: (Preferences) -> T): Flow<T> = store.data
-        .map(transform)
+    /**
+     * One read of the file for the active viewer profile ([ProfileScope]): the marks are keyed
+     * by profile (see [ViewerProfiles.prefixFor]), the default profile's under the names they
+     * have always had, so the transform takes the active prefix beside the preferences. The
+     * profile flow is combined in, so a switch re-reads at once rather than at the next write.
+     */
+    private fun <T> read(transform: (Preferences, String) -> T): Flow<T> = store.data
+        .combine(ProfileScope.flow) { prefs, id -> transform(prefs, ViewerProfiles.prefixFor(id)) }
         .distinctUntilChanged()
         .flowOn(Dispatchers.Default)
 
     /** Every watched video keyed by [SettingsStore.progressKey], for the ticks on the grid. */
-    val watched: Flow<Map<String, WatchedRecord>> = read { prefs ->
-        decodeAll(prefs).associateBy { it.key }
+    val watched: Flow<Map<String, WatchedRecord>> = read { prefs, prefix ->
+        decodeAll(prefs, prefix).associateBy { it.key }
     }
 
     /**
@@ -50,12 +55,12 @@ class WatchedStore(private val store: DataStore<Preferences>) {
      * out ([ChatGate]). The ticks in [watched] are not screened: a grid only ever shows a chat the
      * lock already let through.
      */
-    val history: Flow<List<WatchedRecord>> = read { prefs ->
-        decodeAll(prefs).sortedByDescending { it.watchedAt }
+    val history: Flow<List<WatchedRecord>> = read { prefs, prefix ->
+        decodeAll(prefs, prefix).sortedByDescending { it.watchedAt }
     }.combine(ChatGate.allowed) { records, allowed -> KidsLock.filter(records, allowed) { it.chatId } }
 
     suspend fun isWatched(chatId: Long, messageId: Long): Boolean =
-        store.data.first()[keyOf(chatId, messageId)] != null
+        store.data.first()[keyOf(ProfileScope.prefix, chatId, messageId)] != null
 
     /**
      * Stamps one watched video as watched now, the mark itself (and whether it was made by
@@ -67,7 +72,7 @@ class WatchedStore(private val store: DataStore<Preferences>) {
      */
     suspend fun touchWatched(chatId: Long, messageId: Long) {
         store.edit { prefs ->
-            val key = keyOf(chatId, messageId)
+            val key = keyOf(ProfileScope.prefix, chatId, messageId)
             val record = WatchedRecord.decode(SettingsStore.progressKey(chatId, messageId), prefs[key]) ?: return@edit
             prefs[key] = record.copy(watchedAt = System.currentTimeMillis()).encode()
         }
@@ -83,13 +88,16 @@ class WatchedStore(private val store: DataStore<Preferences>) {
      */
     suspend fun markWatched(record: WatchedRecord, copies: List<MediaItem> = emptyList()) {
         store.edit { prefs ->
-            val key = keyOf(record.chatId, record.messageId)
+            // The acting profile's lines only: its own mark, and its own Watch later lines
+            // crossed off. Another profile's list keeps the video (item 1's cross-store rule).
+            val prefix = ProfileScope.prefix
+            val key = keyOf(prefix, record.chatId, record.messageId)
             val before = WatchedRecord.decode(record.key, prefs[key])
             val kept = if (before?.manual == true && !record.manual) record.copy(manual = true) else record
             prefs[key] = kept.encode()
-            prefs.remove(WatchLaterStore.keyOf(record.chatId, record.messageId))
-            for (copy in copies) prefs.remove(WatchLaterStore.keyOf(copy.chatId, copy.messageId))
-            evictOldest(prefs)
+            prefs.remove(WatchLaterStore.keyOf(prefix, record.chatId, record.messageId))
+            for (copy in copies) prefs.remove(WatchLaterStore.keyOf(prefix, copy.chatId, copy.messageId))
+            evictOldest(prefs, prefix)
         }
         // The player saw it through to the end: a good moment, and a finished watch for the
         // support ladder. A manual mark is neither.
@@ -102,8 +110,9 @@ class WatchedStore(private val store: DataStore<Preferences>) {
      */
     suspend fun markUnwatched(chatId: Long, messageId: Long, copies: List<MediaItem> = emptyList()) {
         store.edit { prefs ->
-            prefs.remove(keyOf(chatId, messageId))
-            for (copy in copies) prefs.remove(keyOf(copy.chatId, copy.messageId))
+            val prefix = ProfileScope.prefix
+            prefs.remove(keyOf(prefix, chatId, messageId))
+            for (copy in copies) prefs.remove(keyOf(prefix, copy.chatId, copy.messageId))
         }
     }
 
@@ -115,22 +124,28 @@ class WatchedStore(private val store: DataStore<Preferences>) {
     suspend fun markAllWatched(records: List<WatchedRecord>, copies: List<MediaItem> = emptyList()) {
         if (records.isEmpty()) return
         store.edit { prefs ->
+            val prefix = ProfileScope.prefix
             for (record in records) {
-                val key = keyOf(record.chatId, record.messageId)
+                val key = keyOf(prefix, record.chatId, record.messageId)
                 val before = WatchedRecord.decode(record.key, prefs[key])
                 // Already watched: kept as it was, so the Watched list keeps the day it was seen.
                 if (before == null) prefs[key] = record.encode()
-                prefs.remove(WatchLaterStore.keyOf(record.chatId, record.messageId))
+                prefs.remove(WatchLaterStore.keyOf(prefix, record.chatId, record.messageId))
             }
-            for (copy in copies) prefs.remove(WatchLaterStore.keyOf(copy.chatId, copy.messageId))
-            evictOldest(prefs)
+            for (copy in copies) prefs.remove(WatchLaterStore.keyOf(prefix, copy.chatId, copy.messageId))
+            evictOldest(prefs, prefix)
         }
     }
 
-    /** Empties the list. Keys are collected first: the map cannot be walked while it is written. */
+    /**
+     * Empties the list, every profile's marks alike. This is the account level wipe: signing
+     * out calls it, as does the History page's Clear watched, and no profile's history may
+     * survive the account leaving the device.
+     * Keys are collected first: the map cannot be walked while it is written.
+     */
     suspend fun clear() {
         store.edit { prefs ->
-            val doomed = prefs.asMap().keys.filter { it.name.startsWith(PREFIX) }
+            val doomed = prefs.asMap().keys.filter { ViewerProfiles.stripPrefix(it.name).startsWith(PREFIX) }
             for (key in doomed) prefs.remove(key)
         }
     }
@@ -143,8 +158,9 @@ class WatchedStore(private val store: DataStore<Preferences>) {
         if (ids.isEmpty()) return emptyList()
         val taken = ArrayList<WatchedRecord>()
         store.edit { prefs ->
+            val prefix = ProfileScope.prefix
             for (id in ids.toSet()) {
-                val key = stringPreferencesKey(PREFIX + id)
+                val key = stringPreferencesKey(prefix + PREFIX + id)
                 val record = WatchedRecord.decode(id, prefs[key])
                 if (prefs[key] != null) prefs.remove(key)
                 if (record != null) taken += record
@@ -157,11 +173,30 @@ class WatchedStore(private val store: DataStore<Preferences>) {
     suspend fun putBackMarks(records: List<WatchedRecord>) {
         if (records.isEmpty()) return
         store.edit { prefs ->
+            val prefix = ProfileScope.prefix
             for (record in records) {
-                val key = keyOf(record.chatId, record.messageId)
+                val key = keyOf(prefix, record.chatId, record.messageId)
                 if (prefs[key] == null) prefs[key] = record.encode()
             }
-            evictOldest(prefs)
+            evictOldest(prefs, prefix)
+        }
+    }
+
+    /**
+     * One profile's marks and Watch later lines, taken out together for a profile being
+     * deleted ([SettingsStore.removeViewerProfile] does the same for its own file). The
+     * default profile's prefix is empty and is refused: its lines are the legacy ones, and
+     * emptying them is [clear]'s account level job, never one profile's.
+     */
+    suspend fun clearProfile(prefix: String) {
+        if (prefix.isEmpty()) return
+        store.edit { prefs ->
+            val doomed = prefs.asMap().keys.filter { key ->
+                if (ViewerProfiles.prefixOf(key.name) != prefix) return@filter false
+                val rest = ViewerProfiles.stripPrefix(key.name)
+                rest.startsWith(PREFIX) || rest.startsWith("l_")
+            }
+            for (key in doomed) prefs.remove(key)
         }
     }
 
@@ -176,29 +211,35 @@ class WatchedStore(private val store: DataStore<Preferences>) {
         store.edit { prefs ->
             val now = prefs.asMap().mapKeys { it.key.name }
             for ((name, value) in writes(now)) prefs.putRaw(name, value)
-            evictOldest(prefs)
-            watchLater.evictOldest(prefs)
+            // A restore writes raw names, any profile's among them: the cap is applied per
+            // profile, for every prefix the file now holds.
+            for (prefix in ViewerProfiles.prefixesIn(prefs.asMap().keys.map { it.name })) {
+                evictOldest(prefs, prefix)
+                watchLater.evictOldest(prefs, prefix)
+            }
         }
     }
 
-    private fun decodeAll(prefs: Preferences): List<WatchedRecord> = buildList {
+    /** One profile's marks: its lines are [prefix] then [PREFIX] then the video's key. */
+    private fun decodeAll(prefs: Preferences, prefix: String): List<WatchedRecord> = buildList {
+        val head = prefix + PREFIX
         for ((key, value) in prefs.asMap()) {
             val name = key.name
-            if (!name.startsWith(PREFIX)) continue
-            WatchedRecord.decode(name.removePrefix(PREFIX), value as? String)?.let(::add)
+            if (!name.startsWith(head)) continue
+            WatchedRecord.decode(name.removePrefix(head), value as? String)?.let(::add)
         }
     }
 
     /**
-     * Keeps the list to [MAX_WATCHED]. Generous, since this is the record a viewer works through a
+     * Keeps one profile's list to [MAX_WATCHED]. Generous, since this is the record a viewer works through a
      * long series with, but bounded, because the whole file is read on every change.
      */
-    private fun evictOldest(prefs: MutablePreferences) {
-        val all = decodeAll(prefs)
+    private fun evictOldest(prefs: MutablePreferences, prefix: String) {
+        val all = decodeAll(prefs, prefix)
         if (all.size <= MAX_WATCHED) return
         all.sortedBy { it.watchedAt }
             .take(all.size - MAX_WATCHED)
-            .forEach { prefs.remove(keyOf(it.chatId, it.messageId)) }
+            .forEach { prefs.remove(keyOf(prefix, it.chatId, it.messageId)) }
     }
 
     companion object {
@@ -209,8 +250,8 @@ class WatchedStore(private val store: DataStore<Preferences>) {
 
         private const val PREFIX = "w_"
 
-        private fun keyOf(chatId: Long, messageId: Long) =
-            stringPreferencesKey(PREFIX + SettingsStore.progressKey(chatId, messageId))
+        private fun keyOf(prefix: String, chatId: Long, messageId: Long) =
+            stringPreferencesKey(prefix + PREFIX + SettingsStore.progressKey(chatId, messageId))
 
         /** Opens the store at [file]. Call once per process and share the result. */
         fun openDataStore(file: File): DataStore<Preferences> = openSafeDataStore(file)

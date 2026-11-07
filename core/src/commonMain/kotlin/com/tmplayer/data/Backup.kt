@@ -129,6 +129,10 @@ object Backups {
     val SETTINGS: Map<String, Kind> = mapOf(
         "accent" to Kind.TEXT,
         "accent_custom" to Kind.LONG,
+        // Viewer profiles (v1.0.15, item 1): the names and Simple flags, and which one is
+        // active. A profile's PIN hash is NOT here and never travels, the app lock's rule:
+        // it lives under its own key (profile_pin_), named in BackupCoverageTest's leftBehind.
+        "active_profile" to Kind.TEXT,
         "app_typeface" to Kind.TEXT,
         "autoplay_next" to Kind.BOOL,
         "background_audio" to Kind.BOOL,
@@ -243,6 +247,7 @@ object Backups {
         "update_notify" to Kind.BOOL,
         "video_decoder" to Kind.TEXT,
         "video_scale" to Kind.TEXT,
+        "viewer_profiles" to Kind.TEXT,
         "volume_boost" to Kind.BOOL,
         "watch_next" to Kind.BOOL,
         "wifi_only_downloads" to Kind.BOOL,

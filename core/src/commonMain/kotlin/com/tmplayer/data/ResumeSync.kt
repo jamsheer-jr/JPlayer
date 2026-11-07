@@ -30,6 +30,13 @@ import kotlinx.coroutines.withContext
  * A sync reads the message, takes in the places that are newer than this device's, and writes
  * back the merge: at start ([syncSoon]), when a video opens ([pullFor]), and a little after the
  * player saves a place ([pushSoon], gathered so a run of saves is one edit).
+ *
+ * Viewer profiles (v1.0.15, item 1): the message is the account's ONE sync document, so it
+ * carries the DEFAULT profile's places only. While any other profile is active a sync is a
+ * no-op ([Outcome.Off]): a family profile's places never enter the shared message, and the
+ * message's places are never imported into a family profile, where they would land as that
+ * viewer's own Continue watching. The default profile's keys are the unprefixed ones, so what
+ * syncs is exactly what synced before profiles existed.
  */
 object ResumeSync {
 
@@ -72,6 +79,8 @@ object ResumeSync {
     suspend fun sync(settings: SettingsStore, push: Boolean = true): Outcome = lock.withLock {
         withContext(Dispatchers.IO) {
             if (!settings.resumeSyncNow()) return@withContext Outcome.Off
+            // The default profile's document only: see the note at the head of this file.
+            if (!settings.defaultProfileActiveNow()) return@withContext Outcome.Off
             val session = Td.awaitConnectedSessionOrNull() ?: return@withContext Outcome.NoConnection
             val td = session.client
             try {
