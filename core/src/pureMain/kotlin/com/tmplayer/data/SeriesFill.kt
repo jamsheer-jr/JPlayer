@@ -3,8 +3,10 @@ package com.tmplayer.data
 /**
  * A show's page made whole: the show as a screen folded it holds only the episodes that screen
  * had read (Home's newest few dozen videos, a grid's first pages), so a show with forty episodes
- * a little further back in its chat opened with three. Its chat is searched for the show's name
- * ([EpisodeNeighbours.showOf]) and what turns up is folded in here.
+ * a little further back in its chat opened with three. The chats the viewer browses are searched
+ * for the show's name ([EpisodeNeighbours.showOf]) and what turns up is folded in here: the held
+ * set is every chat's (owner, v1.0.14), the same set a search gathers, so a show split across
+ * chats opens whole from anywhere.
  */
 object SeriesFill {
 
@@ -24,9 +26,10 @@ object SeriesFill {
      */
     fun merge(series: Series, found: List<MediaItem>): Series {
         if (found.isEmpty()) return series
-        val chatId = series.cover.chatId
         val own = series.episodes.flatMap { it.copies }
-        val pool = (own + found.filter { it.chatId == chatId })
+        // Every chat's finds fold in, not only the show's own chat's (owner, v1.0.14): a copy
+        // or an episode held elsewhere belongs to the same show the shelf folds it under.
+        val pool = (own + found)
             .distinctBy { it.id }
             .sortedWith(FeedMerge.newestFirst)
         val whole = SeriesShelf.arrange(pool)

@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
 
-/** A show's page made whole from a search of its chat. */
+/** A show's page made whole from a search of the chats. */
 class SeriesFillTest {
 
     private fun episode(chatId: Long, n: Int, show: String = "Quiet Hills") = MediaItem(
@@ -24,6 +24,8 @@ class SeriesFillTest {
         val whole = SeriesFill.merge(opened, found)
         assertEquals(opened.key, whole.key)
         assertEquals(listOf(1, 2, 3, 4, 5, 6), whole.episodes.map { it.episode })
+        // The chat 2 copy of the first episode folds in as a copy, not a stranger.
+        assertEquals(setOf(1L, 2L), whole.episodes.first { it.episode == 1 }.copies.map { it.chatId }.toSet())
     }
 
     @Test

@@ -32,9 +32,10 @@ class EpisodeGuideTest {
     )
 
     @Test
-    fun `the show is found among the same chat's videos only`() {
+    fun `the show is found across the chats, not only its own`() {
         val series = EpisodeGuide.seriesOf(chat[0], chat) ?: error("no series")
-        assertEquals(listOf(1 to 2, 2 to 1), series.seasons.map { it.number to it.episodes.size })
+        // S01E03 stands in chat 2: held, as a search across the chats would gather it.
+        assertEquals(listOf(1 to 3, 2 to 1), series.seasons.map { it.number to it.episodes.size })
         assertNull(EpisodeGuide.seriesOf(chat[3], chat))
     }
 
@@ -49,7 +50,7 @@ class EpisodeGuideTest {
             listOf(EpisodeGuide.State.InChat, EpisodeGuide.State.InChat, EpisodeGuide.State.Missing, EpisodeGuide.State.Upcoming),
             seasons.map { it.state },
         )
-        assertEquals(2, seasons[0].inChat)
+        assertEquals(3, seasons[0].inChat)
         assertEquals(3, seasons[0].total)
         assertEquals("2027-03-12", seasons[3].airDate)
     }
@@ -69,7 +70,7 @@ class EpisodeGuideTest {
             listOf(
                 EpisodeGuide.State.InChat,
                 EpisodeGuide.State.InChat,
-                EpisodeGuide.State.Missing,
+                EpisodeGuide.State.InChat,
                 EpisodeGuide.State.Upcoming,
                 EpisodeGuide.State.Upcoming,
             ),
@@ -80,10 +81,10 @@ class EpisodeGuideTest {
     }
 
     @Test
-    fun `with no provider list the chat's own episodes still show`() {
+    fun `with no provider list the held episodes still show`() {
         val series = EpisodeGuide.seriesOf(chat[0], chat)
         val episodes = EpisodeGuide.episodes(1, series, null, today = "2026-10-06")
-        assertEquals(listOf(1, 2), episodes.map { it.number })
+        assertEquals(listOf(1, 2, 3), episodes.map { it.number })
         val seasons = EpisodeGuide.seasons(series, emptyList(), null, today = "2026-10-06")
         assertEquals(listOf(1, 2), seasons.map { it.number })
     }

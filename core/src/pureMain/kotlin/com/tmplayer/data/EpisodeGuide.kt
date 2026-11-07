@@ -6,8 +6,8 @@ import com.tmplayer.online.MetaEpisode
 import com.tmplayer.online.MetaSeason
 
 /**
- * A show's seasons and episodes for the detail page: what the chat holds, laid over what the
- * provider lists, so the page can play the first, grey out the episodes the chat lacks, and mark
+ * A show's seasons and episodes for the detail page: what the chats hold, laid over what the
+ * provider lists, so the page can play the first, grey out the episodes no chat holds, and mark
  * those still to air as upcoming rather than missing.
  *
  * Dates are the providers' own `yyyy-MM-dd`, compared as text against [today] in the same form.
@@ -89,9 +89,19 @@ object EpisodeGuide {
         }
     }
 
-    /** The show [item] belongs to among [chatItems] (the chat's videos), or null when it stands alone. */
-    fun seriesOf(item: MediaItem, chatItems: Collection<MediaItem>): Series? {
-        val items = (chatItems.filter { it.chatId == item.chatId } + item).distinctBy { it.id }
+    /**
+     * The show [item] belongs to among [known] (every video the app has loaded), or null when
+     * it stands alone. The held set is every chat's, not only the chat [item] came from
+     * (owner, v1.0.14): an episode another chat holds is held, so the guide over a title
+     * agrees with the series a search gathers across the chats, and no episode any loaded
+     * chat holds is ever marked missing. The item's own chat is arranged whole, as before;
+     * from the other chats only files of the same show (the same title key) are taken, so
+     * one title's page never pays to arrange everything the app has ever loaded.
+     */
+    fun seriesOf(item: MediaItem, known: Collection<MediaItem>): Series? {
+        val titleKey = SeriesShelf.episodeOf(item).titleKey
+        val items = (known.filter { it.chatId == item.chatId || (titleKey.isNotEmpty() && SeriesShelf.episodeOf(it).titleKey == titleKey) } + item)
+            .distinctBy { it.id }
         return SeriesShelf.arrange(items).asSequence()
             .mapNotNull { (it as? ShelfEntry.Show)?.series }
             .firstOrNull { show -> show.episodes.any { ep -> ep.copies.any { it.id == item.id } } }
