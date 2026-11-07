@@ -61,6 +61,7 @@ import com.tmplayer.data.MediaItem
 import com.tmplayer.data.NameInitial
 import com.tmplayer.i18n.Messages
 import com.tmplayer.i18n.Translator
+import com.tmplayer.online.FilmographyEntry
 import com.tmplayer.online.KnownMedia
 import com.tmplayer.online.KnownTitle
 import com.tmplayer.online.MetaExtras
@@ -68,6 +69,8 @@ import com.tmplayer.online.MetaInfo
 import com.tmplayer.online.MetaKind
 import com.tmplayer.online.MetaPerson
 import com.tmplayer.online.MetaProvider
+import com.tmplayer.online.MetaRef
+import com.tmplayer.online.PersonFilmography
 import com.tmplayer.online.withProviderScore
 import androidx.compose.ui.text.font.FontWeight
 import com.tmplayer.online.MetaScore
@@ -641,19 +644,53 @@ private fun personTitles(name: String): List<PersonTitle> {
     return byMatch.values.toList()
 }
 
+/** What a person's page lists: their filmography where TMDB has one, and what the chats hold besides. */
+private class PersonPageData(
+    /** The person's TMDB credits marked against the viewer's titles; null when TMDB has none for them. */
+    val filmography: List<FilmographyEntry>?,
+    /** Titles in the chats the filmography does not already cover (a director's, say): all playable. */
+    val extraHeld: List<PersonTitle>,
+)
+
 /**
- * A cast member's titles in the viewer's chats (owner, v1.0.14), opened by a press on
- * their face in the cast row: the face large with the name and the part over the titles
- * [personTitles] finds, each row opening its title by the page's own opener. Back, a
- * press outside the card, or the close button leaves; on a television the close button
- * takes the remote first, as the enlarged face's does, and Down walks to the rows.
+ * The person's page, as [PersonPageData] builds it: the titles in the viewer's chats
+ * ([personTitles], the name match the search by a person reads) set the playable copies
+ * first, then TMDB's credits for the person are marked against every matched title the
+ * app has listed ([OnlineMetadata.knownTitles]), so a credit the chats hold is upgraded
+ * to playable even where the name match missed it. A fetch that fails, or a person TMDB
+ * does not know, leaves the in-chats list alone, exactly the v1.0.14 page.
+ */
+private suspend fun personPage(person: MetaPerson): PersonPageData {
+    val held = personTitles(person.name)
+    val online = OnlineMetadata.current ?: return PersonPageData(null, held)
+    val credits = runCatching { online.personFilmography(person) }.getOrNull()
+        ?: return PersonPageData(null, held)
+    val heldByKey = held.associateBy { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) }
+    val entries = PersonFilmography.mark(credits, online.knownTitles(KnownMedia.all())).map { entry ->
+        if (entry.playable) entry else heldByKey[entry.credit.ref.matchKey]?.let { entry.copy(item = it.item) } ?: entry
+    }
+    val covered = credits.mapTo(HashSet()) { it.ref.matchKey }
+    return PersonPageData(entries, held.filter { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) !in covered })
+}
+
+/**
+ * A cast member's page (owner, v1.0.14, widened v1.0.15 item 17), opened by a press on
+ * their face in the cast row: the face large with the name and the part, then their whole
+ * filmography from TMDB, newest first. A title one of the viewer's chats holds is marked
+ * "In your chats" and opens by the page's own opener; the rest stand as filmography
+ * entries marked "Not in your chats", the same honesty as a season list's missing
+ * episodes, and are not presses. Where TMDB has nothing for the person, only the titles
+ * in the chats are listed, as the page always did. Back, a press outside the card, or
+ * the close button leaves; on a television the close button takes the remote first, as
+ * the enlarged face's does, and Down walks to the rows.
  */
 @Composable
 fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (MediaItem) -> Unit) {
     val tv = !isTouch()
+    val s = LocalStrings.current
     val close = remember { androidx.compose.ui.focus.FocusRequester() }
-    val titles by produceState<List<PersonTitle>?>(null, person.name) {
-        value = withContext(Dispatchers.Default) { personTitles(person.name) }
+    val page by produceState<PersonPageData?>(null, person.name) {
+        value = withContext(Dispatchers.Default) { personPage(person) }
     }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
@@ -682,12 +719,27 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                 if (person.role.isNotBlank()) {
                     Text(person.role, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
                 }
-                titles?.let { found ->
+                page?.let { data ->
                     LazyColumn(
-                        Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                        Modifier.fillMaxWidth().heightIn(max = 420.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        items(found) { title -> PersonTitleRow(title) { onOpenItem(title.item) } }
+                        if (data.filmography != null && data.extraHeld.isNotEmpty()) {
+                            item(key = "held-heading") {
+                                Text(s.metadataInYourChats, style = MaterialTheme.typography.titleSmall, color = Color.White, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+                            }
+                        }
+                        items(data.extraHeld, key = { "held-" + it.info.provider.name + "-" + it.info.id }) { title ->
+                            PersonTitleRow(title) { onOpenItem(title.item) }
+                        }
+                        if (data.filmography != null) {
+                            item(key = "filmography-heading") {
+                                Text(s.metadataFilmography, style = MaterialTheme.typography.titleSmall, color = Color.White, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                            }
+                        }
+                        items(data.filmography.orEmpty(), key = { "credit-" + it.credit.ref.matchKey }) { entry ->
+                            FilmographyRow(entry) { entry.item?.let(onOpenItem) }
+                        }
                     }
                 }
             }
@@ -748,6 +800,71 @@ private fun PersonTitleRow(title: PersonTitle, onOpen: () -> Unit) {
             title.info.year?.let { year ->
                 Text(year.toString(), style = MaterialTheme.typography.bodySmall, color = if (focused) Tone.onFocusFill else Tone.muted)
             }
+        }
+    }
+}
+
+/**
+ * One row of the filmography: the poster, the title, its year and the part played or the job
+ * done, then where it stands with the viewer's chats. A title the chats hold is a press that
+ * opens it, marked in the accent; one they do not hold is dimmed, marked as not here, and no
+ * press at all, so a remote never lands on a dead row.
+ */
+@Composable
+private fun FilmographyRow(entry: FilmographyEntry, onOpen: () -> Unit) {
+    val s = LocalStrings.current
+    val tv = !isTouch()
+    val playable = entry.playable
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusVisibleAsState()
+    val ink = if (focused) Tone.onFocusFill else Tone.text
+    val credit = entry.credit
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Corner.Medium))
+            .background(if (focused) Tone.focusFill else Tone.surfaceHigh)
+            .then(
+                if (playable) {
+                    Modifier.clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onOpen)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.size(44.dp, 66.dp).clip(RoundedCornerShape(Corner.Small)).background(Tone.surface),
+            contentAlignment = Alignment.Center,
+        ) {
+            MetaPicture(credit.posterUrl, Modifier.fillMaxSize(), maxWidth = 240)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                credit.ref.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (playable) ink else ink.copy(alpha = 0.65f),
+                maxLines = 2,
+            )
+            val facts = listOfNotNull(
+                credit.year?.toString(),
+                credit.role.ifBlank { null },
+            ).joinToString("  ·  ")
+            if (facts.isNotBlank()) {
+                Text(facts, style = MaterialTheme.typography.bodySmall, color = if (focused) Tone.onFocusFill else Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(
+                if (playable) s.metadataInYourChats else s.metadataNotInYourChats,
+                style = MaterialTheme.typography.bodySmall,
+                color = when {
+                    focused -> Tone.onFocusFill
+                    playable -> Tone.accent
+                    else -> Tone.muted
+                },
+                maxLines = 1,
+            )
         }
     }
 }
