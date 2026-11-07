@@ -121,6 +121,8 @@ fun WideDetailPanel(
     /** How far the page's words sit in from the window's sides; null picks one for the width. */
     margin: androidx.compose.ui.unit.Dp? = null,
 ) {
+    // The open itself asks the chats for the rest of this title (owner, v1.0.14).
+    rememberTitleMediaLoad(item)
     val s = LocalStrings.current
     val corrections by com.tmplayer.data.VideoCorrections.state.collectAsState()
     val parsed = remember(item, corrections) { com.tmplayer.data.SeriesShelf.episodeOf(item, corrections) }

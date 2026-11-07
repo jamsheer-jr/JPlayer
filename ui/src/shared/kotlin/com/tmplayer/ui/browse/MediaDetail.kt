@@ -212,6 +212,8 @@ fun MediaDetailPanel(
      */
     actionsAtFoot: Boolean = false,
 ) {
+    // The open itself asks the chats for the rest of this title (owner, v1.0.14).
+    rememberTitleMediaLoad(item)
     val s = LocalStrings.current
     // A cast member pressed: their titles in the chats (owner, v1.0.14).
     var person by remember { mutableStateOf<com.tmplayer.online.MetaPerson?>(null) }

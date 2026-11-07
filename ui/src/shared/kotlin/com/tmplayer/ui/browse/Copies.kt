@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -174,7 +175,12 @@ internal fun Versions(
     // or Home opening arrives with. Each row's chat name still comes from [copyChat]:
     // the page's own chat by the handed over name, the rest where an earlier page
     // offered them with one, and no name where none is known rather than a wrong one.
-    val full = remember(item.id, item.versions) {
+    // The pool's version is watched, so the widening is worked out again as the open
+    // itself brings more of the title in ([rememberTitleMediaLoad] asks the chats, and
+    // each chat's finds are noted as they land), instead of standing at what the pool
+    // held on the first frame.
+    val known by com.tmplayer.online.KnownMedia.version.collectAsState()
+    val full = remember(item.id, item.versions, known) {
         com.tmplayer.data.SameTitle.withPoolCopies(item, com.tmplayer.online.KnownMedia.all())
     }
     if (full.versions.size <= 1) return

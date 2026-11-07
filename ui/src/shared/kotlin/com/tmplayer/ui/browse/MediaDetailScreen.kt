@@ -153,6 +153,9 @@ fun MediaDetailScreen(
     /** Cam family copies hidden in the versions list (the Playback switch, on by default). */
     hideCamCopies: Boolean = true,
 ) {
+    // The open itself asks the chats for the rest of this title, so the copies and the
+    // episodes fill in here rather than waiting on a visit to the Chats tab (owner, v1.0.14).
+    rememberTitleMediaLoad(item)
     val metaState = rememberMetaState(item)
     val meta = metaState.value
     val extrasState = rememberMetaExtrasState(meta, metaState.settled)

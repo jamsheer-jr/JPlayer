@@ -58,7 +58,9 @@ object WholeSeries {
         val chatId = series.cover.chatId
         val found = ArrayList<MediaItem>()
         found += search(fetch, chatId, query, series.cover.topicId)
-        val others = (com.tmplayer.data.ChatGate.browsing.value ?: com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()) - chatId
+        // The gate awaited, not only read: at a cold open the stored choice may not have
+        // been read yet, and the value standing there would narrow the set to nothing.
+        val others = (com.tmplayer.data.ChatGate.awaitBrowsing() ?: com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()) - chatId
         for (other in others) {
             // The show's topic is its own chat's; another chat is asked whole.
             found += search(fetch, other, query, topicId = 0)
