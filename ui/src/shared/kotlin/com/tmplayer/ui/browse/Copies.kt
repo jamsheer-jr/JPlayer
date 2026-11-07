@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tmplayer.data.CopyHandoff
+import com.tmplayer.data.HiddenCopies
 import com.tmplayer.data.MediaFacts
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.MediaMapper
@@ -178,6 +179,10 @@ internal fun Versions(
     started: (MediaItem) -> Boolean = { false },
     hideCamCopies: Boolean = true,
     hideShortVideos: Boolean = true,
+    /** The copies the viewer hid themselves (item 8b, v1.0.15), by post: see [HiddenCopies]. */
+    hiddenCopies: Set<String> = emptySet(),
+    /** Hiding a copy from this list, where the platform offers it; null leaves the rows plain. */
+    onHideCopy: ((MediaItem) -> Unit)? = null,
 ) {
     if (onPick == null) return
     // Every copy of the title, whichever chat holds it (owner, v1.0.14): the list the
@@ -199,13 +204,20 @@ internal fun Versions(
     val allFiles = remember(full.versions) { VideoCopies.distinctFiles(full.versions) }
     if (allFiles.size <= 1) return
     val s = LocalStrings.current
-    val files = remember(allFiles, hideCamCopies, hideShortVideos) {
+    val files = remember(allFiles, hideCamCopies, hideShortVideos, hiddenCopies) {
         allFiles.filterNot { (lead, _) ->
-            (hideCamCopies && isCamCopy(lead)) || (hideShortVideos && isShortCopy(lead))
+            (hideCamCopies && isCamCopy(lead)) || (hideShortVideos && isShortCopy(lead)) ||
+                HiddenCopies.hides(hiddenCopies, lead)
         }
     }
     val camHidden = if (hideCamCopies) allFiles.count { isCamCopy(it.first) } else 0
     val shortHidden = if (hideShortVideos) allFiles.count { !isCamCopy(it.first) && isShortCopy(it.first) } else 0
+    // The viewer's own hides, counted apart from the two rules above: a copy hidden by both a
+    // rule and the viewer is the rule's, as a cam copy is for the pair above.
+    val ownHidden = allFiles.count { (lead, _) ->
+        HiddenCopies.hides(hiddenCopies, lead) &&
+            !(hideCamCopies && isCamCopy(lead)) && !(hideShortVideos && isShortCopy(lead))
+    }
     if (files.isEmpty()) {
         Column {
             if (camHidden > 0) Text(
@@ -216,6 +228,12 @@ internal fun Versions(
             )
             if (shortHidden > 0) Text(
                 s.detailShortHidden(shortHidden),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+            if (ownHidden > 0) Text(
+                s.detailCopyHidden(ownHidden),
                 style = MaterialTheme.typography.bodySmall,
                 color = Tone.muted,
                 modifier = Modifier.padding(start = 4.dp),
@@ -243,6 +261,7 @@ internal fun Versions(
             chatTitle = chatTitle,
             started = started,
             chosenFocus = chosenFocus,
+            onHideCopy = onHideCopy,
             onChoose = { copy ->
                 open = false
                 if (copy.id != full.id) onPick(copy.asVersion(full))
@@ -267,6 +286,14 @@ internal fun Versions(
         if (shortHidden > 0) {
             Text(
                 s.detailShortHidden(shortHidden),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
+        if (ownHidden > 0) {
+            Text(
+                s.detailCopyHidden(ownHidden),
                 style = MaterialTheme.typography.bodySmall,
                 color = Tone.muted,
                 modifier = Modifier.padding(start = 4.dp),
@@ -440,6 +467,8 @@ private fun CopyChooser(
     started: (MediaItem) -> Boolean,
     /** Put on the copy that plays, for a remote to land on when the list opens. */
     chosenFocus: androidx.compose.ui.focus.FocusRequester? = null,
+    /** Hiding a copy from this list (item 8b, v1.0.15); null leaves the rows plain. */
+    onHideCopy: ((MediaItem) -> Unit)? = null,
     onChoose: (MediaItem) -> Unit,
 ) {
     val s = LocalStrings.current
@@ -522,6 +551,7 @@ private fun CopyChooser(
                         postedAgain(same, s),
                     ).joinToString("  ·  "),
                     chosen = picked?.let { id -> same.any { it.id == id } } ?: same.any { it.id == item.id },
+                    onHide = onHideCopy?.takeIf { !same.any { it.id == item.id } }?.let { hide -> { hide(copy) } },
                     onClick = { choose(copy) },
                     // The rows arrive one after another, top first, as the sheet comes up.
                     modifier = Modifier.riseIn(row++, enabled = touch),
@@ -543,6 +573,8 @@ private fun CopyOption(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    /** "Never show this copy" (item 8b, v1.0.15), a button at the row's end; null leaves it out. */
+    onHide: (() -> Unit)? = null,
 ) {
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -579,6 +611,11 @@ private fun CopyOption(
             if (facts.isNotEmpty()) Text(facts, style = MaterialTheme.typography.bodySmall, color = if (focused) ink.copy(alpha = 0.8f) else Tone.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (!copy.canBeSaved) Icon(TmIcons.Lock, contentDescription = null, tint = if (focused) ink else Tone.muted, modifier = Modifier.size(18.dp))
+        if (onHide != null) {
+            androidx.compose.material3.IconButton(onClick = onHide) {
+                Icon(TmIcons.Remove, contentDescription = s.detailHideCopy, tint = if (focused) ink else Tone.muted, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }
 

@@ -326,6 +326,7 @@ fun SettingsScreen(
     val hideCamCopies by settings.hideCamCopies.collectAsStateWithLifecycle(initialValue = true)
     // On until read, as the cam switch's is: videos under 5 minutes are hidden unless turned off.
     val hideShortVideos by settings.hideShortVideos.collectAsStateWithLifecycle(initialValue = true)
+    val hiddenCopies by settings.hiddenCopies.collectAsStateWithLifecycle(initialValue = emptySet())
     val hiddenTitleWords by settings.hiddenTitleWords.collectAsStateWithLifecycle(initialValue = emptySet())
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
@@ -1077,6 +1078,18 @@ fun SettingsScreen(
                         icon = TmIcons.Info,
                         checked = hideShortVideos,
                         onToggle = { scope.launch { settings.setHideShortVideos(!hideShortVideos) } },
+                    )
+                }
+                // The viewer's own hidden copies (item 8b, v1.0.15): hidden one by one from a
+                // title's copies list, and brought back all at once here, since a list of posts
+                // nobody can name is no use to anybody. Unhiding deletes nothing and hides
+                // nothing, so no confirmation stands in its way.
+                item {
+                    ActionRow(
+                        title = s.settingsHiddenCopies,
+                        subtitle = if (hiddenCopies.isEmpty()) s.settingsHiddenCopiesNone else s.settingsHiddenCopiesDetail(count = hiddenCopies.size),
+                        icon = TmIcons.Info,
+                        onClick = { if (hiddenCopies.isNotEmpty()) scope.launch { settings.clearHiddenCopies() } },
                     )
                 }
                 // The viewer's own words for that same switch (owner, v1.0.11): each word a

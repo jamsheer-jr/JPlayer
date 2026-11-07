@@ -110,6 +110,7 @@ private val COLLECTIONS = stringPreferencesKey("collections")
 private val VIEWER_PROFILES = stringPreferencesKey("viewer_profiles")
 private val ACTIVE_PROFILE = stringPreferencesKey("active_profile")
 private val HIDDEN_STREAMS = stringPreferencesKey("hidden_streams")
+private val HIDDEN_COPIES = stringPreferencesKey("hidden_copies")
 private val HIDDEN_TITLE_WORDS = stringPreferencesKey("hidden_title_words")
 private val LINK_HISTORY = stringPreferencesKey("link_history")
 private val STREAM_RESUME = stringPreferencesKey("stream_resume")
@@ -2355,6 +2356,25 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHiddenStreams(keys: Set<String>) {
         prefs.edit { it[HIDDEN_STREAMS] = HiddenStreams.encode(keys) }
+    }
+
+    /** The copies the viewer chose never to be shown again, by the posts that carried them: see [HiddenCopies]. */
+    val hiddenCopies: Flow<Set<String>> = read { it[HIDDEN_COPIES] }.map { raw -> HiddenCopies.decode(raw) }
+
+    suspend fun hiddenCopiesNow(): Set<String> = HiddenCopies.decode(prefs.data.first()[HIDDEN_COPIES])
+
+    suspend fun setHiddenCopies(keys: Set<String>) {
+        prefs.edit { it[HIDDEN_COPIES] = HiddenCopies.encode(keys) }
+    }
+
+    /** Hides [copy] from the copies lists (item 8b, v1.0.15), until it is brought back. */
+    suspend fun hideCopy(copy: MediaItem) {
+        setHiddenCopies(HiddenCopies.plus(hiddenCopiesNow(), copy))
+    }
+
+    /** Brings every hidden copy back at once: the Settings list's way out (item 8b, v1.0.15). */
+    suspend fun clearHiddenCopies() {
+        prefs.edit { it.remove(HIDDEN_COPIES) }
     }
 
     /** The addresses the viewer opened from the Open link box, newest first: see [LinkHistory]. */

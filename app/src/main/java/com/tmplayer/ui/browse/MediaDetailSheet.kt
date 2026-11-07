@@ -130,6 +130,8 @@ internal fun MediaDetailOpened(
     val hideCamCopies by remember(settings) { settings.hideCamCopies }.collectAsStateWithLifecycle(initialValue = true)
     // Versions under 5 minutes in this page's versions list follow their Playback switch too.
     val hideShortVideos by remember(settings) { settings.hideShortVideos }.collectAsStateWithLifecycle(initialValue = true)
+    // The copies the viewer hid themselves (item 8b, v1.0.15), screened from the same list.
+    val hiddenCopies by remember(settings) { settings.hiddenCopies }.collectAsStateWithLifecycle(initialValue = emptySet())
     // The hero's trailer autoplay follows its Playback switch too, on until read.
     val heroTrailerAutoplay by remember(settings) { settings.heroTrailerAutoplay }.collectAsStateWithLifecycle(initialValue = true)
 
@@ -517,6 +519,10 @@ internal fun MediaDetailOpened(
             // A mark goes only on the viewer's own tap here (item 7b, v1.0.15); the list is the
             // store's flow, so the row leaves the page as the store writes.
             onDeleteBookmark = { mark -> scope.launch { runCatching { bookmarkStore.delete(mark.chatId, mark.messageId, mark.id) } } },
+            hiddenCopies = hiddenCopies,
+            // A copy goes only on the viewer's own tap here (item 8b, v1.0.15), the same rule
+            // as the bookmark above; Settings, Playback brings them all back.
+            onHideCopy = { copy -> scope.launch { runCatching { settings.hideCopy(copy) } } },
         )
     }
 }
@@ -608,6 +614,8 @@ private fun DetailScreen(
     heroTrailerAutoplay: Boolean,
     onOpenBookmark: (Bookmark) -> Unit,
     onDeleteBookmark: ((Bookmark) -> Unit)? = null,
+    hiddenCopies: Set<String> = emptySet(),
+    onHideCopy: ((MediaItem) -> Unit)? = null,
 ) {
     val touch = isTouch()
     val first = remember { FocusRequester() }
@@ -639,6 +647,8 @@ private fun DetailScreen(
                 bookmarks = bookmarks,
                 onOpenBookmark = onOpenBookmark,
                 onDeleteBookmark = onDeleteBookmark,
+                hiddenCopies = hiddenCopies,
+                onHideCopy = onHideCopy,
                 onPickCopy = onPickCopy,
                 copyStarted = copyStarted,
                 hideCamCopies = hideCamCopies,

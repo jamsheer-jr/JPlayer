@@ -164,6 +164,9 @@ object Backups {
         // The streams the viewer took out of Home's Live row, by the post that carried each
         // one: a choice about what Home shows, so it travels like the collections do.
         "hidden_streams" to Kind.TEXT,
+        // The copies the viewer chose never to show again (item 8b, v1.0.15), by the posts
+        // that carried them: a choice about what the lists show, so it travels too.
+        "hidden_copies" to Kind.TEXT,
         // The viewer's own words hidden from titles (TitleCleaning): their own list, kept
         // with their other title choices.
         "hidden_title_words" to Kind.TEXT,

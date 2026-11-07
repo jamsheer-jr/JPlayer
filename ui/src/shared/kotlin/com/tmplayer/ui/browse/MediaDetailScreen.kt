@@ -144,6 +144,10 @@ fun MediaDetailScreen(
     onOpenBookmark: ((Bookmark) -> Unit)? = null,
     /** Deleting one of this video's bookmarks from its page (item 7b, v1.0.15); null hides it. */
     onDeleteBookmark: ((Bookmark) -> Unit)? = null,
+    /** The copies the viewer hid themselves (item 8b, v1.0.15), screened from Versions. */
+    hiddenCopies: Set<String> = emptySet(),
+    /** Hiding a copy from the Versions list; null leaves its rows plain. */
+    onHideCopy: ((MediaItem) -> Unit)? = null,
     /**
      * Another copy of the film chosen from its copies list ([Versions]); the platform remembers
      * the choice for the video and turns the page to it. [onOpenItem] when not given.
@@ -178,7 +182,7 @@ fun MediaDetailScreen(
     // looked up, as the card it was opened from did.
     val art = rememberArtItem(item)
     val source = remember(item.id, art, cover, meta?.wideUrl) { BackdropSource(art.miniThumbnail, art.thumbnailFileId, cover, meta?.wideUrl) }
-    val page = DetailPage(item, chatTitle, watched, finished, rows, meta, extras, source, firstAction, onOpenItem, bookmarks, onOpenBookmark, onPickCopy, copyStarted, metaState, extrasState, hideCamCopies, hideShortVideos, heroTrailerAutoplay, onDeleteBookmark)
+    val page = DetailPage(item, chatTitle, watched, finished, rows, meta, extras, source, firstAction, onOpenItem, bookmarks, onOpenBookmark, onPickCopy, copyStarted, metaState, extrasState, hideCamCopies, hideShortVideos, heroTrailerAutoplay, onDeleteBookmark, hiddenCopies, onHideCopy)
     // Decided on the first frame and kept for the visit, the phone turned included.
     val holds = rememberHolds(page, firstPaint)
     BoxWithConstraints(modifier.fillMaxSize().background(Tone.background)) {
@@ -263,6 +267,10 @@ private class DetailPage(
     val heroTrailerAutoplay: Boolean = true,
     /** Deleting one of this video's bookmarks from its page (item 7b, v1.0.15); null hides it. */
     val onDeleteBookmark: ((Bookmark) -> Unit)? = null,
+    /** The copies the viewer hid themselves (item 8b, v1.0.15), screened from Versions. */
+    val hiddenCopies: Set<String> = emptySet(),
+    /** Hiding a copy from the Versions list; null leaves its rows plain. */
+    val onHideCopy: ((MediaItem) -> Unit)? = null,
 )
 
 /**
@@ -376,7 +384,7 @@ private fun CinemaLayout(page: DetailPage, holds: Holds, height: Dp) {
                     // A television keeps the everyday buttons beside Play and the rest at the foot
                     // of the page, as a phone does; Right walks along the first, Down reaches the rest.
                     Actions(page, holds, onEpisodes = episodesButton(page.item, page.meta, episodes), headlineOnly = tv)
-                    Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos)
+                    Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos, page.hiddenCopies, page.onHideCopy)
                     TelegramQualityLine(page.item)
                 }
                 Spacer(Modifier.height(if (tv) 8.dp else 4.dp))
@@ -458,7 +466,7 @@ private fun StackedLayout(page: DetailPage, holds: Holds, width: Dp, height: Dp)
                 }
                 Box(Modifier.riseIn(3, enabled = touch)) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos)
+                        Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos, page.hiddenCopies, page.onHideCopy)
                         TelegramQualityLine(page.item)
                     }
                 }

@@ -220,6 +220,7 @@ class GarbageInputTest {
                 StreamLinks.inPosts(listOf(ChannelPost(1, text, true), ChannelPost(2, text, false)), 7, text)
             }
             survive("HiddenStreams.decode", text) { HiddenStreams.decode(text) }
+            survive("HiddenCopies.decode", text) { HiddenCopies.decode(text) }
             survive("HomeUpdateNotice.visible", text) {
                 HomeUpdateNotice.visible(text, text, 1_000L)
                 HomeUpdateNotice.visible(HomeUpdateNotice.stamp(text, 1_000L), text, 2_000L)

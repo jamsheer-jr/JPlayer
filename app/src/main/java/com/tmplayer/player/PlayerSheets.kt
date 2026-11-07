@@ -36,6 +36,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tmplayer.data.Bookmark
+import com.tmplayer.data.HiddenCopies
 import com.tmplayer.data.MediaFacts
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.SettingsStore
@@ -1013,15 +1014,20 @@ internal fun CopiesSheet(
     val settings = remember(context) { SettingsStore(context) }
     val hideCam by settings.hideCamCopies.collectAsState(initial = true)
     val hideShort by settings.hideShortVideos.collectAsState(initial = true)
-    // The copy playing always stays, even when it is itself a cam copy or a short one.
-    val visible = remember(copies, hideCam, hideShort, playing) {
+    // The copies the viewer hid themselves (item 8b, v1.0.15), read the same way.
+    val hiddenOwn by settings.hiddenCopies.collectAsState(initial = emptySet())
+    // The copy playing always stays, even when it is itself a cam copy or a short one, or one
+    // the viewer hid: hiding speaks of the lists, never of the video on screen.
+    val visible = remember(copies, hideCam, hideShort, hiddenOwn, playing) {
         copies.filter { copy ->
             copy.id == playing ||
-                (!hideCam || !isCamCopy(copy)) && (!hideShort || !isShortCopy(copy))
+                (!hideCam || !isCamCopy(copy)) && (!hideShort || !isShortCopy(copy)) &&
+                !HiddenCopies.hides(hiddenOwn, copy)
         }
     }
     val camHidden = if (hideCam) copies.count { it.id != playing && isCamCopy(it) } else 0
     val shortHidden = if (hideShort) copies.count { it.id != playing && !isCamCopy(it) && isShortCopy(it) } else 0
+    val ownHidden = copies.count { it.id != playing && HiddenCopies.hides(hiddenOwn, it) && !isCamCopy(it) && !isShortCopy(it) }
     // Sorted and grouped the one way copies are always offered ([VideoCopies.tiersOf]), the
     // grouping the detail page's Versions shares, so the two lists never disagree: best
     // picture first, the biggest of it next, the copies stating no quality last. The copy
@@ -1103,6 +1109,14 @@ internal fun CopiesSheet(
             if (shortHidden > 0) {
                 Text(
                     s.playerShortHidden(shortHidden),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Tone.muted,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+            }
+            if (ownHidden > 0) {
+                Text(
+                    s.playerCopyHidden(ownHidden),
                     style = MaterialTheme.typography.bodySmall,
                     color = Tone.muted,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
