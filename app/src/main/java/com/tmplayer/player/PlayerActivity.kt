@@ -1397,6 +1397,14 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private val undoExpiry = Runnable { refreshUndoChip() }
 
     /**
+     * "LIVE" while a live stream is watched from behind its edge: the chip, which shares the
+     * "Back to" chip's corner (the two never stand together), and its way back, [goLive].
+     * [watchForTheEnd] looks at it while the picture moves and on the wakes it already gets
+     * while it does not, so a paused stream costs no waking of its own (see [endWatchWake]).
+     */
+    private var goLiveChip: GoLiveChip? = null
+
+    /**
      * The file's chapter marks, read from its own bytes once they are on the disk ([MkvChapters];
      * Media3 reads none). Empty for a file without any, and until they are found.
      */
@@ -2372,7 +2380,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 onTogglePlay = ::togglePlaybackFromPicture,
                 isOnChrome = { x, y ->
                     controls?.isOnChrome(x, y) == true || isOnNextUpCard(x, y) || isOnSkipPill(x, y) || isOnUndoChip(x, y) ||
-                        feedback?.isOnZoomChip(x, y) == true
+                        isOnGoLiveChip(x, y) || feedback?.isOnZoomChip(x, y) == true
                 },
                 systemEdges = ::systemGestureEdges,
             ).also { it.prefs = touchPrefs }
@@ -2428,6 +2436,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
             // "Back to" on the start side keeps clear of a cutout or the bar in landscape too.
             undoChip?.view?.updateLayoutParams<FrameLayout.LayoutParams> {
+                leftMargin = safe.left + NextUpCard.marginPx(root)
+                marginStart = safe.left + NextUpCard.marginPx(root)
+                bottomMargin = safe.bottom + NextUpCard.bottomPx(root)
+            }
+            // "LIVE" shares that corner, so it keeps the same clearance.
+            goLiveChip?.view?.updateLayoutParams<FrameLayout.LayoutParams> {
                 leftMargin = safe.left + NextUpCard.marginPx(root)
                 marginStart = safe.left + NextUpCard.marginPx(root)
                 bottomMargin = safe.bottom + NextUpCard.bottomPx(root)
@@ -2974,6 +2988,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         startOverOffered = true
         seekUndo.clear()
         undoChip?.hide()
+        goLiveChip?.hide()
         holdFile(fileId)
         subtitleFiles.metadata = sessionMetadata()
         renderControlsTitle()
@@ -4509,6 +4524,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         loopHandler.removeCallbacks(loopWatch)
         seekUndo.clear()
         undoChip?.hide()
+        goLiveChip?.hide()
         markedWatchedHere = false
         watchedHere = false
         onWatchedList = false
@@ -6874,6 +6890,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             hideNextUp()
             hideSkipPill()
             undoChip?.hide()
+            goLiveChip?.hide()
         }
         subtitleView.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
         subtitleTwin?.visibility = subtitleView.visibility
@@ -7194,8 +7211,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         }
         if (offer == null) {
             chip.hide()
+            // The corner is free again: a live stream watched from behind may raise its chip.
+            refreshGoLiveChip()
             return
         }
+        // The offer is the corner's urgent tenant for its few seconds (see GoLiveChip).
+        goLiveChip?.hide()
         val wasShown = chip.isShown
         chip.show(offer.backToMs)
         if (!wasShown) liftCornerOffers()
@@ -7214,6 +7235,65 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     private fun isOnUndoChip(rawX: Float, rawY: Float): Boolean {
         val chip = undoChip?.view ?: return false
+        if (chip.visibility != View.VISIBLE) return false
+        val at = IntArray(2)
+        chip.getLocationInWindow(at)
+        return rawX >= at[0] && rawX < at[0] + chip.width && rawY >= at[1] && rawY < at[1] + chip.height
+    }
+
+    /**
+     * How far behind its live edge the stream in [exo] is being watched from, in milliseconds,
+     * or null when what plays is not a live window whose edge Media3 can name: a file, a
+     * finished stream replaying as a recording, or a live window not yet measured.
+     */
+    private fun liveBehindMs(exo: ExoPlayer): Long? {
+        if (!exo.isCurrentMediaItemLive) return null
+        val offset = exo.currentLiveOffset
+        return if (offset == C.TIME_UNSET) null else offset
+    }
+
+    /**
+     * Raises the "LIVE" chip while a live stream is watched from behind its edge, and puts it
+     * away at the edge. Only a stream the app itself opened as live counts ([streamLive]), and
+     * only while [liveBehindMs] puts the playhead more than [GO_LIVE_BEHIND_MS] behind: at the
+     * edge the offset still breathes by a segment or two, which is the stream breathing, not
+     * the viewer falling behind. Not over the failure sheet, a locked screen or a thumbnail,
+     * and not while the "Back to" chip holds the corner.
+     */
+    private fun updateGoLiveChip(exo: ExoPlayer) {
+        val chip = goLiveChip ?: return
+        val behind = if (
+            !streamLive || locked || inPictureInPicture ||
+            statusOverlay.visibility == View.VISIBLE ||
+            exo.playbackState == Player.STATE_ENDED || undoChip?.isShown == true
+        ) {
+            null
+        } else {
+            liveBehindMs(exo)?.takeIf { it > GO_LIVE_BEHIND_MS }
+        }
+        val wasShown = chip.isShown
+        if (behind == null) chip.hide() else chip.show()
+        if (!wasShown && chip.isShown) liftCornerOffers()
+    }
+
+    /** One look at the "LIVE" chip from wherever the player stands now. */
+    private fun refreshGoLiveChip() {
+        val exo = player ?: return
+        updateGoLiveChip(exo)
+    }
+
+    /** The chip's tap, or OK on it on a television: to the live edge, playing. */
+    private fun goLive() {
+        val exo = player ?: return
+        goLiveChip?.hide(taken = true)
+        // Media3's own seek to the window's default place, which for a live window is the
+        // edge: no timestamp of ours to be wrong about a window that keeps moving.
+        exo.seekToDefaultPosition()
+        exo.play()
+    }
+
+    private fun isOnGoLiveChip(rawX: Float, rawY: Float): Boolean {
+        val chip = goLiveChip?.view ?: return false
         if (chip.visibility != View.VISIBLE) return false
         val at = IntArray(2)
         chip.getLocationInWindow(at)
@@ -7778,6 +7858,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     private fun lockScreen() {
         undoChip?.hide()
+        goLiveChip?.hide()
         if (locked) return
         locked = true
         wakeEndWatch()
@@ -7944,6 +8025,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             tv = FormFactor.isTv(this),
             onUndo = ::undoSeek,
         )
+        goLiveChip = GoLiveChip(
+            root = findViewById(R.id.player_root),
+            below = findViewById(R.id.overlay_container),
+            tv = FormFactor.isTv(this),
+            onGoLive = ::goLive,
+        )
         watchForTheEnd()
     }
 
@@ -7968,6 +8055,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                     if (player?.isPlaying == true) delay(500) else endWatchWake.receive()
                     val exo = player ?: continue
                     updateSkipPill(exo, autoplay)
+                    updateGoLiveChip(exo)
                     if (!autoplay) continue
                     val next = _episodes.value.next ?: continue
                     val duration = exo.duration
@@ -8205,6 +8293,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         setSystemBarsHidden(!visible)
         // The centre disc carries its own spinner while the row is up, so the bare one stands down.
         feedback?.controlsShown(visible)
+        // The row coming up is a television's way to the "LIVE" chip, so it is judged now, on
+        // top of the end watch's own looks: a long pause is measured when the viewer returns.
+        refreshGoLiveChip()
         // The row going away hands the remote back to the next-up card, if that is up.
         if (!visible && nextUpHasTheRemote()) nextUpCard?.play?.requestFocus()
         liftSubtitles()
@@ -8222,11 +8313,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     private fun liftCornerOffers() {
         // The "Back to" chip climbs on a television too: it comes up after a scrub on the bar,
-        // with the row up, in the corner the row's title sits in.
+        // with the row up, in the corner the row's title sits in. The "LIVE" chip shares that
+        // corner and climbs with it, since the row is how a television reaches it.
         val tv = FormFactor.isTv(this)
         val cluster = findViewById<View>(R.id.controls_cluster)
         val root = findViewById<View>(R.id.player_root)
-        val offers = if (tv) listOfNotNull(undoChip?.view) else listOfNotNull(skipPill?.view, nextUpCard?.view, undoChip?.view)
+        val offers = if (tv) listOfNotNull(undoChip?.view, goLiveChip?.view)
+            else listOfNotNull(skipPill?.view, nextUpCard?.view, undoChip?.view, goLiveChip?.view)
         offers.forEach { offer ->
             // After the next layout, so an offer that has only just been shown has a height.
             offer.doOnPreDraw {
@@ -8786,6 +8879,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         slowStartUp = false
         openingFilm = false
         undoChip?.hide()
+        goLiveChip?.hide()
         keepScreenOn(false)
         statusOverlay.visibility = View.VISIBLE
         // The only state that earns the warning triangle, matching the error screens the rest of
@@ -9706,6 +9800,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         /** How long "Stuttering? Switch" and the passed-over line stay up. */
         private const val STUTTER_OFFER_MS = 12_000L
         private const val PASSED_OVER_MS = 6_000L
+
+        /**
+         * How far behind a live stream's edge the "LIVE" chip calls behind: more than a few
+         * seconds, and clear of the offset's own breathing at the edge.
+         */
+        private const val GO_LIVE_BEHIND_MS = 10_000L
 
         /** How long the word that a file cannot be sought in stays up. */
         private const val SEEK_NOTICE_MS = 6_000L
