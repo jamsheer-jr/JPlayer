@@ -214,6 +214,29 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `the uhd shelf holds the titles with a 4k copy and no others`() {
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(
+                1L to listOf(
+                    video(1, "First.Film.2026.2160p.mkv"),
+                    video(1, "Second.Film.2026.1080p.mkv"),
+                    video(1, "Second.Film.2026.2160p.mkv"),
+                    video(1, "Third.Film.2026.720p.mkv"),
+                    video(1, "Fourth.Film.2026.2160p.WEB-DL.mkv"),
+                ),
+            ),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        // Three titles carry a 4K copy (one of them only as a second copy); the 720p
+        // title stands in Movies but never here.
+        assertEquals(3, catalogs.single { it.kind == "uhd" }.entries.size)
+    }
+
+    @Test
     fun `series stand in language rows by their drama tags alone`() {
         // No online match hands these a language: the names' own catalogue tags are the
         // only signal, as most of the owner's drama files carry them (owner, v1.0.14).

@@ -705,6 +705,11 @@ object HomeRows {
             // label is empty, as Movies and Series leave theirs.
             val anime = all.filter { entry -> isAnime(entry, titleMeta) }
             if (anime.size >= CATALOG_MIN) add(HomeRow.Catalog("anime", "", anime.take(LIMIT), all = anime))
+            // UHD (owner, v1.0.14): the titles with a 4K copy, films and shows together
+            // as Anime gathers them, by the quality facts the copies already carry; its
+            // heading comes from the catalog too, so the label is empty.
+            val uhd = all.filter { entry -> isUhd(entry) }
+            if (uhd.size >= CATALOG_MIN) add(HomeRow.Catalog("uhd", "", uhd.take(LIMIT), all = uhd))
             val byLanguage = all.filterNot { entry -> isAnime(entry, titleMeta) }.groupBy { languageOf(it, titleMeta) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }
@@ -860,6 +865,15 @@ object HomeRows {
         is ShelfEntry.File -> listOf(entry.item) + entry.item.versions + entry.item.parts
         is ShelfEntry.Show -> entry.series.episodes.flatMap { it.copies + it.alsoIn }
     }
+
+    /**
+     * A title with a 4K copy (owner, v1.0.14): any of its items whose quality reads 4K by
+     * the facts the copies list itself shows ([VideoCopies.qualityLabel], the height from
+     * the name's marker or the size Telegram states). One 4K copy among 1080p ones is
+     * enough: the shelf promises a 4K copy exists, not that every copy is one.
+     */
+    private fun isUhd(entry: ShelfEntry): Boolean =
+        itemsOf(entry).any { VideoCopies.qualityLabel(it) == "4K" }
 
     private fun row(
         items: List<MediaItem>,

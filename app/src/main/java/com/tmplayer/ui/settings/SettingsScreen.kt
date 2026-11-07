@@ -3625,6 +3625,7 @@ internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): St
     "movies" -> s.settingsCatMovies
     "series" -> s.settingsCatSeries
     "anime" -> s.homeRowAnime
+    "uhd" -> s.homeRowUhd
     "lang" -> s.settingsCatLang
     "genre" -> s.settingsCatGenre
     "top-rated" -> s.settingsCatTopRated
