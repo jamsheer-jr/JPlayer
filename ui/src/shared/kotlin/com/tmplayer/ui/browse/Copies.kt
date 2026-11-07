@@ -153,6 +153,11 @@ fun copyChat(copy: MediaItem, item: MediaItem, chatTitle: String): String? =
  *
  * Choosing a row hands the copy to [onPick], which remembers it for the video and turns the page to
  * it, so Play, the download line and the facts all speak of that copy.
+ *
+ * While [hideCamCopies] is on (the Playback switch, on by default), cam family files are left
+ * out of the list and counted on a line of their own under the summary, so the versions are
+ * never short with no word why. When every version is a cam copy that line is the whole of
+ * the section, rather than a bare empty list.
  */
 @Composable
 internal fun Versions(
@@ -160,12 +165,26 @@ internal fun Versions(
     onPick: ((MediaItem) -> Unit)?,
     chatTitle: String = "",
     started: (MediaItem) -> Boolean = { false },
+    hideCamCopies: Boolean = true,
 ) {
     if (item.versions.size <= 1 || onPick == null) return
     // The same file posted twice is one choice, not two identical rows.
-    val files = remember(item.versions) { VideoCopies.distinctFiles(item.versions) }
-    if (files.size <= 1) return
+    val allFiles = remember(item.versions) { VideoCopies.distinctFiles(item.versions) }
+    if (allFiles.size <= 1) return
     val s = LocalStrings.current
+    val files = remember(allFiles, hideCamCopies) {
+        if (hideCamCopies) allFiles.filterNot { isCamCopy(it.first) } else allFiles
+    }
+    val camHidden = allFiles.size - files.size
+    if (files.isEmpty()) {
+        Text(
+            s.detailCamHidden(camHidden),
+            style = MaterialTheme.typography.bodySmall,
+            color = Tone.muted,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        return
+    }
     var open by rememberSaveable(item.id) { mutableStateOf(false) }
     val summary = remember(item, chatTitle, s) {
         listOfNotNull(
@@ -199,6 +218,14 @@ internal fun Versions(
             action = if (open && sheet == null && !tv) s.detailCopyDone else s.detailCopyChange,
             onClick = { open = !open },
         )
+        if (camHidden > 0) {
+            Text(
+                s.detailCamHidden(camHidden),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
         if (sheet == null && !tv) {
             AnimatedVisibility(open) { list(true, null) }
         }

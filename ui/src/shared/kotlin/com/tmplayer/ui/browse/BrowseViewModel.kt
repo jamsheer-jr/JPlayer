@@ -833,6 +833,8 @@ class MediaListViewModel(
     private val chatId: Long,
     private val minSizeBytes: Long,
     private val maxSizeBytes: Long,
+    /** Cam family copies left out of the listing (the Playback switch, on by default). */
+    private val hideCamCopies: Boolean = true,
     /**
      * Told about a search once it has found something and the viewer has stopped typing, so it can
      * be offered again as a recent search. See [com.tmplayer.data.RecentSearches].
@@ -898,6 +900,22 @@ class MediaListViewModel(
      * [hiddenNotice] and the empty state. Always 0 during a search, which ignores the limits.
      */
     val sizeHidden: StateFlow<Int> = _sizeHidden.asStateFlow()
+
+    /** Videos [keep] has turned away as cam copies since the listing last started over. */
+    private var hiddenByCam: Int
+        get() = _camHidden.value
+        set(value) {
+            _camHidden.value = value
+        }
+
+    private val _camHidden = MutableStateFlow(0)
+
+    /**
+     * How many videos the cam copy hiding has kept out of the pages read so far, the count
+     * behind the chat's cam pill and the empty state. Always 0 during a search, which
+     * ignores the hiding as it ignores the size limits.
+     */
+    val camHidden: StateFlow<Int> = _camHidden.asStateFlow()
 
     /** Set once [hiddenNotice] has had something to say for this opening of the chat. */
     private var toldHidden = false
@@ -1129,7 +1147,19 @@ class MediaListViewModel(
         if (items.isEmpty()) return items
         val split = SizeFilter.split(items, minSizeBytes, maxSizeBytes) { it.sizeBytes }
         hiddenBySize += split.hidden
-        return split.kept
+        return withoutCam(split.kept)
+    }
+
+    /**
+     * [items] without their cam family copies while [hideCamCopies] is on, counting what was
+     * left out, so the listing can say how many it hides, as the size split counts its own.
+     * An episode whose only copies are cam goes with them, as a size hidden episode goes.
+     */
+    private fun withoutCam(items: List<MediaItem>): List<MediaItem> {
+        if (!hideCamCopies || items.isEmpty()) return items
+        val kept = items.filterNot(::isCamCopy)
+        hiddenByCam += items.size - kept.size
+        return kept
     }
 
     /**
@@ -1239,6 +1269,7 @@ class MediaListViewModel(
         val previousCursors = cursors
         cursors = MediaCursors()
         hiddenBySize = 0
+        hiddenByCam = 0
         _selfDestructing.value = 0
         archives = emptyList()
         val searching = query.isNotBlank()
@@ -1361,6 +1392,7 @@ class MediaListViewModel(
         archives = grid.archives
         _selfDestructing.value = grid.selfDestructing
         hiddenBySize = 0
+        hiddenByCam = 0
         val items = keep(grid.items)
         if (items.isEmpty() && !grid.endReached) {
             _state.value = UiState.Loading(if (query.isNotBlank()) L.browseSearching else L.browseFindingVideos)
@@ -1422,7 +1454,7 @@ class MediaListViewModel(
         if (query.isNotBlank()) return Fuzzy.rank(items, query) { it.searchText }
         val split = SizeFilter.split(items, minSizeBytes, maxSizeBytes) { it.sizeBytes }
         hiddenBySize += split.hidden
-        return split.kept
+        return withoutCam(split.kept)
     }
 
     /** Downloaded videos told apart from cached ones, when the platform keeps an index. */
@@ -1532,8 +1564,11 @@ class MediaListViewModel(
     private fun emptyState(reachedEnd: Boolean = true): UiState.Empty {
         // Say which knob is hiding things, rather than claiming the chat is empty when it is the
         // filter doing the work, and where that knob is: the size limits live in Settings only.
-        val hidden = if (query.isBlank() && hiddenBySize > 0) {
-            "${L.browseHiddenBySize(hiddenBySize)} ${L.browseSizeLimitsInSettings}"
+        val hidden = if (query.isBlank()) {
+            listOfNotNull(
+                if (hiddenBySize > 0) "${L.browseHiddenBySize(hiddenBySize)} ${L.browseSizeLimitsInSettings}" else null,
+                if (hiddenByCam > 0) "${L.browseHiddenByCam(hiddenByCam)} ${L.browseCamCopiesInSettings}" else null,
+            ).joinToString(" ").takeIf { it.isNotEmpty() }
         } else {
             null
         }

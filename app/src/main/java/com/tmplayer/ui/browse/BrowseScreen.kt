@@ -390,6 +390,10 @@ internal fun BrowseScreen(
         },
     )
     val searchState by search.state.collectAsState()
+    // The cam copy hiding for the search's cards, read from the same Playback switch the
+    // chats read: it screens the answer in place and never asks Telegram again.
+    val searchHideCam by groupsSettings.hideCamCopies.collectAsState(initial = true)
+    LaunchedEffect(searchHideCam) { search.setHideCamCopies(searchHideCam) }
     // Back online: a search that could only list this device's videos asks Telegram again, as
     // the desktop's does, rather than saying "offline" until the viewer types something new.
     val searchConnected by com.tmplayer.data.Td.connected.collectAsState()

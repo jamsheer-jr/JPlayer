@@ -30,16 +30,19 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tmplayer.data.Bookmark
 import com.tmplayer.data.MediaItem
+import com.tmplayer.data.SettingsStore
 import com.tmplayer.data.VideoCopies
 import com.tmplayer.ui.browse.copyDetail
 import com.tmplayer.ui.browse.copyHeading
 import com.tmplayer.ui.browse.copySound
+import com.tmplayer.ui.browse.isCamCopy
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
@@ -975,6 +978,10 @@ internal fun SleepSheet(
  * quality and codec, with its size, length, date and the chat it came from under that, then
  * the sound its name states (its languages and audio) and the file's own name, the one
  * playing ticked and focused. Choosing another plays it from the same moment.
+ *
+ * While the Playback switch "Hide cam and PreDVD copies" is on, cam family copies are left
+ * out and counted on a line at the foot, as the other lists count theirs. The copy playing
+ * is never left out: the sheet always shows what is playing, ticked as it is today.
  */
 @Composable
 internal fun CopiesSheet(
@@ -1000,9 +1007,17 @@ internal fun CopiesSheet(
                 .thenByDescending { it.sizeBytes },
         )
     }
+    val context = LocalContext.current
+    val settings = remember(context) { SettingsStore(context) }
+    val hideCam by settings.hideCamCopies.collectAsState(initialValue = true)
+    // The copy playing always stays, even when it is itself a cam copy.
+    val visible = remember(ordered, hideCam, playing) {
+        if (hideCam) ordered.filter { copy -> copy.id == playing || !isCamCopy(copy) } else ordered
+    }
+    val camHidden = ordered.size - visible.size
     ChoiceSheet(title = s.playerCopies, note = s.playerCopiesNote, onDismiss = onClose, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
         ChoiceList {
-            ordered.forEach { copy ->
+            visible.forEach { copy ->
                 val here = copy.id == playing
                 // The upload is ticked only while no Telegram copy stands in for it.
                 val ticked = here && playingQuality == 0
@@ -1039,6 +1054,14 @@ internal fun CopiesSheet(
                         ) { if (on) onClose() else onQuality(q.height) }
                     }
                 }
+            }
+            if (camHidden > 0) {
+                Text(
+                    s.playerCamHidden(camHidden),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Tone.muted,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
             }
         }
         FocusOnOpen(focus)

@@ -257,6 +257,7 @@ private class MediaListViewModelFactory(
     private val chatId: Long,
     private val minSize: Long,
     private val maxSize: Long,
+    private val hideCamCopies: Boolean,
     private val settings: SettingsStore,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -265,6 +266,7 @@ private class MediaListViewModelFactory(
             chatId,
             minSize,
             maxSize,
+            hideCamCopies,
             onSearched = { settings.addRecentSearch(it) },
             downloadedIds = { LocalDownloads.presentIds(settings) },
             topicMemory = settings.topicMemory(),
@@ -314,12 +316,16 @@ fun MediaGridScreen(
     // not leave a stale one filtered by the old bounds. Scoped to this screen rather than to the
     // activity, so a session's chats do not each leave behind an item list full of minithumbnail
     // byte arrays. The cost is one re-listing when a chat is reopened.
-    val owner = remember(chatId, minSizeBytes, maxSizeBytes) { MediaScreenStore() }
+    // The cam copy hiding is part of the key for the same reason: turning its Playback
+    // switch in Settings rebuilds the listing rather than leaving a stale one behind.
+    val gridSettings = remember(context) { SettingsStore(context) }
+    val hideCamCopies by gridSettings.hideCamCopies.collectAsStateWithLifecycle(initialValue = true)
+    val owner = remember(chatId, minSizeBytes, maxSizeBytes, hideCamCopies) { MediaScreenStore() }
     DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
     val viewModel: MediaListViewModel = viewModel(
         viewModelStoreOwner = owner,
-        key = "media-$chatId-$minSizeBytes-$maxSizeBytes",
-        factory = MediaListViewModelFactory(chatId, minSizeBytes, maxSizeBytes, SettingsStore(context)),
+        key = "media-$chatId-$minSizeBytes-$maxSizeBytes-$hideCamCopies",
+        factory = MediaListViewModelFactory(chatId, minSizeBytes, maxSizeBytes, hideCamCopies, SettingsStore(context)),
     )
     // A download leaving the queue has usually just landed in Downloads, so the tiles are asked
     // again: the badge on it moves from the queue's figure to Downloaded.
@@ -359,6 +365,22 @@ fun MediaGridScreen(
     // and changed from there (SizeQuickSheet). A search ignores the limits, so it hides nothing.
     val sizeHidden by viewModel.sizeHidden.collectAsStateWithLifecycle()
     val shownHidden = if (query.isBlank()) sizeHidden else 0
+    // Videos the cam hiding keeps out of this chat, said by a button of the same style
+    // beside the size one (CamHiddenSheet). A search ignores the hiding, as it ignores
+    // the size limits, so it hides nothing then either.
+    val camHidden by viewModel.camHidden.collectAsStateWithLifecycle()
+    val shownCamHidden = if (query.isBlank()) camHidden else 0
+    var camPicking by remember { mutableStateOf(false) }
+    if (camPicking) {
+        CamHiddenSheet(
+            hidden = shownCamHidden,
+            onShow = {
+                camPicking = false
+                recentScope.launch { runCatching { recentStore.setHideCamCopies(false) } }
+            },
+            onDismiss = { camPicking = false },
+        )
+    }
     var sizePicking by remember { mutableStateOf(false) }
     if (sizePicking) {
         SizeQuickSheet(
@@ -1062,6 +1084,8 @@ fun MediaGridScreen(
             filtered = filter != com.tmplayer.data.VideoFilter.All,
             sizeHidden = shownHidden,
             onSizeHidden = { sizePicking = true },
+            camHidden = shownCamHidden,
+            onCamHidden = { camPicking = true },
             topicTabs = topicBar?.let { bar ->
                 { TopicTabs(bar, viewModel::selectTopic, Modifier.padding(vertical = 6.dp), edge = edge) }
             },
@@ -1124,6 +1148,8 @@ fun MediaGridScreen(
                     filtered = filter != com.tmplayer.data.VideoFilter.All,
                     sizeHidden = shownHidden,
                     onSizeHidden = { sizePicking = true },
+                    camHidden = shownCamHidden,
+                    onCamHidden = { camPicking = true },
                     onChatInfo = { chatInfoOpen = true },
                     onTyping = { typing = it },
                 )
@@ -1168,6 +1194,32 @@ fun MediaGridScreen(
 }
 
 /**
+ * The chat's cam button opened: how many cam copies this chat is hiding, and the one line
+ * that shows them again, without a trip to Settings, which keeps the switch itself (in
+ * Playback). The remote starts on that line.
+ */
+@Composable
+internal fun CamHiddenSheet(hidden: Int, onShow: () -> Unit, onDismiss: () -> Unit) {
+    val s = LocalStrings.current
+    val first = remember { FocusRequester() }
+    ChoiceSheet(
+        title = s.settingsHideCamCopies,
+        note = if (hidden > 0) s.gridCamHiddenNote(hidden) else null,
+        onDismiss = onDismiss,
+        onClose = onDismiss,
+        ignoreRelease = !isTouch(),
+    ) {
+        ChoiceList {
+            ChoiceLine(
+                title = s.gridCamShow,
+                modifier = Modifier.focusRequester(first),
+            ) { onShow() }
+        }
+        FocusOnOpen(first)
+    }
+}
+
+/**
  * The phone's version of this screen's chrome, laid out for a phone held in one hand.
  *
  * The top keeps only what is read: the chat's own picture and its name beside the round Back,
@@ -1207,6 +1259,10 @@ internal fun TouchMediaScaffold(
     sizeHidden: Int = 0,
     /** Opens the quick size picker ([SizeQuickSheet]) from that button. */
     onSizeHidden: () -> Unit = {},
+    /** Videos the cam hiding keeps out of this chat, for its own button beside the size one; 0 leaves it out. */
+    camHidden: Int = 0,
+    /** Opens the cam sheet ([CamHiddenSheet]) from that button. */
+    onCamHidden: () -> Unit = {},
     /** The topic row of a group with topics, under the title. Null for every other chat. */
     topicTabs: (@Composable () -> Unit)? = null,
     /** Opens with the search already showing, for the screenshot fixture. */
@@ -1377,6 +1433,16 @@ internal fun TouchMediaScaffold(
                             caption = s.gridSizeHidden(sizeHidden),
                         )
                     }
+                    // The cam hiding's own button, in the same style, beside the size one.
+                    if (camHidden > 0) {
+                        FloatingBarIcon(
+                            TmIcons.FilterHorizontal,
+                            s.gridCamHiddenLabel(camHidden),
+                            onCamHidden,
+                            tint = Tone.accent,
+                            caption = s.gridCamHidden(camHidden),
+                        )
+                    }
                     // Search and Sort at the end, Sort last, where the thumb reaches first.
                     FloatingBarIcon(TmIcons.Search, s.gridSearchThisChat, { searching = true }, caption = caption(s.commonSearch))
                     onSort?.let {
@@ -1514,6 +1580,10 @@ internal fun Header(
     sizeHidden: Int = 0,
     /** Opens the quick size picker ([SizeQuickSheet]) from that pill. */
     onSizeHidden: () -> Unit = {},
+    /** Videos the cam hiding keeps out of this chat, for its own pill beside the size one; 0 leaves it out. */
+    camHidden: Int = 0,
+    /** Opens the cam sheet ([CamHiddenSheet]) from that pill. */
+    onCamHidden: () -> Unit = {},
     /** Opens the chat's info panel, from a button beside its name; null leaves it out. */
     onChatInfo: (() -> Unit)? = null,
     /** Told whether the search field is being typed into (its text field holds the focus). */
@@ -1570,6 +1640,13 @@ internal fun Header(
                 runCatching { searchField.requestFocus() }
             }
         }
+        var camPillFocused by remember { mutableStateOf(false) }
+        LaunchedEffect(camHidden > 0) {
+            if (camHidden == 0 && camPillFocused) {
+                camPillFocused = false
+                runCatching { searchField.requestFocus() }
+            }
+        }
         // The recent searches belong to the search, so they are shown only while the remote is up
         // here with it: down in the grid they would cost a row of posters for nothing.
         var headerFocused by remember { mutableStateOf(false) }
@@ -1618,6 +1695,14 @@ internal fun Header(
                 // new limit takes it away while it has the focus, the search field takes it.
                 Box(Modifier.onFocusChanged { sizePillFocused = it.hasFocus }) {
                     Pill(s.gridSizeHidden(sizeHidden), TmIcons.FilterHorizontal, tintWhenIdle = Tone.accent, onClick = onSizeHidden)
+                }
+            }
+            if (camHidden > 0) {
+                // The cam hiding's pill, in the same style, beside the size one. When showing
+                // the copies takes it away while it has the focus, the search field takes it,
+                // as the size pill's does.
+                Box(Modifier.onFocusChanged { camPillFocused = it.hasFocus }) {
+                    Pill(s.gridCamHidden(camHidden), TmIcons.FilterHorizontal, tintWhenIdle = Tone.accent, onClick = onCamHidden)
                 }
             }
             onSort?.let { Pill(if (filtered) s.gridFilterOn else s.gridSort, TmIcons.Sort, tintWhenIdle = if (filtered) Tone.accent else Tone.text, showLabel = false, onClick = it) }

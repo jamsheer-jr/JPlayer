@@ -126,6 +126,8 @@ internal fun MediaDetailOpened(
     val laterStore = remember(context) { WatchLaterStore(context) }
     val laterKeys by remember(laterStore) { laterStore.keys }.collectAsStateWithLifecycle(initialValue = emptySet())
     val later = SettingsStore.progressKey(item.chatId, item.messageId) in laterKeys
+    // Cam family copies in this page's versions list follow the Playback switch, on until read.
+    val hideCamCopies by remember(settings) { settings.hideCamCopies }.collectAsStateWithLifecycle(initialValue = true)
 
     // Asked once the panel is up: which kind of copy is here decides half the actions. The
     // download index first, since TDLib let go of a download's file when it moved. Read again
@@ -495,7 +497,7 @@ internal fun MediaDetailOpened(
             { copy: MediaItem -> scope.launch { runCatching { settings.setCopyPick(copy) }; open(copy) }; Unit }
         }
         val started: (MediaItem) -> Boolean = { SettingsStore.progressKey(it.chatId, it.messageId) in progress }
-        DetailScreen(item, chatTitle, watched, finished, rows, onDismiss, onBack, returnTo, onOpenItem, bookmarks, onPickCopy, started) { mark ->
+        DetailScreen(item, chatTitle, watched, finished, rows, onDismiss, onBack, returnTo, onOpenItem, bookmarks, onPickCopy, started, hideCamCopies) { mark ->
             // The player takes the position on opening this video, in place of its resume point.
             BookmarkJump.request(item.chatId, item.messageId, mark.positionMs)
             // The page stays under the player, as it does for Play.
@@ -585,6 +587,7 @@ private fun DetailScreen(
     bookmarks: List<Bookmark>,
     onPickCopy: ((MediaItem) -> Unit)?,
     copyStarted: (MediaItem) -> Boolean,
+    hideCamCopies: Boolean,
     onOpenBookmark: (Bookmark) -> Unit,
 ) {
     val touch = isTouch()
@@ -618,6 +621,7 @@ private fun DetailScreen(
                 onOpenBookmark = onOpenBookmark,
                 onPickCopy = onPickCopy,
                 copyStarted = copyStarted,
+                hideCamCopies = hideCamCopies,
                 // Cast (CP73) at the top end, opposite the round Back on a phone and before Close
                 // on a tablet: picked here, Play then goes straight to the TV.
                 topEndAction = if (touch) ({ com.tmplayer.cast.CastPageButton() }) else null,
