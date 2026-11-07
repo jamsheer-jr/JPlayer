@@ -1920,7 +1920,10 @@ private fun BuiltInHomeSections(
                 contentPadding = PaddingValues(start = start, end = end),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(shown, key = { it.url }) { link ->
+                // Keyed by the post each stream came from, not the address: a repost of
+                // the same address is a second card, and the seen and hidden sets know
+                // streams by their post the same way.
+                items(shown, key = { if (it.messageId != 0L) "${it.chatId}:${it.messageId}" else it.url }) { link ->
                     StreamCard(
                         link,
                         isNew = !com.tmplayer.data.SeenStreams.seen(seen, link),
@@ -2029,15 +2032,21 @@ private fun OpenLinkPill(onClick: () -> Unit) {
  * One stream's card in the Live row: the name it was posted with, and its badge. A press
  * plays it; a long press, or a hold of OK on the remote, opens its menu ([holdable], the
  * tiles' own arrangement), whose one action takes the stream out of the row.
+ *
+ * On a phone the card is a wide one (owner, v1.0.14): a 16:9 cover on top, the post's own
+ * photo where the post carried one (a plain stand-in where it did not), the badges over
+ * the cover's corner and the name under it. The television keeps the compact card it has
+ * always had: this composable serves both, so its layout below is untouched.
  */
 @Composable
 private fun StreamCard(link: StreamLink, isNew: Boolean = false, onClick: () -> Unit, onHold: () -> Unit) {
     val s = LocalStrings.current
+    val touch = isTouch()
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
     Column(
         Modifier
-            .width(200.dp)
+            .width(if (touch) 272.dp else 200.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(Tone.surfaceHigh)
             .border(
@@ -2046,35 +2055,84 @@ private fun StreamCard(link: StreamLink, isNew: Boolean = false, onClick: () -> 
                 shape = RoundedCornerShape(16.dp),
             )
             .holdable(interactionSource = interactions, onClick = onClick, onHold = onHold)
-            .padding(14.dp),
+            .then(if (touch) Modifier else Modifier.padding(14.dp)),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (link.live) {
-                Box(
-                    Modifier.clip(RoundedCornerShape(50)).background(Tone.danger).padding(horizontal = 8.dp, vertical = 3.dp),
-                ) {
-                    M3Text(s.homeLiveBadge, style = M3MaterialTheme.typography.labelSmall, color = Color.White)
+        if (touch) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Tone.surface)) {
+                if (link.artFileId > 0 || link.artMiniThumbnail != null) {
+                    com.tmplayer.ui.components.MediaArt(
+                        link.artMiniThumbnail,
+                        link.artFileId,
+                        Modifier.fillMaxSize(),
+                        showCoverTitle = false,
+                    )
+                } else {
+                    Icon(
+                        TmIcons.Play,
+                        contentDescription = null,
+                        tint = Tone.muted,
+                        modifier = Modifier.size(38.dp).align(Alignment.Center),
+                    )
                 }
-            } else {
-                Icon(TmIcons.Play, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
-            }
-            if (isNew) {
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier.clip(RoundedCornerShape(50)).background(Tone.accent).padding(horizontal = 8.dp, vertical = 3.dp),
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    M3Text(s.homeNewBadge, style = M3MaterialTheme.typography.labelSmall, color = Tone.onAccent)
+                    if (link.live) LiveBadge()
+                    if (isNew) NewBadge()
                 }
             }
+            M3Text(
+                link.name,
+                style = M3MaterialTheme.typography.titleSmall,
+                color = Tone.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (link.live) {
+                    LiveBadge()
+                } else {
+                    Icon(TmIcons.Play, contentDescription = null, tint = Tone.text, modifier = Modifier.size(18.dp))
+                }
+                if (isNew) {
+                    Spacer(Modifier.width(8.dp))
+                    NewBadge()
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            M3Text(
+                link.name,
+                style = M3MaterialTheme.typography.titleSmall,
+                color = Tone.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        M3Text(
-            link.name,
-            style = M3MaterialTheme.typography.titleSmall,
-            color = Tone.text,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+    }
+}
+
+/** The LIVE pill on a stream card, on the compact card and over the wide one's cover. */
+@Composable
+private fun LiveBadge() {
+    val s = LocalStrings.current
+    Box(
+        Modifier.clip(RoundedCornerShape(50)).background(Tone.danger).padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        M3Text(s.homeLiveBadge, style = M3MaterialTheme.typography.labelSmall, color = Color.White)
+    }
+}
+
+/** The New pill on a stream card, beside the LIVE one or over the wide one's cover. */
+@Composable
+private fun NewBadge() {
+    val s = LocalStrings.current
+    Box(
+        Modifier.clip(RoundedCornerShape(50)).background(Tone.accent).padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        M3Text(s.homeNewBadge, style = M3MaterialTheme.typography.labelSmall, color = Tone.onAccent)
     }
 }
 

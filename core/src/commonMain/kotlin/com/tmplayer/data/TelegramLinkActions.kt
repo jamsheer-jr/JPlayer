@@ -179,10 +179,13 @@ class TelegramLinkActions(private val td: TdlClient) {
         val history = td.getChatHistory(chatId, 0, 0, RECENT_POSTS, false).valueOrNull
             ?: return@withContext emptyList()
         history.messages.filterNotNull().map { message ->
+            val photo = (message.content as? dev.g000sha256.tdl.dto.MessagePhoto)?.photo
             ChannelPost(
                 messageId = message.id,
                 text = textOf(message).orEmpty(),
                 isVideo = MediaMapper.isVideoContent(message.content),
+                photoFileId = photo?.sizes?.maxByOrNull { it.width * it.height }?.photo?.id ?: 0,
+                photoMiniThumbnail = photo?.minithumbnail?.data,
             )
         }
     }

@@ -9,6 +9,10 @@ data class ChannelPost(
     val text: String,
     /** True when the post carries a video (a video message, or a document that is one). */
     val isVideo: Boolean,
+    /** The post's own photo, where it is a photo post: the largest size's file id, for the Live row's banner (owner, v1.0.14). 0 for any other post. */
+    val photoFileId: Int = 0,
+    /** The photo's inline preview bytes, where TDLib gave one. */
+    val photoMiniThumbnail: ByteArray? = null,
 )
 
 /**

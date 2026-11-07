@@ -142,6 +142,31 @@ class StreamLinksTest {
     }
 
     @Test
+    fun aPhotoPostGivesItsPictureAsTheStreamsBanner() {
+        // Owner, v1.0.14: the caption carries the link (the pipe format included), and
+        // the post's photo becomes the Live card's banner. The stream's identity stays
+        // its post, so the seen and hidden sets go on working.
+        val posts = listOf(
+            ChannelPost(
+                messageId = 12L,
+                text = "https://cdn.example.com/live/match.m3u8 | Big Match",
+                isVideo = false,
+                photoFileId = 777,
+                photoMiniThumbnail = byteArrayOf(1, 2, 3),
+            ),
+            ChannelPost(messageId = 11L, text = "Plain https://cdn.example.com/v/a.mp4", isVideo = false),
+        )
+        val links = StreamLinks.inPosts(posts, 42L, "J MOVIES")
+        assertEquals(2, links.size)
+        assertEquals("Big Match", links[0].name)
+        assertTrue(links[0].live)
+        assertEquals(777, links[0].artFileId)
+        assertEquals(12L, links[0].messageId)
+        assertEquals(0, links[1].artFileId)
+        assertEquals(null, links[1].artMiniThumbnail)
+    }
+
+    @Test
     fun aPastedAddressOfUnknownKindIsMarkedForSniffing() {
         val link = StreamLinks.pastedAny("https://cdn.example.com/watch/abc123")
         assertEquals("https://cdn.example.com/watch/abc123", link?.url)

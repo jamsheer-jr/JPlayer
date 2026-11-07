@@ -25,6 +25,10 @@ data class StreamLink(
      * ever marked so; a channel post's links are read strictly, as they always were.
      */
     val sniff: Boolean = false,
+    /** The banner picture's file id, where the carrying post was a photo post (owner, v1.0.14). 0 for none. */
+    val artFileId: Int = 0,
+    /** The banner picture's inline preview bytes, where TDLib gave one. */
+    val artMiniThumbnail: ByteArray? = null,
 )
 
 /**
@@ -111,11 +115,18 @@ object StreamLinks {
     /**
      * The stream links in [posts] (newest first), at most [LIMIT] of them. Each carries the
      * post it was read from ([chatId] and the post's own message id), so the Live row can
-     * tell one post of a stream from a later repost of the same address.
+     * tell one post of a stream from a later repost of the same address, and a photo post's
+     * picture as its banner (owner, v1.0.14): the caption carries the link, in the usual
+     * shapes including "Link | Name", exactly as a text post's words do.
      */
     fun inPosts(posts: List<ChannelPost>, chatId: Long, channelName: String): List<StreamLink> =
         posts.mapNotNull { post ->
-            inPost(post.text, channelName)?.copy(chatId = chatId, messageId = post.messageId)
+            inPost(post.text, channelName)?.copy(
+                chatId = chatId,
+                messageId = post.messageId,
+                artFileId = post.photoFileId,
+                artMiniThumbnail = post.photoMiniThumbnail,
+            )
         }.take(LIMIT)
 
     /**
