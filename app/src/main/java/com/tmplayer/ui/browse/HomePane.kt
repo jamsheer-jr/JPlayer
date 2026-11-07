@@ -54,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
@@ -307,6 +308,29 @@ internal fun HomePane(
     // unless Settings turned the row off and kept the carousel it feeds. Its "no chosen chats"
     // line shows either way, so the carousel's empty place is explained.
     val listed = remember(rows) { rows.filter { it !is HomeRow.Recent || it.asRow || it.noneChosen } }
+    // The phone's category chips (owner, v1.0.14, item 13): the jumps to the Shows, Movies
+    // and Anime shelves Home has this time, in that order, and Categories, which opens an
+    // index of every shelf present. Each label is its shelf's own heading, so no new words
+    // are wanted. Worked out here rather than in the list, because the chips now stand
+    // above the banner (see the list below) and the banner's place in the list, which the
+    // status bar colours and the carousel's own turning read, depends on whether they
+    // stand there. A television never has them: its list is exactly as it was.
+    val chipTargets = if (touch) {
+        listOfNotNull(
+            listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "series" }
+                .takeIf { it >= 0 }?.let { s.homeRowShows to it },
+            listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "movies" }
+                .takeIf { it >= 0 }?.let { s.homeRowMovies to it },
+            listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "anime" }
+                .takeIf { it >= 0 }?.let { s.homeRowAnime to it },
+        )
+    } else {
+        emptyList()
+    }
+    val hasShelves = listed.any { it is HomeRow.Catalog }
+    val chipsShown = touch && (chipTargets.isNotEmpty() || hasShelves)
+    // The banner's index in the phone's list: the chips stand before it when they stand.
+    val carouselIndex = if (chipsShown) 1 else 0
     val first = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     // Kept across a turn of the phone: the show is looked up again in the rows once they are back.
@@ -486,16 +510,19 @@ internal fun HomePane(
         // While the carousel's picture is under the status bar the bar's icons go light over it;
         // once it has scrolled away the rows pass under a strip of the page's own ground.
         val pictureShown = carousel && !featured.isNullOrEmpty()
-        val overArt by remember(pictureShown, carouselPx, underPx) {
+        val overArt by remember(pictureShown, carouselPx, underPx, carouselIndex) {
             derivedStateOf {
-                pictureShown && listState.firstVisibleItemIndex == 0 &&
+                pictureShown && listState.firstVisibleItemIndex == carouselIndex &&
                     listState.firstVisibleItemScrollOffset < carouselPx - underPx
             }
         }
         if (touch) StatusIconsOverArt(overArt && shown)
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         val lifecycleState by lifecycle.currentStateFlow.collectAsState()
-        val carouselOnScreen by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
+        // The banner is on screen while it or anything above it (on a phone, the chips)
+        // is the first thing standing: at rest the chips stand first with the banner
+        // whole under them, and the banner still turns over.
+        val carouselOnScreen by remember(carouselIndex) { derivedStateOf { listState.firstVisibleItemIndex <= carouselIndex } }
         // A sheet or a dialog takes the window's focus, which is what stops the pages moving under it.
         val active = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && windowFocused && carouselOnScreen && shown && opened.series == null
         // Tiles here may wear the show's or the film's picture (see LocalOnlineArt); a chat's grid keeps frames.
@@ -622,6 +649,57 @@ internal fun HomePane(
                 ),
                 verticalArrangement = Arrangement.spacedBy(if (touch) ROW_GAP_TOUCH else ROW_GAP_TV),
             ) {
+                if (chipsShown) {
+                    // The category chips directly under the header and above the banner
+                    // (owner, v1.0.14, item 13, the Netflix shape): rounded tags in a row
+                    // that scrolls sideways, so Categories stays reachable when the row
+                    // runs past the screen's edge. The banner itself is untouched: it
+                    // stands under the chips exactly as it stood at the top, brand and
+                    // all. With the banner the list's top padding is nothing, so the
+                    // chips keep the status bar's room themselves; without one the
+                    // padding already gives it.
+                    item(key = CHIPS_KEY, contentType = CHIPS_KEY) {
+                        Row(
+                            Modifier
+                                .padding(top = if (carousel) under + 10.dp else 6.dp, bottom = 2.dp)
+                                .horizontalScroll(rememberScrollState())
+                                .padding(start = start, end = end),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            chipTargets.forEach { (label, rowIndex) ->
+                                Row(
+                                    Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Tone.surface)
+                                        .border(1.dp, Tone.outline, RoundedCornerShape(16.dp))
+                                        .clickable {
+                                            // The rows start after the chips, the banner
+                                            // or the name, the built-in sections and the
+                                            // pills on a phone: four items before them.
+                                            scope.launch { listState.animateScrollToItem(rowIndex + 4) }
+                                        }
+                                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    M3Text(label, style = M3MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = Tone.text)
+                                }
+                            }
+                            if (hasShelves) {
+                                Row(
+                                    Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Tone.surface)
+                                        .border(1.dp, Tone.outline, RoundedCornerShape(16.dp))
+                                        .clickable { categoriesOpen = true }
+                                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    M3Text(s.homeCategories, style = M3MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = Tone.text)
+                                }
+                            }
+                        }
+                    }
+                }
                 if (carousel) {
                     if (!touch) item(key = FEATURED_KEY, contentType = FEATURED_KEY) {
                         TvFeaturedCarousel(
@@ -732,56 +810,8 @@ internal fun HomePane(
                             OpenLinkPill { openLink = true }
                         }
                     }
-                    // The category row (owner, v1.0.13, the streaming apps' shape): a jump
-                    // to the TV Shows, Movies and Anime shelves Home has this time, in that
-                    // order, and Categories, which opens an index of every shelf present.
-                    // Each label is its shelf's own heading, so no new words are wanted.
-                    val chipTargets = listOfNotNull(
-                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "series" }
-                            .takeIf { it >= 0 }?.let { s.homeRowShows to it },
-                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "movies" }
-                            .takeIf { it >= 0 }?.let { s.homeRowMovies to it },
-                        listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "anime" }
-                            .takeIf { it >= 0 }?.let { s.homeRowAnime to it },
-                    )
-                    val hasShelves = listed.any { it is HomeRow.Catalog }
-                    if (chipTargets.isNotEmpty() || hasShelves) {
-                        item(key = CHIPS_KEY, contentType = CHIPS_KEY) {
-                            Row(
-                                Modifier.padding(start = start, end = end, top = 2.dp, bottom = 2.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                chipTargets.forEach { (label, rowIndex) ->
-                                    Row(
-                                        Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .background(Tone.surface)
-                                            .clickable {
-                                                // The rows start after the brand, built-in,
-                                                // pills and chips items on a phone.
-                                                scope.launch { listState.animateScrollToItem(rowIndex + 4) }
-                                            }
-                                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        M3Text(label, style = M3MaterialTheme.typography.labelLarge, color = Tone.text)
-                                    }
-                                }
-                                if (hasShelves) {
-                                    Row(
-                                        Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .background(Tone.surface)
-                                            .clickable { categoriesOpen = true }
-                                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        M3Text(s.homeCategories, style = M3MaterialTheme.typography.labelLarge, color = Tone.text)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // The category chips stand at the top of the list now, above the
+                    // banner (v1.0.14, item 13): see the CHIPS_KEY item before it.
                 }
                 items(listed, key = { it.key }, contentType = { it::class }) { row ->
                     val loaded = row.isLoaded
@@ -909,7 +939,7 @@ internal fun HomePane(
                                 }
                             }
                             is HomeRow.Chat -> ShelfRows(row.entries, watch, touch, isFirst, first, { row.title }, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd) { opened.open(it) }
-                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd, ranked = row.kind == "top10", badge = if (row.kind == "top10") ({ Top10Badge() }) else null) { opened.open(it) }
+                            is HomeRow.Catalog -> ShelfRows(row.entries, watch, touch, isFirst, first, chatTitle, onPlay, onHoldMedia, start, end, rowTiles, seeAllEnd, ranked = row.kind == "top10", badge = if (row.kind == "top10") ({ Top10Badge(phone = touch) }) else null) { opened.open(it) }
                             is HomeRow.Recent -> if (row.noneChosen) {
                                 com.tmplayer.ui.browse.HomeNoneChosenCard(
                                     start = start,
@@ -1284,6 +1314,12 @@ private fun LazyListScope.entries(
         val entry = entries[index]
         val focus = if (entry === lead) Modifier.focusRequester(first) else Modifier
         val width = if (poster) posterWidth(touch) else wideWidth(touch)
+        // On a phone the Top 10 tag is pinned to the art's top start corner, over the
+        // tile, in the Netflix shape (owner, v1.0.14, item 13): the tile's own badge
+        // slot stands at its top end, so a phone does not hand the tag over there and
+        // lays it over the tile here instead. A television keeps the slot and the tag
+        // it has always worn, exactly as it was.
+        val pinned = touch && badge != null
         if (ranked) {
             Row(Modifier.width(width + 46.dp).then(focus), verticalAlignment = Alignment.Bottom) {
                 M3Text(
@@ -1294,7 +1330,19 @@ private fun LazyListScope.entries(
                         color = Tone.accent.copy(alpha = 0.85f),
                     ),
                 )
-                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width), badge, bottomTag)
+                if (pinned) {
+                    Box(Modifier.width(width)) {
+                        ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth(), null, bottomTag)
+                        Box(Modifier.align(Alignment.TopStart)) { badge?.invoke() }
+                    }
+                } else {
+                    ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width), badge, bottomTag)
+                }
+            }
+        } else if (pinned) {
+            Box(Modifier.width(width)) {
+                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus), null, bottomTag)
+                Box(Modifier.align(Alignment.TopStart)) { badge?.invoke() }
             }
         } else {
             ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.width(width).then(focus), badge, bottomTag)
@@ -1505,7 +1553,16 @@ private fun CatalogSeeAll(
             ) { index ->
                 val entry = entries[index]
                 val focus = if (index == 0) Modifier.focusRequester(firstTile) else Modifier
-                ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus), badge = if (row.kind == "top10") ({ Top10Badge() }) else null)
+                // As in the row itself: on a phone the Top 10 tag is pinned over the
+                // tile's top start corner, not handed to the tile's top end slot.
+                if (touch && row.kind == "top10") {
+                    Box(Modifier.fillMaxWidth()) {
+                        ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus))
+                        Box(Modifier.align(Alignment.TopStart)) { Top10Badge(phone = true) }
+                    }
+                } else {
+                    ShelfTile(entry, poster, watch, touch, chatTitle, onPlay, onHold, onOpenSeries, Modifier.fillMaxWidth().then(focus), badge = if (row.kind == "top10") ({ Top10Badge() }) else null)
+                }
             }
         }
     }
@@ -1566,10 +1623,52 @@ private fun ShelfTile(
 /**
  * The Top 10 row's corner badge (owner, v1.0.13): a small red tag on the art, beside the big
  * rank numeral the row already stands each tile next to.
+ *
+ * On a phone ([phone], owner, v1.0.14, item 13) it takes the Netflix tag's shape instead:
+ * pinned flush to the art's top start corner by its caller, the word over the number, the
+ * number big and black weighted as the row's own rank numerals are, its corners rounded
+ * where the art's corner and the tag's free corner ask for it. The words are the one
+ * catalog line split at its last space, so no new text is wanted in any language: a line
+ * with no space in it is worn whole, as the television wears it.
  */
 @Composable
-private fun Top10Badge() {
+private fun Top10Badge(phone: Boolean = false) {
     val s = LocalStrings.current
+    if (phone) {
+        val label = s.homeRowTop10
+        val word = label.substringBeforeLast(' ', "")
+        val number = label.substringAfterLast(' ', "")
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(topStart = Corner.Medium, bottomEnd = 8.dp))
+                .background(Tone.danger)
+                .padding(horizontal = 5.dp, vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (word.isNotEmpty() && number.isNotEmpty()) {
+                M3Text(
+                    word.uppercase(),
+                    style = M3MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    maxLines = 1,
+                )
+                M3Text(
+                    number,
+                    style = M3MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            } else {
+                M3Text(
+                    label,
+                    style = M3MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            }
+        }
+        return
+    }
     Box(
         Modifier.clip(RoundedCornerShape(4.dp)).background(Tone.danger).padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
