@@ -91,6 +91,7 @@ private val HOME_CATALOG_ORDER = stringPreferencesKey("home_catalog_order")
 private val HOME_BANNER_MODE = stringPreferencesKey("home_banner_mode")
 private val HOME_BANNER_PINS = stringPreferencesKey("home_banner_pins")
 private val HOME_SHELF_YEAR = longPreferencesKey("home_shelf_year")
+private val HOME_UPDATE_CARD_DISMISSED = stringPreferencesKey("home_update_card_dismissed")
 private val CRASH_REPORTS = booleanPreferencesKey("crash_reports")
 private val LAST_CHAT = longPreferencesKey("last_chat")
 private val MIN_SIZE = longPreferencesKey("min_size_bytes")
@@ -1294,6 +1295,18 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHomeShelfYear(year: Int) {
         prefs.edit { it[HOME_SHELF_YEAR] = year.coerceAtLeast(0).toLong() }
+    }
+
+    /**
+     * The Home update card's putting away (owner, v1.0.15, item 13): the line
+     * [HomeUpdateNotice] reads, the version put away and until when, or blank for
+     * never. A day's peace from the card, nothing more: the popup and the rail item
+     * keep their own memory.
+     */
+    val homeUpdateCardDismissed: Flow<String> = read { it[HOME_UPDATE_CARD_DISMISSED].orEmpty() }
+
+    suspend fun setHomeUpdateCardDismissed(value: String) {
+        prefs.edit { it[HOME_UPDATE_CARD_DISMISSED] = value }
     }
 
     /**

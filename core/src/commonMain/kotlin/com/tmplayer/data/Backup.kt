@@ -183,6 +183,9 @@ object Backups {
         // the kind whole numbers travel as here, as the size limits and timeouts do.
         "home_shelf_year" to Kind.LONG,
         "home_starred_rows" to Kind.BOOL,
+        // The Home update card put away for the day (HomeUpdateNotice): the version
+        // and the stamp travel as the one line they are stored as.
+        "home_update_card_dismissed" to Kind.TEXT,
         "language" to Kind.TEXT,
         "lighter_pictures" to Kind.BOOL,
         "low_storage_mode" to Kind.BOOL,
