@@ -1586,7 +1586,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             onPickAudio = { showTrackPicker(C.TRACK_TYPE_AUDIO) },
             onPickSpeed = ::pickSpeed,
             onCycleOrientation = ::cycleOrientation,
-            onPlayEpisode = ::playEpisode,
+            onPlayEpisode = ::stepToEpisode,
             onEpisodes = ::openEpisodes,
             onCopies = ::openCopies,
             onCycleQuality = ::cycleQuality,
@@ -2519,9 +2519,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private fun stepEpisode(forward: Boolean): Boolean {
         val found = _episodes.value
         val item = (if (forward) found.next else found.previous) ?: return false
-        // From the notification or a headset with the player out of sight, where Android lets
-        // no activity start: the episode plays in this one, behind the same notification.
-        if (inBackgroundAudio) continueUnseen(item) else playEpisode(item)
+        // From the notification or a headset, in sight or out of it: one step, one path.
+        stepToEpisode(item)
         return true
     }
 
@@ -5680,6 +5679,32 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     fun playEpisode(item: MediaItem) = playEpisode(item, chatTitle)
 
+    /**
+     * Steps to another episode of the series being watched: the transport's next and
+     * previous, a row of the episodes list, the next-up card, "Still watching?" answered
+     * with Keep watching, and the end of an episode all land here.
+     *
+     * An episode in the same chat changes in this player, by the swap [continueUnseen]
+     * already makes when the player is out of sight (owner, v1.0.14: the next episode
+     * plays directly, and no page under the player, the series title page least of all,
+     * shows in between). The swap opens the episode by the same [openItem] the fresh
+     * player would, so the saved place and the usual copy pick apply as they did across
+     * activities. An episode held in another chat, and any step out of the corner
+     * window, still opens a fresh player by [playEpisode]: the chat a cross-chat copy
+     * names, and the window's own task, are that path's to set up. [byAutoplay] sets
+     * [openedByAutoplay] on that fresh player only, as before: swapped in place, the
+     * "Still watching?" counts simply carry on in this activity.
+     */
+    private fun stepToEpisode(item: MediaItem, byAutoplay: Boolean = false) {
+        if (item.id == currentItem().id) return
+        if (item.chatId == chatId && !inPictureInPicture) {
+            continueUnseen(item)
+        } else {
+            if (byAutoplay) openedByAutoplay = true
+            playEpisode(item)
+        }
+    }
+
     /** [playEpisode] for a video in another chat, a copy found by a search across chats. */
     private fun playEpisode(item: MediaItem, inChat: String) {
         // Once: a double tap on the next button, or a held next key on a slow stick, reached here
@@ -5821,17 +5846,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         unseen = true,
     ) is BackgroundPlayback.AtTheEnd.Next
 
-    /** [playEpisode] for an episode nobody asked for, counted towards "Still watching?". */
+    /** [stepToEpisode] for an episode nobody asked for, counted towards "Still watching?". */
     private fun autoplay(next: MediaItem) {
         autoplayedInARow++
-        // Out of sight no new activity may start, so the episode plays in this one; the count
-        // carries on in it as it would across activities.
-        if (inBackgroundAudio) {
-            continueUnseen(next)
-            return
-        }
-        openedByAutoplay = true
-        playEpisode(next)
+        stepToEpisode(next, byAutoplay = true)
     }
 
     /** The end of the last video there is: the picture stays, with a way to watch it again. */
@@ -7519,7 +7537,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         stillWatchingUp = false
         resumeHeldDownloads()
         if (next != null) {
-            playEpisode(next)
+            stepToEpisode(next)
             return
         }
         hideStatus()
@@ -7868,7 +7886,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 nextUpDismissed = true
                 hideNextUp()
             },
-            onPlay = { _episodes.value.next?.let(::playEpisode) },
+            onPlay = { _episodes.value.next?.let(::stepToEpisode) },
         )
         skipPill = SkipPill(
             root = findViewById(R.id.player_root),
@@ -8103,7 +8121,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** A row of the list, or a step at its top: through the same path as the next-episode button. */
     private fun playFromEpisodes(item: MediaItem) {
         episodesList?.close()
-        if (item.id != currentItem().id) playEpisode(item)
+        stepToEpisode(item)
     }
 
     /** A row's long press (a held OK on a television): marks that episode, or the one playing. */
