@@ -148,7 +148,7 @@ class PauseControlsRowTest {
     }
 
     @Test
-    fun `on a phone the copies pill sits in the transport row, beside picture shape`() {
+    fun `on a phone the copies and Episodes pills sit in the transport row, beside picture shape`() {
         val (_, disc) = row(tv = false)
         val root = disc.rootView
         val transport = root.findViewById<android.widget.LinearLayout>(R.id.controls_transport)
@@ -156,12 +156,17 @@ class PauseControlsRowTest {
         val shape = root.findViewById<View>(R.id.control_shape)
         val episodes = root.findViewById<View>(R.id.control_episodes)
         assertTrue("the copies pill is in the transport row", copy.parent === transport)
+        assertTrue("the Episodes pill is in the transport row", episodes.parent === transport)
         assertEquals(
-            "the copies pill stands just before picture shape, at the row's right end",
-            transport.indexOfChild(shape) - 1,
+            "the copies pill stands just before the Episodes pill",
+            transport.indexOfChild(episodes) - 1,
             transport.indexOfChild(copy),
         )
-        assertFalse("the Episodes pill keeps the row over the transport", episodes.parent === transport)
+        assertEquals(
+            "the Episodes pill stands just before picture shape, at the row's right end",
+            transport.indexOfChild(shape) - 1,
+            transport.indexOfChild(episodes),
+        )
     }
 
     @Test
