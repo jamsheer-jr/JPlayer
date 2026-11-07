@@ -978,8 +978,9 @@ internal fun SleepSheet(
 /**
  * The copies of the video playing, grouped under their quality as the detail page's Versions
  * groups them (owner, v1.0.14): a heading for each quality there is (1080p, 720p, and last
- * "MB" for the copies stating no quality, the ones sent as files whose names carry no
- * marker), and under each heading its copies in the Versions rows' shape: the size first,
+ * "Other copies" for the copies stating no quality, the ones sent as files whose names carry
+ * no marker; the Versions chooser keeps its own "Quality not stated" heading for them,
+ * owner, v1.0.15), and under each heading its copies in the Versions rows' shape: the size first,
  * then what the copy is (its source, codec and the sound its name states: its languages and
  * audio), its length, date and the chat it came from, and the file's own name. The one
  * playing is ticked and focused. Choosing another plays it from the same moment.
@@ -1023,9 +1024,10 @@ internal fun CopiesSheet(
         ChoiceList {
             tiers.forEach { (height, group) ->
                 // A stated quality heads its group, as on the Versions page; the copies
-                // stating none are headed "MB", after their rows' own lead: no quality is
-                // read into a copy from its size.
-                com.tmplayer.ui.components.ChoiceSection(height?.let { group.first().copyQuality() } ?: "MB")
+                // stating none are headed "Other copies" here (the Versions page keeps
+                // its own "Quality not stated" heading for them): no quality is read into
+                // a copy from its size.
+                com.tmplayer.ui.components.ChoiceSection(height?.let { group.first().copyQuality() } ?: s.playerCopiesOther)
                 group.forEach { copy ->
                     val here = copy.id == playing
                     // The upload is ticked only while no Telegram copy stands in for it.

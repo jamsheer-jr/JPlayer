@@ -1769,6 +1769,7 @@
     "connecting_telegram": "Connecting to Telegram",
     "copies": "Copies",
     "copies_note": "Switching keeps your place",
+    "copies_other": "Other copies",
     "copy_details": "Copy details",
     "decoder_device_now": "Playing with the device's decoder",
     "decoder_other": "Try the other decoder",
