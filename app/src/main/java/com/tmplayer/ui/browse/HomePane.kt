@@ -107,6 +107,7 @@ import com.tmplayer.ui.components.FastScroller
 import com.tmplayer.ui.components.MenuAction
 import com.tmplayer.ui.components.TvMenu
 import com.tmplayer.ui.components.holdable
+import com.tmplayer.ui.components.TmButton
 import com.tmplayer.ui.components.TmSecondaryButton
 import com.tmplayer.ui.components.WithinMargins
 import com.tmplayer.ui.components.edgeFade
@@ -196,6 +197,17 @@ internal fun HomePane(
     /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
     onRefreshHome: () -> Unit = {},
     /**
+     * The newer version the update feed reports, or null for none: Home's own update
+     * card stands for it (item 13) and the header line carries its notice (item 15).
+     */
+    updateVersion: String? = null,
+    /** The newer version's What's New lines from the feed, for Home's update card. */
+    updatePoints: List<String> = emptyList(),
+    /** Opens the update popup: the card's and the header notice's Update action. */
+    onUpdate: () -> Unit = {},
+    /** The Downloads page, from the header line's action (item 15). */
+    onOpenDownloads: () -> Unit = {},
+    /**
      * The television's page heading. With the carousel up it stands on the carousel's picture
      * (true: the words in the colours for art) and scrolls away with it; otherwise it sits over
      * the rows. Null on a phone, whose heading is the app bar.
@@ -260,11 +272,20 @@ internal fun HomePane(
         }
         return
     }
+    // The phone Home's chip (owner, v1.0.15, items 16 and 29): All, or the one shape
+    // Home itself takes until the same chip is tapped again. Kept by name, so a turn
+    // of the phone or a rebuild keeps the shape the viewer picked.
+    var homeChipName by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(com.tmplayer.data.HomeChip.All.name) }
+    val homeChip = com.tmplayer.data.HomeChip.entries.firstOrNull { it.name == homeChipName } ?: com.tmplayer.data.HomeChip.All
+    // The rows in the chip's shape: the banner, the rows and the surprise pick all
+    // read these, so a Movies home is movies from its banner to its last row. The
+    // full rows stay for what a See all page and a show's page read.
+    val chipRows = remember(rows, homeChip) { com.tmplayer.data.HomeChipFilter.apply(rows, homeChip) }
     // Recently added is the featured carousel at the top as well as a row, on a phone and a
     // television alike: its frame is held from the first frame whenever the row is, so nothing
     // below it moves when it fills, and given up (the rows moving up) once its fill finds no
     // complete page, a moment after the row is in at most ([HomeFeatured.FILL_WAIT_MS]).
-    val recent = rows.firstNotNullOfOrNull { it as? HomeRow.Recent }
+    val recent = chipRows.firstNotNullOfOrNull { it as? HomeRow.Recent }
     // The banner's way (owner, 2026-11-06): auto is the newest titles as always; pinned
     // leads with the viewer's own titles, found across Home's rows by their copies keys,
     // and the newest titles fill the rest; off hides the banner. The chats it draws from
@@ -278,13 +299,32 @@ internal fun HomePane(
     // one SettingsStore this page already keeps, so a change in either place is the
     // change in both.
     val homeLayout by remember(bannerSettings) { bannerSettings.homeLayout }.collectAsState(initial = com.tmplayer.data.HomeLayout())
+    // Home's own update card (owner, v1.0.15, item 13): stands while the feed's newer
+    // version stands, until the viewer updates or puts it away for the day (its
+    // memory is [com.tmplayer.data.HomeUpdateNotice], kept in the same store).
+    val updateDismissed by remember(bannerSettings) { bannerSettings.homeUpdateCardDismissed }.collectAsState(initial = "")
+    val updateCardNow = remember(updateVersion) { System.currentTimeMillis() }
+    val showUpdateCard = updateVersion != null &&
+        com.tmplayer.data.HomeUpdateNotice.visible(updateDismissed, updateVersion, updateCardNow)
+    val dismissUpdateCard: () -> Unit = {
+        val version = updateVersion
+        if (version != null) {
+            App.backgroundScope.launch {
+                runCatching {
+                    bannerSettings.setHomeUpdateCardDismissed(
+                        com.tmplayer.data.HomeUpdateNotice.stamp(version, System.currentTimeMillis()),
+                    )
+                }
+            }
+        }
+    }
     val bannerRecent = if (bannerMode == "off") null else recent
     // The viewer's pinned titles, found across Home's rows by their copies keys: in pinned
     // mode they lead the banner, and the newest titles fill its remaining places toward the
     // full set in the mix (owner, v1.0.14). No pins found, and the banner is the auto one.
     val bannerPinEntries = if (bannerMode == "pinned" && bannerPins.isNotEmpty()) {
         val pins = bannerPins.toSet()
-        rows.flatMap { row ->
+        chipRows.flatMap { row ->
             when (row) {
                 is HomeRow.Catalog -> row.all
                 is HomeRow.Chat -> row.entries
@@ -320,30 +360,29 @@ internal fun HomePane(
     // Recently added is a row of its own as well, under Continue watching (user, 2026-10-23),
     // unless Settings turned the row off and kept the carousel it feeds. Its "no chosen chats"
     // line shows either way, so the carousel's empty place is explained.
-    val listed = remember(rows) { rows.filter { it !is HomeRow.Recent || it.asRow || it.noneChosen } }
-    // The phone's category chips (owner, v1.0.14, item 13): the jumps to the Shows, Movies
-    // and Anime shelves Home has this time, in that order, and Categories, which opens
-    // the categories picker on Home itself (item 23, below). Each label is its shelf's
-    // own heading, so no new words are wanted. Worked out here rather than in the list, because the chips now stand
-    // above the banner (see the list below) and the banner's place in the list, which the
-    // status bar colours and the carousel's own turning read, depends on whether they
-    // stand there. A television never has them: its list is exactly as it was.
-    val chipTargets = if (touch) {
-        listOfNotNull(
-            listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "series" }
-                .takeIf { it >= 0 }?.let { s.homeRowShows to it },
-            listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "movies" }
-                .takeIf { it >= 0 }?.let { s.homeRowMovies to it },
-            listed.indexOfFirst { it is HomeRow.Catalog && it.kind == "anime" }
-                .takeIf { it >= 0 }?.let { s.homeRowAnime to it },
-        )
-    } else {
-        emptyList()
-    }
-    val hasShelves = listed.any { it is HomeRow.Catalog }
-    val chipsShown = touch && (chipTargets.isNotEmpty() || hasShelves)
-    // The banner's index in the phone's list: the chips stand before it when they stand.
-    val carouselIndex = if (chipsShown) 1 else 0
+    val listed = remember(chipRows) { chipRows.filter { it !is HomeRow.Recent || it.asRow || it.noneChosen } }
+    // The phone's chips (owner, v1.0.15, items 16 and 29): Shows, Movies, New & Hot
+    // and Categories, under the header line and above the banner. They no longer
+    // jump to a shelf: Shows and Movies turn Home itself into that shape (see
+    // [chipRows]), New & Hot into the new arrivals, and Categories keeps opening
+    // the categories picker on Home itself (item 23, below). Which chips stand is
+    // read from the full rows, not the cut ones, so the way back and the way across
+    // (Movies straight to Shows) stand in every shape. A chip whose shape the chats
+    // cannot fill is not offered. Worked out here rather than in the list, because
+    // the banner's place in the list, which the status bar colours and the
+    // carousel's own turning read, depends on whether they stand there. A
+    // television never has them: its list is exactly as it was.
+    val fullCatalog = rows.filterIsInstance<HomeRow.Catalog>()
+    val showsChipShown = fullCatalog.any { it.kind == "series" }
+    val moviesChipShown = fullCatalog.any { it.kind == "movies" }
+    val hotChipShown = rows.any { it is HomeRow.Recent && !it.noneChosen } ||
+        fullCatalog.any { it.kind == "weekly" || it.kind == "trending" }
+    val hasShelves = fullCatalog.isNotEmpty()
+    val chipsShown = touch && (showsChipShown || moviesChipShown || hotChipShown || hasShelves)
+    // The banner's index in the phone's list: the header line stands before it, and
+    // the chips too when they stand (on a phone with an update card, the card stands
+    // between them and the banner follows it: see the list below).
+    val carouselIndex = if (!touch) 0 else 1 + (if (chipsShown) 1 else 0) + (if (showUpdateCard) 1 else 0)
     val first = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     // Kept across a turn of the phone: the show is looked up again in the rows once they are back.
@@ -488,8 +527,8 @@ internal fun HomePane(
     // episode of a show, picked from the entries Home already holds. The television never
     // composes the pill, so its first tile and focus order stay exactly as they are. The pick
     // is worked out at the press, not while composing: the rows' entries are all it needs.
-    val surpriseEntries = remember(rows) {
-        rows.flatMap { row ->
+    val surpriseEntries = remember(chipRows) {
+        chipRows.flatMap { row ->
             when (row) {
                 is HomeRow.Chat -> row.entries
                 is HomeRow.Recent -> row.entries
@@ -665,55 +704,67 @@ internal fun HomePane(
                 ),
                 verticalArrangement = Arrangement.spacedBy(if (touch) ROW_GAP_TOUCH else ROW_GAP_TV),
             ) {
-                if (chipsShown) {
-                    // The category chips directly under the header and above the banner
-                    // (owner, v1.0.14, item 13, the Netflix shape): rounded tags in a row
-                    // that scrolls sideways, so Categories stays reachable when the row
-                    // runs past the screen's edge. The banner itself is untouched: it
-                    // stands under the chips exactly as it stood at the top, brand and
-                    // all. With the banner the list's top padding is nothing, so the
-                    // chips keep the status bar's room themselves; without one the
+                if (touch) {
+                    // The header line (owner, v1.0.15, item 15, the Netflix shape):
+                    // the J Player mark and name, the Home title, and the useful
+                    // actions on one line, Downloads and the update notice among
+                    // them, with the chips row under it (below). The banner stands
+                    // under the header now, its own small mark gone from its corner
+                    // (see the carousel item): the header is the mark's one home.
+                    // With the banner the list's top padding is nothing, so the
+                    // header keeps the status bar's room itself; without one the
                     // padding already gives it.
-                    item(key = CHIPS_KEY, contentType = CHIPS_KEY) {
-                        Row(
-                            Modifier
-                                .padding(top = if (carousel) under + 10.dp else 6.dp, bottom = 2.dp)
-                                .horizontalScroll(rememberScrollState())
-                                .padding(start = start, end = end),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            chipTargets.forEach { (label, rowIndex) ->
-                                Row(
-                                    Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(Tone.surface)
-                                        .border(1.dp, Tone.outline, RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            // The rows start after the chips, the banner
-                                            // or the name, the built-in sections and the
-                                            // pills on a phone: four items before them.
-                                            scope.launch { listState.animateScrollToItem(rowIndex + 4) }
-                                        }
-                                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    M3Text(label, style = M3MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = Tone.text)
-                                }
-                            }
-                            if (hasShelves) {
-                                Row(
-                                    Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(Tone.surface)
-                                        .border(1.dp, Tone.outline, RoundedCornerShape(16.dp))
-                                        .clickable { categoriesOpen = true }
-                                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    M3Text(s.homeCategories, style = M3MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = Tone.text)
-                                }
-                            }
+                    item(key = HEADER_KEY, contentType = HEADER_KEY) {
+                        HomeHeaderLine(
+                            start = start,
+                            end = end,
+                            top = if (carousel) under + 8.dp else 2.dp,
+                            updateVersion = updateVersion,
+                            onUpdate = onUpdate,
+                            onOpenDownloads = onOpenDownloads,
+                        )
+                    }
+                    if (showUpdateCard) {
+                        // The update on Home itself (item 13): the card stands in
+                        // the list under the header, and in the pinned bar over the
+                        // rows once Home has scrolled (below), so it stays until
+                        // the viewer updates or puts it away for the day.
+                        item(key = UPDATE_KEY, contentType = UPDATE_KEY) {
+                            HomeUpdateCard(
+                                version = updateVersion ?: "",
+                                points = updatePoints,
+                                start = start,
+                                end = end,
+                                tv = false,
+                                onUpdate = onUpdate,
+                                onDismiss = dismissUpdateCard,
+                                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                            )
                         }
+                    }
+                }
+                if (chipsShown) {
+                    // The chips under the header line (items 16 and 29): rounded
+                    // tags in a row that scrolls sideways, so Categories stays
+                    // reachable when the row runs past the screen's edge. A tap on
+                    // Shows or Movies turns Home itself into that shape, a tap on
+                    // the same chip again brings the full Home back, and New & Hot
+                    // does the same for the new arrivals.
+                    item(key = CHIPS_KEY, contentType = CHIPS_KEY) {
+                        HomeChipsRow(
+                            start = start,
+                            end = end,
+                            top = 4.dp,
+                            chip = homeChip,
+                            shows = showsChipShown,
+                            movies = moviesChipShown,
+                            hot = hotChipShown,
+                            categories = hasShelves,
+                            onChip = { picked ->
+                                homeChipName = if (picked == homeChip) com.tmplayer.data.HomeChip.All.name else picked.name
+                            },
+                            onCategories = { categoriesOpen = true },
+                        )
                     }
                 }
                 if (carousel) {
@@ -749,7 +800,9 @@ internal fun HomePane(
                             },
                         )
                     } else item(key = FEATURED_KEY, contentType = FEATURED_KEY) {
-                      Box {
+                        // No mark in the picture's corner any more (owner, v1.0.15,
+                        // item 15): the header line above the banner carries the
+                        // J Player mark and name, on the page's own ground.
                         FeaturedCarousel(
                             picks = featured,
                             height = carouselHeight,
@@ -768,25 +821,27 @@ internal fun HomePane(
                                 if (series != null) opened.open(series) else onDetails(pick.item, chatTitle(pick.item.chatId))
                             },
                         )
-                        // The app's mark and name in the picture's top corner, under the status
-                        // bar, as the desktop sets them (user, 2026-10-22). A phone on its side
-                        // sets the title's art down the left, so there the name takes the right
-                        // corner and stays off it (user, 2026-10-27).
-                        val sideways = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenWidthDp > it.screenHeightDp }
-                        PhoneHomeBrand(
-                            if (sideways) {
-                                Modifier.align(Alignment.TopEnd).padding(end = end, top = under + BRAND_TOP)
-                            } else {
-                                Modifier.align(Alignment.TopStart).padding(start = start, top = under + BRAND_TOP)
-                            },
-                            onArt = true,
-                        )
-                      }
                     }
-                } else if (touch) {
-                    // No carousel: the name heads the rows instead.
-                    item(key = BRAND_KEY, contentType = BRAND_KEY) {
-                        PhoneHomeBrand(Modifier.padding(start = start, top = BRAND_TOP, bottom = 4.dp), onArt = false)
+                }
+                // No carousel on a phone: no brand item either, the header line
+                // (HEADER_KEY, above) heads the rows in its place.
+                if (!touch && showUpdateCard) {
+                    // The update on the TV Home too (item 13): its own item under
+                    // the carousel (or at the list's head where there is none), in
+                    // the D-pad's order between the carousel's Play and the rows,
+                    // its Update button taking the remote. The carousel stays the
+                    // list's first item, as its focus and scroll rules expect.
+                    item(key = UPDATE_KEY, contentType = UPDATE_KEY) {
+                        HomeUpdateCard(
+                            version = updateVersion ?: "",
+                            points = updatePoints,
+                            start = start,
+                            end = end,
+                            tv = true,
+                            onUpdate = onUpdate,
+                            onDismiss = dismissUpdateCard,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                        )
                     }
                 }
                 // The streams posted in the built-in films channel (v1.0.10), between the
@@ -829,8 +884,8 @@ internal fun HomePane(
                             OpenLinkPill { openLink = true }
                         }
                     }
-                    // The category chips stand at the top of the list now, above the
-                    // banner (v1.0.14, item 13): see the CHIPS_KEY item before it.
+                    // The header line and the chips stand at the top of the list,
+                    // above the banner: see the HEADER_KEY and CHIPS_KEY items.
                 }
                 items(listed, key = { it.key }, contentType = { it::class }) { row ->
                     val loaded = row.isLoaded
@@ -906,7 +961,50 @@ internal fun HomePane(
                                         modifier = Modifier.width(continueWidth(touch))
                                             .then(if (isFirst && record === row.records.first()) Modifier.focusRequester(first) else Modifier)
                                             .then(if (record === continueStandIn) Modifier.focusRequester(continueRefocus) else Modifier),
-                                        meta = { ink -> CaptionLine(telegramFacts(chat, item), ink) },
+                                        meta = { ink ->
+                                            Column {
+                                                CaptionLine(telegramFacts(chat, item), ink)
+                                                // The Netflix shape under a Continue card
+                                                // (owner, v1.0.15, item 29): its info and
+                                                // menu buttons under the facts, on a phone.
+                                                // Info opens the title's page, the menu
+                                                // the card's own menu, as a hold does. A
+                                                // television keeps the card as it was:
+                                                // the remote's hold opens the same menu.
+                                                if (touch) {
+                                                    Row(
+                                                        Modifier.padding(top = 2.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    ) {
+                                                        androidx.compose.material3.IconButton(
+                                                            onClick = { onDetails(item, chat) },
+                                                            modifier = Modifier.size(32.dp),
+                                                        ) {
+                                                            androidx.compose.material3.Icon(
+                                                                TmIcons.Info,
+                                                                contentDescription = strings.detailOpenDetails,
+                                                                tint = Tone.muted,
+                                                                modifier = Modifier.size(18.dp),
+                                                            )
+                                                        }
+                                                        androidx.compose.material3.IconButton(
+                                                            onClick = {
+                                                                heldContinue = key to row.records.indexOf(record)
+                                                                onHoldMedia(item, chat)
+                                                            },
+                                                            modifier = Modifier.size(32.dp),
+                                                        ) {
+                                                            androidx.compose.material3.Icon(
+                                                                TmIcons.MoreVert,
+                                                                contentDescription = strings.commonMoreOptions,
+                                                                tint = Tone.muted,
+                                                                modifier = Modifier.size(18.dp),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
                                     ) {
                                         ContinueCardArt(record, item, Modifier.fillMaxSize())
                                     }
@@ -951,6 +1049,11 @@ internal fun HomePane(
                                         dense = touch,
                                         title = if (episode.show.isBlank()) episode.code else "${episode.show}  ·  ${episode.code}",
                                         badge = { NewBadge(compact = touch) },
+                                        // The Watch Now ribbon across the foot (owner,
+                                        // v1.0.15, item 29): these episodes are the ones
+                                        // to watch now, as Recently added wears its own
+                                        // ribbon the same way.
+                                        bottomTag = s.homeWatchNow,
                                         meta = { ink -> CaptionLine(telegramFacts(chat, item), ink) },
                                         modifier = Modifier.width(wideWidth(touch))
                                             .then(if (isFirst && episode === row.episodes.first()) Modifier.focusRequester(first) else Modifier),
@@ -993,6 +1096,61 @@ internal fun HomePane(
                 }
             }
           }
+        }
+        // The header line and the chips, pinned (owner, v1.0.15, item 30): once the
+        // banner has scrolled away, the same header and chips stand over the rows on
+        // a frosted ground (the page's own colour, nearly solid), so they are never
+        // a long scroll back to the top away, in either direction, and a tap on a
+        // chip here cuts Home the same way it does at the top. Scrolling back up to
+        // the banner hands over to the list's own header without a gap: the pinned
+        // one stands exactly while the banner is out of sight.
+        val headerPinned by remember(carouselIndex) {
+            derivedStateOf { listState.firstVisibleItemIndex > carouselIndex }
+        }
+        if (touch && headerPinned) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Tone.background.copy(alpha = 0.94f))
+                    .padding(bottom = 6.dp),
+            ) {
+                HomeHeaderLine(
+                    start = start,
+                    end = end,
+                    top = under + 6.dp,
+                    updateVersion = updateVersion,
+                    onUpdate = onUpdate,
+                    onOpenDownloads = onOpenDownloads,
+                )
+                if (showUpdateCard) {
+                    HomeUpdateCard(
+                        version = updateVersion ?: "",
+                        points = updatePoints,
+                        start = start,
+                        end = end,
+                        tv = false,
+                        onUpdate = onUpdate,
+                        onDismiss = dismissUpdateCard,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                if (chipsShown) {
+                    HomeChipsRow(
+                        start = start,
+                        end = end,
+                        top = 4.dp,
+                        chip = homeChip,
+                        shows = showsChipShown,
+                        movies = moviesChipShown,
+                        hot = hotChipShown,
+                        categories = hasShelves,
+                        onChip = { picked ->
+                            homeChipName = if (picked == homeChip) com.tmplayer.data.HomeChip.All.name else picked.name
+                        },
+                        onCategories = { categoriesOpen = true },
+                    )
+                }
+            }
         }
         if (touch && under > 0.dp) {
             val ground by androidx.compose.animation.core.animateFloatAsState(
@@ -1244,7 +1402,9 @@ internal fun HomePane(
             }
             val at = listed.indexOfFirst { it.key == spot }
             if (at < 0) return false
-            val index = at + if (carousel) 1 else 0
+            // The carousel and, on a television with one standing, the update card
+            // (item 13) stand in the list before the rows.
+            val index = at + (if (carousel) 1 else 0) + (if (showUpdateCard) 1 else 0)
             if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
                 listState.scrollToItem(index)
                 withFrameNanos { }
@@ -1377,13 +1537,19 @@ private fun LazyListScope.entries(
         // it has always worn, exactly as it was.
         val pinned = touch && badge != null
         if (ranked) {
-            Row(Modifier.width(width + 46.dp).then(focus), verticalAlignment = Alignment.Bottom) {
+            Row(Modifier.width(width + 52.dp).then(focus), verticalAlignment = Alignment.Bottom) {
+                // The giant rank number in the Netflix shape (owner, v1.0.15,
+                // item 29): an outline, not a fill, standing beside the poster.
                 M3Text(
                     "${index + 1}",
                     style = androidx.compose.ui.text.TextStyle(
-                        fontSize = 64.sp,
+                        fontSize = 76.sp,
                         fontWeight = FontWeight.Black,
-                        color = Tone.accent.copy(alpha = 0.85f),
+                        color = Tone.text,
+                        drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 4f,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                        ),
                     ),
                 )
                 if (pinned) {
@@ -2571,8 +2737,11 @@ private const val RESTORE_FRAMES = 12
 /** Frames in a row the remote has to stay put for its place to count as restored. */
 private const val RESTORE_SETTLED_FRAMES = 3
 
-/** The list key of the name over Home's rows when there is no carousel. */
-private const val BRAND_KEY = "brand"
+/** The list key of the phone's header line at the top of Home (item 15). */
+private const val HEADER_KEY = "header"
+
+/** The list key of Home's update card, on a phone and a television (item 13). */
+private const val UPDATE_KEY = "update-card"
 
 /** The name's distance below the status bar on a phone's Home. */
 internal val BRAND_TOP = 12.dp
@@ -2586,3 +2755,201 @@ internal fun PhoneHomeBrand(modifier: Modifier, onArt: Boolean) {
         color = if (onArt) Tone.onArt else Tone.text,
     )
 }
+
+/**
+ * Home's header line (owner, v1.0.15, item 15, the Netflix shape): the J Player
+ * mark and name, the Home title, and the useful actions on one line: the update
+ * notice where a newer version stands (it opens the update popup, as the rail
+ * item does) and Downloads. One composable for the list's top and for the pinned
+ * bar over the rows (item 30), so the two never drift apart.
+ */
+@Composable
+private fun HomeHeaderLine(
+    start: Dp,
+    end: Dp,
+    top: Dp,
+    updateVersion: String?,
+    onUpdate: () -> Unit,
+    onOpenDownloads: () -> Unit,
+) {
+    val s = LocalStrings.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = start, end = end, top = top, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PhoneHomeBrand(Modifier, onArt = false)
+        Spacer(Modifier.width(10.dp))
+        M3Text(
+            s.browseTabHome,
+            style = M3MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = Tone.text,
+            maxLines = 1,
+        )
+        Spacer(Modifier.weight(1f))
+        if (updateVersion != null) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Tone.caution.copy(alpha = 0.16f))
+                    .clickable(onClick = onUpdate)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(TmIcons.Refresh, contentDescription = null, tint = Tone.caution, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                M3Text(
+                    "${s.navUpdate} $updateVersion",
+                    style = M3MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = Tone.caution,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(Tone.surfaceHigh)
+                .clickable(onClick = onOpenDownloads)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(TmIcons.Download, contentDescription = null, tint = Tone.text, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            M3Text(s.navDownloads, style = M3MaterialTheme.typography.labelLarge, color = Tone.text, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * The chips row under the header line (owner, v1.0.15, items 16 and 29): Shows,
+ * Movies, New & Hot and Categories in a row that scrolls sideways, the picked
+ * chip filled with the accent. One composable for the list's top and the pinned
+ * bar, as the header line is.
+ */
+@Composable
+private fun HomeChipsRow(
+    start: Dp,
+    end: Dp,
+    top: Dp,
+    chip: com.tmplayer.data.HomeChip,
+    shows: Boolean,
+    movies: Boolean,
+    hot: Boolean,
+    categories: Boolean,
+    onChip: (com.tmplayer.data.HomeChip) -> Unit,
+    onCategories: () -> Unit,
+) {
+    val s = LocalStrings.current
+    Row(
+        Modifier
+            .padding(top = top, bottom = 2.dp)
+            .horizontalScroll(rememberScrollState())
+            .padding(start = start, end = end),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (shows) HomeChipPill(s.homeRowShows, selected = chip == com.tmplayer.data.HomeChip.Shows) { onChip(com.tmplayer.data.HomeChip.Shows) }
+        if (movies) HomeChipPill(s.homeRowMovies, selected = chip == com.tmplayer.data.HomeChip.Movies) { onChip(com.tmplayer.data.HomeChip.Movies) }
+        if (hot) HomeChipPill(s.homeNewHot, selected = chip == com.tmplayer.data.HomeChip.NewHot) { onChip(com.tmplayer.data.HomeChip.NewHot) }
+        if (categories) HomeChipPill(s.homeCategories, selected = false) { onCategories() }
+    }
+}
+
+/** One of the header's chips: a rounded tag, filled when its shape is the one Home wears. */
+@Composable
+private fun HomeChipPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) Tone.accent else Tone.surface)
+            .border(1.dp, if (selected) Tone.accent else Tone.outline, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        M3Text(
+            label,
+            style = M3MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = if (selected) Tone.onAccent else Tone.text,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The update on Home itself (owner, v1.0.15, item 13): the newer version, its
+ * What's New lines from the feed (the first few; the popup carries the whole
+ * list) and an Update button, with a way to put the card away for the day. The
+ * button opens the same popup the rail item opens, where the download and the
+ * install are run from, as the popup has always run them. On a television the
+ * card is an item in Home's list, and its buttons take the remote in the list's
+ * own order.
+ */
+@Composable
+private fun HomeUpdateCard(
+    version: String,
+    points: List<String>,
+    start: Dp,
+    end: Dp,
+    tv: Boolean,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val s = LocalStrings.current
+    val updateFocus = remember { FocusRequester() }
+    Column(
+        modifier
+            .padding(start = start, end = end)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tone.surface)
+            .border(1.dp, Tone.outline, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        M3Text(
+            s.updateTitle(version),
+            style = M3MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = Tone.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val shown = points.take(HOME_UPDATE_POINTS)
+        if (shown.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            M3Text(s.settingsWhatsNew, style = M3MaterialTheme.typography.labelMedium, color = Tone.muted)
+            Spacer(Modifier.height(4.dp))
+            shown.forEach { point ->
+                Row {
+                    M3Text("•  ", style = M3MaterialTheme.typography.bodySmall, color = Tone.accent)
+                    M3Text(
+                        point,
+                        style = M3MaterialTheme.typography.bodySmall,
+                        color = Tone.text.copy(alpha = 0.86f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (tv) {
+                TmButton(onClick = onUpdate, modifier = Modifier.focusRequester(updateFocus)) {
+                    Text(s.updateUpdateNow)
+                }
+                TmSecondaryButton(onClick = onDismiss) { Text(s.commonDismiss) }
+            } else {
+                androidx.compose.material3.Button(onClick = onUpdate) { M3Text(s.updateUpdateNow) }
+                androidx.compose.material3.TextButton(onClick = onDismiss) { M3Text(s.commonDismiss, color = Tone.muted) }
+            }
+        }
+    }
+}
+
+/** What's New lines Home's update card carries: enough to say what the version brings, the popup has the rest. */
+private const val HOME_UPDATE_POINTS = 4

@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -70,6 +71,9 @@ fun ContinueCardArt(record: ResumeRecord, item: MediaItem, modifier: Modifier = 
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+            // The Netflix red on Home's Continue row (owner, v1.0.15, item 29): the
+            // same red the row's New Episode and Top 10 tags wear.
+            fill = Tone.danger,
         )
     }
 }
@@ -128,11 +132,14 @@ internal class ContinueWords(val label: String?, val title: String) {
 /**
  * How far through: a [PILL_PROGRESS] high pill in the accent on a [Tone.track], rounded at both
  * ends. Grows from the start edge, so from the right in a right to left layout.
+ *
+ * [fill] names the pill's colour where a surface has its own (Home's Continue row
+ * wears the Netflix red); null keeps the accent pair the other surfaces wear.
  */
 @Composable
-fun PillProgress(fraction: Float, modifier: Modifier = Modifier) {
+fun PillProgress(fraction: Float, modifier: Modifier = Modifier, fill: Color? = null) {
     val track = Tone.track
-    val fill = if (LocalDarkTheme.current) Tone.accent else MaterialTheme.colorScheme.inversePrimary
+    val fill = fill ?: if (LocalDarkTheme.current) Tone.accent else MaterialTheme.colorScheme.inversePrimary
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val done = fraction.coerceIn(0f, 1f)
     Canvas(modifier.fillMaxWidth().height(PILL_PROGRESS)) {

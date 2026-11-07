@@ -277,6 +277,8 @@ internal fun BrowseScreen(
     /** The newer version on GitHub, if there is one. Shown on the rail, in amber. */
     updateVersion: String? = null,
     onUpdate: () -> Unit = {},
+    /** The newer version's What's New lines from the feed, for Home's own update card (v1.0.15, item 13). */
+    homeUpdatePoints: List<String> = emptyList(),
     /** Home's rows, built by [com.tmplayer.data.HomeRows] from what has loaded so far. */
     homeRows: List<HomeRow> = emptyList(),
     homeRowsReady: Boolean = true,
@@ -697,6 +699,13 @@ internal fun BrowseScreen(
                                 },
                                 onOpenChat = { id -> data.chats.firstOrNull { it.id == id }?.let(onOpenChat) },
                                 onRefreshHome = onRefreshHome,
+                                // Home's own update card and header line (v1.0.15,
+                                // items 13 and 15): the feed's version and its lines,
+                                // the popup behind Update, and Downloads.
+                                updateVersion = updateVersion,
+                                updatePoints = homeUpdatePoints,
+                                onUpdate = onUpdate,
+                                onOpenDownloads = onOpenDownloads,
                                 // A stream from the built-in channel's posts plays in the player
                                 // itself, live ones as live (v1.0.10).
                                 onPlayStream = { link ->

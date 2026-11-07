@@ -91,6 +91,7 @@ import com.tmplayer.data.start
 import com.tmplayer.data.UpdateState
 import com.tmplayer.data.UpdateScheduler
 import com.tmplayer.data.Updates
+import com.tmplayer.data.points
 import com.tmplayer.data.release
 import com.tmplayer.data.updateScheduler
 import com.tmplayer.player.PlayerActivity
@@ -2062,6 +2063,9 @@ private fun Root() {
                     downloadCount = activeDownloadCount,
                     updateVersion = offeredUpdate,
                     onUpdate = { showUpdate = true },
+                    // Home's own update card carries the feed's What's New lines too
+                    // (v1.0.15, item 13): the release the state already holds.
+                    homeUpdatePoints = updateState.release?.points.orEmpty(),
                     onToggleFavorite = { chat ->
                         scope.launch {
                             // Not said either way: the star fills or empties, and in the
