@@ -235,9 +235,20 @@ object MetaMatch {
         val yearAgrees = wantedYear != null && year != null && kotlin.math.abs(wantedYear - year) <= 1
         val laterSeason = show && wantedYear != null && year != null && wantedYear > year
         if (wantedYear != null && year != null && !yearAgrees && !laterSeason) return false
-        return names.filter { it.isNotBlank() }.any { name ->
-            normalise(name) == target || (yearAgrees && overlap(wanted, name) >= 0.6)
-        }
+        return exact(wanted, names) ||
+            (yearAgrees && names.filter { it.isNotBlank() }.any { overlap(wanted, it) >= 0.6 })
+    }
+
+    /**
+     * True when one of [names] is [wanted] exactly, after [normalise]: the confident half of
+     * [accepts], the same test [MetaPick] scores highest. A match short of this (most of the
+     * words, with the year agreeing) may still name the title, but its picture is not trusted
+     * as the title's cover (owner, v1.0.14): a misspelled file name reaches only this far.
+     */
+    fun exact(wanted: String, names: List<String>): Boolean {
+        val target = normalise(wanted)
+        if (target.isEmpty()) return false
+        return names.any { it.isNotBlank() && normalise(it) == target }
     }
 }
 
@@ -258,9 +269,8 @@ object MetaPick {
 
     /** Higher is closer. The weights keep the order above: words, then year, then language. */
     fun score(query: MetaQuery, candidate: MetaCandidate): Int {
-        val target = MetaMatch.normalise(query.title)
         var score = 0
-        if (candidate.names.any { it.isNotBlank() && MetaMatch.normalise(it) == target }) score += EXACT_WORDS
+        if (MetaMatch.exact(query.title, candidate.names)) score += EXACT_WORDS
         val wanted = query.year
         val year = candidate.year
         if (wanted != null && year != null) {

@@ -1,7 +1,9 @@
 package com.tmplayer.online
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Real release names as the chats post them, read into the question TMDB is asked, and the pick among its answers. */
@@ -75,5 +77,17 @@ class MetaPickTest {
     fun nothingThatFailsTheTitleCheckIsPicked() {
         val q = of("Coast walk day 2 2023.mp4")
         assertNull(MetaPick.best(q, listOf(candidate("x", "Coastal Walks", 2023)), show = false))
+    }
+
+    @Test
+    fun exactMeansTheSameWordsAfterCleaning() {
+        assertTrue(MetaMatch.exact("Big Buck Bunny", listOf("Big Buck Bunny")))
+        // The app's own cleaning on both sides: a leading article, case and punctuation.
+        assertTrue(MetaMatch.exact("The Big Buck Bunny", listOf("big buck bunny!")))
+        assertTrue(MetaMatch.exact("Big Buck Bunny", listOf("Some Other Film", "Big Buck Bunny")))
+        // Most of the words, or one word misspelled, is a match for the words, not for the cover.
+        assertFalse(MetaMatch.exact("Big Buck Bunny Rabbit", listOf("Big Buck Bunny")))
+        assertFalse(MetaMatch.exact("Big Buck Buny", listOf("Big Buck Bunny")))
+        assertFalse(MetaMatch.exact("", listOf("Big Buck Bunny")))
     }
 }

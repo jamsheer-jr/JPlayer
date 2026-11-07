@@ -205,7 +205,15 @@ class OnlineMetadata(
             val show = lookup(query.showOnly())
             if (show !is MetaResult.Found) return show to (show is MetaResult.NoMatch)
             val (episode, complete) = episodeFor(show.info, query, lang)
-            return MetaResult.Found(show.info.copy(episode = episode)) to complete
+            // A loosely matched show's episode still is its picture too, withheld on the
+            // same rule as its poster (see artChecked), judged here on the provider's own
+            // title, the one name this point still has.
+            val stillChecked = if (query.tmdbId != null || MetaMatch.exact(query.title, listOf(show.info.title))) {
+                episode
+            } else {
+                episode?.copy(stillUrl = null)
+            }
+            return MetaResult.Found(show.info.copy(episode = stillChecked)) to complete
         }
         var blocked = false
         var tmdbNothing = false
@@ -359,7 +367,20 @@ class OnlineMetadata(
         posterUrl = poster,
         backdropUrl = candidate.backdropUrl,
         language = overviewLang,
-    )
+    ).artChecked(query, candidate.names)
+
+    /**
+     * This answer with its picture fields kept only where the match is a confident one (owner,
+     * v1.0.14): a title [MetaMatch] took exactly, or one the file name forced by its TMDB id,
+     * the viewer pointing at the record themselves. A looser match (most of the words, with the
+     * year agreeing) still names the title and gives its words and facts, but its poster and
+     * backdrop are dropped here, before the answer is cached, so every card and page takes the
+     * video's own still instead (the art chains already draw it under a poster), and a video
+     * with no still of its own takes the plain generated cover.
+     */
+    private fun MetaInfo.artChecked(query: MetaQuery, names: List<String>): MetaInfo =
+        if (query.tmdbId != null || MetaMatch.exact(query.title, names)) this
+        else copy(posterUrl = null, backdropUrl = null)
 
     private sealed interface SearchOutcome {
         data class Found(val candidate: MetaCandidate) : SearchOutcome
@@ -404,7 +425,7 @@ class OnlineMetadata(
                 overview = show.overview,
                 posterUrl = show.posterUrl,
                 language = ENGLISH,
-            ),
+            ).artChecked(query, show.names),
         )
     }
 
@@ -427,7 +448,7 @@ class OnlineMetadata(
                 posterUrl = found.posterUrl,
                 backdropUrl = found.backdropUrl,
                 language = ENGLISH,
-            ),
+            ).artChecked(query, found.names),
         )
     }
 
@@ -457,7 +478,7 @@ class OnlineMetadata(
                 year = facts.year,
                 posterUrl = facts.posterUrl,
                 language = ENGLISH,
-            ),
+            ).artChecked(query, listOf(facts.title)),
         )
     }
 

@@ -99,6 +99,30 @@ class OnlineMetadataTest {
     }
 
     @Test
+    fun aLooseMatchKeepsTheWordsButNotThePicture() = runBlocking {
+        http.on("search/movie") { bunnySearch }
+        // Most of the words and the year, but not the title itself: taken as the film for its
+        // words and facts, never as its cover (owner, v1.0.14). The card takes the video's own
+        // still instead, which the art chains already draw under a poster.
+        val info = (metadata().lookup(query("Big.Buck.Bunny.Rabbit.2008.1080p.mkv")) as MetaResult.Found).info
+        assertEquals("Big Buck Bunny", info.title)
+        assertEquals("A giant rabbit has had enough.", info.overview)
+        assertNull(info.posterUrl)
+        assertNull(info.backdropUrl)
+        assertNull(info.wideUrl)
+    }
+
+    @Test
+    fun aForcedTmdbIdKeepsThePictureWhateverTheFileIsCalled() = runBlocking {
+        http.on("movie/10378") { bunnySearch.substringAfter("[").substringBeforeLast("]") }
+        // The file name points at the record itself, the viewer naming it: the most confident
+        // match there is, so its picture stands though no title agrees.
+        val info = (metadata().lookup(query("my-copy {tmdb-10378}.mkv")) as MetaResult.Found).info
+        assertNotNull(info.posterUrl)
+        assertTrue(info.posterUrl!!.endsWith("/bbb.jpg"))
+    }
+
+    @Test
     fun aReadTokenTravelsAsABearerHeaderNotInTheAddress() = runBlocking {
         http.on("search/movie") { bunnySearch }
         val token = "eyJ" + "a".repeat(60)
