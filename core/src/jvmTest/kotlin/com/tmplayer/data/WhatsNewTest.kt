@@ -51,9 +51,17 @@ class WhatsNewTest {
     }
 
     @Test
-    fun `the bundled highlights read from the catalog`() {
-        assertTrue(WhatsNew.highlights.size in 3..6)
-        assertTrue(WhatsNew.highlights.all { it.isNotBlank() && !it.startsWith("whatsnew.") })
+    fun `the sheet's words are the feed's change list for the version`() {
+        // Owner, v1.0.14: nothing hardcoded. A release's points are its changes when it
+        // carries any, and an entry without changes gives the sheet nothing to show.
+        val withChanges = Release(
+            version = "1.23.0",
+            pageUrl = "",
+            notes = "One long note. Another sentence.",
+            changes = listOf("First change", "Second change"),
+        )
+        assertEquals(listOf("First change", "Second change"), withChanges.points)
+        assertEquals(listOf("One long note", "Another sentence"), withChanges.copy(changes = emptyList()).points)
         assertTrue(WhatsNew.CHANGELOG.startsWith("https://"))
     }
 

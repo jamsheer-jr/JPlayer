@@ -2501,10 +2501,14 @@ private fun Root() {
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
             )
         }
-        // No onChangelog: the sheet's "Full changelog" button opened the upstream site, and
-        // J Player's sheet carries the bundled highlights and nothing that links out.
+        // No onChangelog: the sheet's "Full changelog" button opened the upstream site. The
+        // words are the update feed's own change list for the version just installed.
         if (whatsNew.showing && !showUpdate) {
-            WhatsNewDialog(onClose = { whatsNew.showing = false })
+            WhatsNewDialog(
+                version = whatsNew.version,
+                points = whatsNew.points,
+                onClose = { whatsNew.showing = false },
+            )
         }
 
         if (newVideoOffer) {

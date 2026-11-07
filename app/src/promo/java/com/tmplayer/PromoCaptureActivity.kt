@@ -456,7 +456,12 @@ class PromoCaptureActivity : ComponentActivity() {
                     }
                     when (overlay) {
                         "language" -> LanguageDialog(SettingsStore(applicationContext), onClose = { overlay = null })
-                        "whatsnew" -> WhatsNewDialog(onClose = { overlay = null }, onChangelog = { overlay = null })
+                        "whatsnew" -> WhatsNewDialog(
+                            version = "1.0.14",
+                            points = listOf("Sample change one", "Sample change two"),
+                            onClose = { overlay = null },
+                            onChangelog = { overlay = null },
+                        )
                         "feedback" -> FeedbackDialog(onClose = { overlay = null })
                         // The CP41 sweep's prompts that the fixture cannot reach on its own: a
                         // Continue watching entry lives in MainActivity, and the online caches

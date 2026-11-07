@@ -1,32 +1,17 @@
 package com.tmplayer.data
 
-import com.tmplayer.i18n.L
-
 /**
- * "What's new": a short sheet on the first run of a new version, with the highlights bundled in
- * the catalog so they are translated with everything else, and the same sheet from Settings.
+ * "What's new": a short sheet on the first run of a new version.
  *
- * The highlights describe one release, [VERSION]. Release prep moves the two together: new
- * `whatsnew.highlight_*` keys and this constant. A patch release that keeps them shows nothing,
- * because the viewer has already seen those highlights.
+ * The sheet's words are not bundled (owner, v1.0.14): they are the update feed's own
+ * change list for the version just installed, the same list the update popup showed
+ * before the install, read back through [Updates.lastKnown]. Nothing is hardcoded, so
+ * a version whose feed entry carries no changes shows no sheet.
  */
 object WhatsNew {
 
-    /** The release the bundled highlights describe. */
-    const val VERSION = "1.27.0"
-
     /** Where "Full changelog" and the Settings "Changelog" row go. */
     const val CHANGELOG = "https://tmplayer.org/changelog/"
-
-    /** The highlights, in the order the sheet lists them. */
-    val highlights: List<String>
-        get() = listOf(
-            L.whatsnewHighlightSearch,
-            L.whatsnewHighlightCopies,
-            L.whatsnewHighlightCarousel,
-            L.whatsnewHighlightPlayer,
-            L.whatsnewHighlightSort,
-        )
 
     /** What a launch does: show the sheet or not, and the version to remember, if any. */
     data class Launch(val show: Boolean, val remember: String?)
@@ -44,7 +29,7 @@ object WhatsNew {
      *   just reached.
      * - The same or an older version (a downgrade) changes nothing.
      */
-    fun onLaunch(lastSeen: String, installed: String, highlightsFor: String = VERSION): Launch {
+    fun onLaunch(lastSeen: String, installed: String, highlightsFor: String): Launch {
         val release = release(installed) ?: return Launch(show = false, remember = null)
         val seen = release(lastSeen) ?: return Launch(show = false, remember = release)
         if (UpdateFeed.compare(release, seen) <= 0) return Launch(show = false, remember = null)

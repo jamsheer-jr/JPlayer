@@ -48,7 +48,6 @@ import com.tmplayer.data.DeviceQuirks
 import com.tmplayer.data.Feedback
 import com.tmplayer.data.FormFactor
 import com.tmplayer.data.SettingsStore
-import com.tmplayer.data.WhatsNew
 import com.tmplayer.i18n.LanguageNotice
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.auth.QrCode
@@ -133,13 +132,13 @@ fun LanguageNoticeCard(language: String, onKeep: () -> Unit, onChange: () -> Uni
 }
 
 /**
- * "What's new": the bundled highlights of [WhatsNew.VERSION], on the first run of that version.
- * J Player passes no [onChangelog]: its sheet has no "Full changelog" button, since that button
- * opened the upstream project's site.
+ * "What's new": the update feed's change list for [version], shown once on the first run of
+ * that version. J Player passes no [onChangelog]: its sheet has no "Full changelog" button,
+ * since that button opened the upstream project's site.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WhatsNewDialog(onClose: () -> Unit, onChangelog: (() -> Unit)? = null) {
+fun WhatsNewDialog(version: String, points: List<String>, onClose: () -> Unit, onChangelog: (() -> Unit)? = null) {
     val s = LocalStrings.current
     val touch = isTouch()
     val close = remember { FocusRequester() }
@@ -154,9 +153,9 @@ fun WhatsNewDialog(onClose: () -> Unit, onChangelog: (() -> Unit)? = null) {
                 .padding(if (touch) 20.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(if (touch) 12.dp else 14.dp),
         ) {
-            Text(s.whatsnewTitle(WhatsNew.VERSION), style = MaterialTheme.typography.headlineSmall, color = Tone.text)
+            Text(s.whatsnewTitle(version), style = MaterialTheme.typography.headlineSmall, color = Tone.text)
             Text(s.whatsnewSubtitle, style = MaterialTheme.typography.bodyMedium, color = Tone.muted)
-            for (line in WhatsNew.highlights) {
+            for (line in points) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
                     Icon(TmIcons.CheckCircle, contentDescription = null, tint = Tone.accent, modifier = Modifier.size(22.dp))
                     Text(line, style = MaterialTheme.typography.bodyLarge, color = Tone.text)

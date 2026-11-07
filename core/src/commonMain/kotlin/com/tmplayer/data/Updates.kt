@@ -90,6 +90,16 @@ object Updates {
     var installedVersion: String = "0"
         private set
 
+    /**
+     * The release the feed last named, kept whatever its version. A check whose answer is
+     * this build itself drops it from the state (nothing newer to offer), but the What's
+     * new sheet (owner, v1.0.14) reads this build's own entry and its change list back
+     * out of here after an update.
+     */
+    @Volatile
+    var lastKnown: Release? = null
+        private set
+
     /** The device's architectures, most preferred first, for picking a per-ABI APK. */
     @Volatile
     private var abis: List<String> = emptyList()
@@ -185,6 +195,7 @@ object Updates {
         val tests = runCatching { testVersions() }.getOrDefault(false)
         val attempt = withContext(Dispatchers.IO) { runCatching { fetch(tests) } }
         val release = attempt.getOrNull()
+        if (release != null) lastKnown = release
         // A rate-limited API, a release with nothing for this device and a stick with no route out
         // all reach the viewer as much the same sentence, so the cause is logged as well.
         attempt.exceptionOrNull()?.let { Logger.w(TAG, "Update check failed", it) }

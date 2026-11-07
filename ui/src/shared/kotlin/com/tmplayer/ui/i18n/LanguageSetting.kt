@@ -9,13 +9,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tmplayer.data.SettingsStore
+import com.tmplayer.data.Updates
 import com.tmplayer.data.WhatsNew
+import com.tmplayer.data.points
 import com.tmplayer.i18n.LanguageNotice
 import com.tmplayer.i18n.Languages
 import com.tmplayer.i18n.Strings
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.onboarding.Onboarding
 import com.tmplayer.ui.onboarding.systemLanguageName
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -70,13 +73,24 @@ fun rememberLanguageNotice(settings: SettingsStore): LanguageNoticeState {
 }
 
 /**
- * Whether the "What's new" sheet is up. Decided once per launch from the last version this
- * install opened and [installed]; the version is remembered as soon as it is read, so a crash
- * with the sheet open does not bring it back. [hold] keeps it waiting (behind the tour, or
- * while signed out).
+ * Whether the "What's new" sheet is up, and what it says. Decided once per launch from the
+ * last version this install opened and [installed]; the version is remembered as soon as it
+ * is read, so a crash with the sheet open does not bring it back. [hold] keeps it waiting
+ * (behind the tour, or while signed out).
+ *
+ * The sheet's words are the update feed's own change list for the version just installed
+ * (owner, v1.0.14), read from [Updates.lastKnown]: nothing is bundled. So an update's
+ * decision waits for the feed to name this very version: the launch check may still be on
+ * its way, and the scheduler's throttle can skip that check entirely, in which case this
+ * asks once itself. A launch whose feed never answers decides nothing and remembers
+ * nothing, so a later launch can still show the sheet.
  */
 class WhatsNewState internal constructor() {
     var showing by mutableStateOf(false)
+
+    /** The version the sheet names, and the feed's change list it lists. */
+    var version by mutableStateOf("")
+    var points by mutableStateOf<List<String>>(emptyList())
 }
 
 @Composable
@@ -85,11 +99,41 @@ fun rememberWhatsNew(settings: SettingsStore, installed: String, hold: Boolean =
     var decided by remember { mutableStateOf(false) }
     LaunchedEffect(hold) {
         if (hold || decided) return@LaunchedEffect
+        val lastSeen = runCatching { settings.lastSeenVersion.first() }.getOrNull() ?: return@LaunchedEffect
+        if (WhatsNew.release(lastSeen) == null) {
+            // A fresh install, or one from before this existed: remember and show nothing,
+            // settled by the pure rules without the feed.
+            decided = true
+            val launch = runCatching { WhatsNew.onLaunch(lastSeen, installed, installed) }.getOrNull()
+                ?: return@LaunchedEffect
+            launch.remember?.let { runCatching { settings.setLastSeenVersion(it) } }
+            return@LaunchedEffect
+        }
+        val wanted = WhatsNew.release(installed) ?: return@LaunchedEffect
+        var release = Updates.lastKnown?.takeIf { it.version == wanted }
+        if (release == null) {
+            // The launch check may still be fetching: give it a little while first.
+            val deadline = System.currentTimeMillis() + 15_000L
+            while (release == null && System.currentTimeMillis() < deadline) {
+                delay(500)
+                release = Updates.lastKnown?.takeIf { it.version == wanted }
+            }
+        }
+        if (release == null) {
+            // The scheduler's throttle skipped this launch's check: ask once directly.
+            runCatching { Updates.check(quiet = true) }
+            release = Updates.lastKnown?.takeIf { it.version == wanted }
+        }
+        val feed = release ?: return@LaunchedEffect
         decided = true
-        val launch = runCatching { WhatsNew.onLaunch(settings.lastSeenVersion.first(), installed) }.getOrNull()
+        val launch = runCatching { WhatsNew.onLaunch(lastSeen, installed, feed.version) }.getOrNull()
             ?: return@LaunchedEffect
         launch.remember?.let { runCatching { settings.setLastSeenVersion(it) } }
-        if (launch.show) state.showing = true
+        if (launch.show && feed.points.isNotEmpty()) {
+            state.version = feed.version
+            state.points = feed.points
+            state.showing = true
+        }
     }
     return state
 }
