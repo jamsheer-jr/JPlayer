@@ -66,12 +66,13 @@ fun interface VideoSearchSource {
                 val repo = ChatRepository(session.client)
                 // Search reads the added chats alone (HX27). Telegram cannot be asked for "these
                 // chats only", so with a choice made each chat is searched on its own; with no
-                // choice made it is one search over the account, as it has always been.
+                // choice made it is one search over the account, as it has always been. Which
+                // of the two is [searchAsk]'s call: an answer still being read is not a choice
+                // of every chat (owner, v1.0.15).
                 val added = com.tmplayer.data.AddedChats.awaitReady()
-                return if (added == null) {
-                    repo.searchAllChats(query, cursor, filters = filters)
-                } else {
-                    repo.searchAddedChats(query, added, cursor, filters = filters)
+                return when (searchAsk(added, com.tmplayer.data.AddedChats.loaded.value)) {
+                    SearchAsk.AllChats -> repo.searchAllChats(query, cursor, filters = filters)
+                    SearchAsk.PerChat -> repo.searchAddedChats(query, added.orEmpty(), cursor, filters = filters)
                 }
             }
 
@@ -81,6 +82,25 @@ fun interface VideoSearchSource {
             }
         }
     }
+}
+
+/** How Telegram is asked for a search: one search over the account, or a search per added chat. */
+internal enum class SearchAsk { AllChats, PerChat }
+
+/**
+ * The ask a search makes (owner, v1.0.15): per added chat wherever a choice narrows, and
+ * account wide only where the stored answer has actually been read and narrows nothing.
+ * [com.tmplayer.data.AddedChats.awaitReady] answers with the process default (no
+ * narrowing) while the stored choice is still being read, and that default is not the
+ * viewer choosing every chat: asking account wide on it pulled results from chats never
+ * selected, which is what "Global Search off" not taking effect was. With no ids read
+ * yet the per chat ask runs over no chats and answers empty, so until the choice lands
+ * the search shows only what this device already knows, through the gate as it stands.
+ */
+internal fun searchAsk(added: Set<Long>?, scopeKnown: Boolean): SearchAsk = when {
+    added != null -> SearchAsk.PerChat
+    scopeKnown -> SearchAsk.AllChats
+    else -> SearchAsk.PerChat
 }
 
 /** The search across every chat, as the screens draw it. */

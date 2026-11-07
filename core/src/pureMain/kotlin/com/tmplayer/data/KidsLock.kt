@@ -91,6 +91,21 @@ object ChatGate {
     /** [browsing], after waiting briefly for both the lock and the choice to be read. */
     suspend fun awaitBrowsing(): Set<Long>? = AddedChats.gate(awaitReady(), AddedChats.awaitReady())
 
+    /**
+     * Whether the stored answers behind [awaitBrowsing] have actually been read in this
+     * process, after the usual waits (owner, v1.0.15). [awaitReady] and
+     * [AddedChats.awaitReady] answer with the process default (no narrowing) when a store
+     * read has not landed in time, and that default is indistinguishable from the viewer
+     * choosing every chat. A caller that must never widen on a guess (a title's load, the
+     * search's choice of how to ask Telegram) asks this first: an unread answer is not
+     * "every chat", and treating it as one pulled from chats the viewer never selected.
+     */
+    suspend fun awaitBrowsingKnown(): Boolean {
+        awaitReady()
+        AddedChats.awaitReady()
+        return ready.value && AddedChats.loaded.value
+    }
+
     /** Keeps [allowed] in step with [store] for the life of the process. */
     fun follow(store: AllowedChatsSource) {
         if (following) return

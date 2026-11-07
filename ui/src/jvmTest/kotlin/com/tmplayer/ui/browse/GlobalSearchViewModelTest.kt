@@ -356,6 +356,17 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
+    fun `the search ask is per chat while a choice narrows or is unread, account wide only on a known every chat`() {
+        // Owner, v1.0.15: "Global Search off" must take effect. A picked set asks per chat;
+        // a stored answer still being read (null ids, not known) must not be taken for the
+        // viewer choosing every chat; only a known, narrowing-nothing answer asks widely.
+        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L, 3L), scopeKnown = true))
+        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L, 3L), scopeKnown = false))
+        assertEquals(SearchAsk.PerChat, searchAsk(added = null, scopeKnown = false))
+        assertEquals(SearchAsk.AllChats, searchAsk(added = null, scopeKnown = true))
+    }
+
+    @Test
     fun `a deleted video's card goes when it is opened`() = runTest(dispatcher) {
         val gone = object : VideoSearchSource {
             override suspend fun page(query: String, cursor: AllChatsCursor, filters: SearchFilters) = source.page(query, cursor, filters)

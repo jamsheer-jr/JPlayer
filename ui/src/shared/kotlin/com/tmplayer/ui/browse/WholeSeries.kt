@@ -47,8 +47,10 @@ object WholeSeries {
      * browses are asked the same question (owner, v1.0.14): a search gathers a show across
      * them, and the page is made whole from that same held set, so a show split across chats
      * opens with the same episodes from a category as from a search. While the browsing gate
-     * narrows nothing, the chats the app has loaded pages of stand for the visible ones. A
-     * chat that holds none of the show costs one empty page and is asked no further.
+     * narrows nothing and that is known to be the viewer's own answer, the chats the app has
+     * loaded pages of stand for the visible ones; while the gate is unread, the show's own
+     * chat alone is asked (see [TitleScope]). A chat that holds none of the show costs one
+     * empty page and is asked no further.
      */
     suspend fun read(
         series: Series,
@@ -60,13 +62,18 @@ object WholeSeries {
         found += search(fetch, chatId, query, series.cover.topicId)
         // The gate awaited, not only read: at a cold open the stored choice may not have
         // been read yet, and the value standing there would narrow the set to nothing.
-        val others = (com.tmplayer.data.ChatGate.awaitBrowsing() ?: com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()) - chatId
+        // The chats asked are the title load's own decision ([TitleScope], v1.0.15): an
+        // unread gate asks the show's own chat alone rather than every listed chat, and
+        // that narrower answer is not kept, so a later open asks again with the real scope.
+        val gate = com.tmplayer.data.ChatGate.awaitBrowsing()
+        val gateKnown = com.tmplayer.data.ChatGate.awaitBrowsingKnown()
+        val others = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()).drop(1)
         for (other in others) {
             // The show's topic is its own chat's; another chat is asked whole.
             found += search(fetch, other, query, topicId = 0)
         }
         val whole = SeriesFill.merge(peek(series) ?: series, found)
-        kept[keyOf(series)] = whole
+        if (gate != null || gateKnown) kept[keyOf(series)] = whole
         return whole
     }
 
