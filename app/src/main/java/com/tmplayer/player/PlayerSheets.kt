@@ -972,9 +972,9 @@ internal fun SleepSheet(
 
 /**
  * The copies of the video playing, as the pickers' panel lists a choice of one: each by its
- * quality and codec, with its size, length, date and (where the copies span chats) its chat under
- * that, then the sound its name states and the file's own name, the one playing ticked and
- * focused. Choosing another plays it from the same moment.
+ * quality and codec, with its size, length, date and the chat it came from under that, then
+ * the sound its name states (its languages and audio) and the file's own name, the one
+ * playing ticked and focused. Choosing another plays it from the same moment.
  */
 @Composable
 internal fun CopiesSheet(
@@ -991,7 +991,6 @@ internal fun CopiesSheet(
     val s = LocalStrings.current
     val touch = isTouch()
     val focus = remember { FocusRequester() }
-    val spans = remember(copies) { VideoCopies.spansChats(copies) }
     // Best picture first, the biggest of it next: the order the detail page's chooser lists
     // them in, so the two lists never disagree. The copy playing stays listed and ticked
     // wherever it lands (VideoCopies.oneOfEachFile keeps it in the list upstream).
@@ -1013,7 +1012,7 @@ internal fun CopiesSheet(
                     // format, as the detail page's chooser says), then the file's own name,
                     // each on its own line under the first.
                     detail = listOfNotNull(
-                        copyDetail(copy, s, chatOf(copy).takeIf { spans }, among = copies).ifEmpty { null },
+                        copyDetail(copy, s, chatOf(copy), among = copies).ifEmpty { null },
                         copySound(copy),
                         copy.fileName.ifBlank { null },
                     ).joinToString("\n"),

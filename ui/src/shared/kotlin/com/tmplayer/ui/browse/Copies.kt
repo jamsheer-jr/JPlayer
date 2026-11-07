@@ -88,6 +88,14 @@ fun copySound(copy: MediaItem, locale: java.util.Locale = java.util.Locale.getDe
 }
 
 /**
+ * Whether [copy] is a cam family copy (PreDVD, HDTS, TS, CAM: see [MediaFacts.CAM_SOURCES]),
+ * the copies the Playback switch "Hide cam and PreDVD copies" leaves out of the lists.
+ * HDRip is not a cam source and is never one of these.
+ */
+fun isCamCopy(copy: MediaItem): Boolean =
+    MediaFacts.isCamSource(MediaFacts.read(copy.fileName.ifBlank { copy.title }, copy.width, copy.height).source)
+
+/**
  * What else sets a copy apart, for the line under its [copyHeading]: the size (when the heading
  * did not already give it), the length, when it was posted, the chat where the copies span more
  * than one, whether it is on this device and whether its chat allows saving.
@@ -346,7 +354,7 @@ private fun copiesSubtitle(item: MediaItem, files: List<Pair<MediaItem, List<Med
  * chat over the list (or "in 3 chats"), then the copies grouped under their quality, best first,
  * "1080p", "720p", then the ones whose name states none. A row is only what sets it apart: its size,
  * then what it is (source, codec, languages, audio), its length, its date where the dates differ,
- * and its chat where they span several. No box round a row; the one that plays is tinted. The
+ * and the chat it came from, on every row that knows it. No box round a row; the one that plays is tinted. The
  * file's whole name stays on the page's About.
  */
 @Composable
@@ -371,7 +379,6 @@ private fun CopyChooser(
     }
     val datesDiffer = remember(rows) { rows.map { it.first.date / 86_400 }.distinct().size > 1 }
     val chatOf: (MediaItem) -> String? = { copyChat(it, item, chatTitle) }
-    val chats = remember(rows) { rows.mapNotNull { chatOf(it.first) }.distinct() }
     // Quality first, as the group's one heading; the copies whose name states none come last.
     val groups = remember(rows) {
         rows.groupBy { (copy, _) -> VideoCopies.heightOf(copy)?.let { copy.copyQuality() } }.entries
@@ -437,7 +444,7 @@ private fun CopyChooser(
                         copyFit(copy, s, rows.map { it.first }),
                         copy.durationSec.takeIf { it > 0 }?.let { s.formatter.duration(it.toLong()) },
                         copy.date.takeIf { datesDiffer && it > 0 }?.let { s.detailCopyPosted(s.formatter.date(it * 1000L)) },
-                        chatOf(copy)?.takeIf { chats.size > 1 }?.let { s.detailCopyFrom(it) },
+                        chatOf(copy)?.takeIf { it.isNotBlank() }?.let { s.detailCopyFrom(it) },
                         when (copy.locality) {
                             MediaItem.Locality.Downloaded -> s.gridBadgeDownloaded
                             MediaItem.Locality.Cached -> s.detailCopyOnDevice
