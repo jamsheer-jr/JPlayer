@@ -319,6 +319,8 @@ fun SettingsScreen(
     val resumeRewindMs by settings.resumeRewindMs.collectAsStateWithLifecycle(initialValue = ResumeRewind.DEFAULT_MS)
     val detailFirst by settings.detailFirst.collectAsStateWithLifecycle(initialValue = true)
     val hideRipTags by settings.hideRipTags.collectAsStateWithLifecycle(initialValue = false)
+    // On until read, which is the stored default: cam copies are hidden unless turned off.
+    val hideCamCopies by settings.hideCamCopies.collectAsStateWithLifecycle(initialValue = true)
     val hiddenTitleWords by settings.hiddenTitleWords.collectAsStateWithLifecycle(initialValue = emptySet())
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
@@ -1028,6 +1030,19 @@ fun SettingsScreen(
                         icon = TmIcons.Info,
                         checked = hideRipTags,
                         onToggle = { scope.launch { settings.setHideRipTags(!hideRipTags) } },
+                    )
+                }
+                // The copies themselves this time, not only their names in titles: while
+                // this is on, a cam family copy (PreDVD, HDTS, TS, CAM) is left out of the
+                // chat lists, the versions and copies lists and search, and each of those
+                // places says how many it left out. HDRip is not a cam source and stays.
+                item {
+                    ToggleRow(
+                        title = s.settingsHideCamCopies,
+                        subtitle = if (hideCamCopies) s.settingsHideCamCopiesOn else s.settingsHideCamCopiesOff,
+                        icon = TmIcons.Info,
+                        checked = hideCamCopies,
+                        onToggle = { scope.launch { settings.setHideCamCopies(!hideCamCopies) } },
                     )
                 }
                 // The viewer's own words for that same switch (owner, v1.0.11): each word a
