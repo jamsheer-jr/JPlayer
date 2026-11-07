@@ -27,6 +27,10 @@ class BackupCoverageTest {
         // Locks: a PIN's hash has no place in a mailed file, and a restore never undoes a lock.
         "app_lock_on_open", "app_pin", "app_pin_failures", "app_pin_wait_left_ms", "app_pin_wait_stamp",
         "kids_chats", "kids_lock",
+        // Viewer profile PINs (v1.0.15, item 8e): the app lock's rule again, one hash and its
+        // guess bookkeeping per profile. The profiles' names travel; their PINs stay behind,
+        // so a restored profile simply has no PIN until one is set on that device.
+        "profile_pin_", "profile_pin_failures_", "profile_pin_wait_left_", "profile_pin_wait_stamp_",
         // Whether this device was signed in: a session belongs to the device, and a restore on
         // another one must not read as "Telegram signed you out" there (HX23).
         "signed_in",

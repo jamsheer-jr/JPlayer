@@ -129,6 +129,25 @@ class ProfilesStoreTest {
         assertTrue(watched.history.first().isEmpty())
     }
 
+    @Test
+    fun `a profile PIN is stored hashed, checks right and wrong, and is its own`() = runBlocking {
+        val kids = added("Kids", simple = false)
+        settings.setProfilePin(kids.id, "1234")
+        settings.setProfilePin(ViewerProfiles.DEFAULT_ID, "9876")
+        assertTrue(settings.profilePinSetNow(kids.id))
+        assertEquals(setOf(kids.id, ViewerProfiles.DEFAULT_ID), settings.profilePinIds.first())
+        // The stored line is a salted hash, never the PIN itself.
+        assertFalse(settings.rawEntries().values.any { it == "1234" })
+        assertTrue(settings.checkProfilePin(kids.id, "1234") is PinCheck.Right)
+        assertTrue(settings.checkProfilePin(kids.id, "9999") is PinCheck.Wrong)
+        // The main profile's PIN is a different one, and an unknown profile has none.
+        assertTrue(settings.checkProfilePin(ViewerProfiles.DEFAULT_ID, "1234") is PinCheck.Wrong)
+        assertEquals(PinCheck.NoPin, settings.checkProfilePin("p9", "1234"))
+        settings.removeProfilePin(kids.id)
+        assertFalse(settings.profilePinSetNow(kids.id))
+        assertEquals(setOf(ViewerProfiles.DEFAULT_ID), settings.profilePinIds.first())
+    }
+
     /** Adds a profile in a test, failing the test rather than flowing on without one. */
     private suspend fun added(name: String, simple: Boolean): ViewerProfile =
         settings.addViewerProfile(name, simple) ?: throw AssertionError("profile not added")

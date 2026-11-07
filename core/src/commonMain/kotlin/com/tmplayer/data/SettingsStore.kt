@@ -331,12 +331,30 @@ private fun kidsChatsOf(prefs: Preferences): Set<Long> =
 private fun allowedChatsOf(prefs: Preferences): Set<Long>? =
     if (KidsLock.inForce(prefs[KIDS_LOCK] == true, prefs[APP_PIN] != null)) kidsChatsOf(prefs) else null
 
-private fun attemptsOf(prefs: Preferences, now: Long): PinAttempts = PinAttempts.restored(
-    failures = (prefs[PIN_FAILURES] ?: 0L).toInt(),
-    waitLeftMs = prefs[PIN_WAIT_LEFT] ?: 0L,
-    stampedAt = prefs[PIN_WAIT_STAMP] ?: 0L,
+private fun attemptsOf(prefs: Preferences, now: Long): PinAttempts =
+    attemptsOf(prefs, PIN_FAILURES, PIN_WAIT_LEFT, PIN_WAIT_STAMP, now)
+
+/** The same again over another PIN's own keys: a viewer profile's (item 8e). */
+private fun attemptsOf(
+    prefs: Preferences,
+    failures: Preferences.Key<Long>,
+    waitLeft: Preferences.Key<Long>,
+    waitStamp: Preferences.Key<Long>,
+    now: Long,
+): PinAttempts = PinAttempts.restored(
+    failures = (prefs[failures] ?: 0L).toInt(),
+    waitLeftMs = prefs[waitLeft] ?: 0L,
+    stampedAt = prefs[waitStamp] ?: 0L,
     now = now,
 )
+
+// A viewer profile's PIN (v1.0.15, item 8e): the same shape as the app lock's, one set of keys
+// per profile, the hash made by PinHash and the waits counted by PinAttempts, so a profile PIN
+// is exactly as safe as the app's. Left out of backups with the app lock's (BackupCoverageTest).
+private fun profilePinKey(id: String) = stringPreferencesKey("profile_pin_$id")
+private fun profilePinFailuresKey(id: String) = longPreferencesKey("profile_pin_failures_$id")
+private fun profilePinWaitLeftKey(id: String) = longPreferencesKey("profile_pin_wait_left_$id")
+private fun profilePinWaitStampKey(id: String) = longPreferencesKey("profile_pin_wait_stamp_$id")
 
 /**
  * A speed remembered for a show, a course, a chat or a topic: see [SpeedMemory]. The scope keeps its
@@ -690,6 +708,10 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             }
             for (key in doomed) prefs.remove(key)
             prefs.remove(stringPreferencesKey(prefix + "collections"))
+            prefs.remove(profilePinKey(id))
+            prefs.remove(profilePinFailuresKey(id))
+            prefs.remove(profilePinWaitLeftKey(id))
+            prefs.remove(profilePinWaitStampKey(id))
         }
         setViewerProfiles(now.filterNot { it.id == id })
     }
@@ -2419,6 +2441,80 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     /** The chats the kids lock allows, replacing the last choice whole. */
     suspend fun setKidsChats(chats: Set<Long>) {
         prefs.edit { it[KIDS_CHATS] = chats.map(Long::toString).toSet() }
+    }
+
+    // ---- viewer profile PINs (v1.0.15, item 8e) ---------------------------------------------
+
+    /**
+     * The ids of the profiles that carry a PIN: switching INTO one of them asks for it first.
+     * Read off the stored key names: a profile's id holds no underscore, so its PIN line is
+     * told apart from its own failures and wait lines by that alone.
+     */
+    val profilePinIds: Flow<Set<String>> = read { prefs ->
+        prefs.asMap().keys.mapNotNullTo(HashSet()) { key ->
+            val rest = key.name.removePrefixOrNull("profile_pin_") ?: return@mapNotNullTo null
+            if (rest.all { it in 'a'..'z' || it in '0'..'9' }) rest else null
+        }
+    }
+
+    /** Whether [id]'s profile carries a PIN, now. */
+    suspend fun profilePinSetNow(id: String): Boolean = prefs.data.first()[profilePinKey(id)] != null
+
+    /** Sets (or changes) a profile's PIN, forgetting any wrong guesses made against the old one. */
+    suspend fun setProfilePin(id: String, pin: String) {
+        // Twenty thousand rounds: off the caller, which is often the UI thread, as in [setPin].
+        val line = kotlinx.coroutines.withContext(Dispatchers.Default) { PinHash.hash(pin) }
+        prefs.edit {
+            it[profilePinKey(id)] = line
+            it.remove(profilePinFailuresKey(id))
+            it.remove(profilePinWaitLeftKey(id))
+            it.remove(profilePinWaitStampKey(id))
+        }
+    }
+
+    /** Takes a profile's PIN off: switching into it asks for nothing again. */
+    suspend fun removeProfilePin(id: String) {
+        prefs.edit {
+            it.remove(profilePinKey(id))
+            it.remove(profilePinFailuresKey(id))
+            it.remove(profilePinWaitLeftKey(id))
+            it.remove(profilePinWaitStampKey(id))
+        }
+    }
+
+    /** The wrong guesses against [id]'s PIN so far and any wait they earned, now. */
+    suspend fun profilePinAttemptsNow(id: String, now: Long = PinClock.now()): PinAttempts =
+        attemptsOf(prefs.data.first(), profilePinFailuresKey(id), profilePinWaitLeftKey(id), profilePinWaitStampKey(id), now)
+
+    /**
+     * Checks [pin] against [id]'s profile PIN, the app lock's own rule ([checkPin]) over the
+     * profile's own keys: a wrong one counts, a run of them earns the [PinBackoff] wait, and
+     * the verdict and the count are written in one edit.
+     */
+    suspend fun checkProfilePin(id: String, pin: String, now: Long = PinClock.now()): PinCheck {
+        var verdict: PinCheck = PinCheck.NoPin
+        prefs.edit { prefs ->
+            val stored = prefs[profilePinKey(id)] ?: return@edit
+            val attempts = attemptsOf(prefs, profilePinFailuresKey(id), profilePinWaitLeftKey(id), profilePinWaitStampKey(id), now)
+            val wait = attempts.waitMs(now)
+            verdict = when {
+                wait > 0 -> PinCheck.Waiting(wait)
+                PinHash.verify(pin, stored) -> {
+                    prefs.remove(profilePinFailuresKey(id))
+                    prefs.remove(profilePinWaitLeftKey(id))
+                    prefs.remove(profilePinWaitStampKey(id))
+                    PinCheck.Right
+                }
+                else -> {
+                    val next = attempts.failed(now)
+                    prefs[profilePinFailuresKey(id)] = next.failures.toLong()
+                    prefs[profilePinWaitLeftKey(id)] = next.waitMs(now)
+                    prefs[profilePinWaitStampKey(id)] = now
+                    PinCheck.Wrong(next)
+                }
+            }
+        }
+        return verdict
     }
 
     /**
