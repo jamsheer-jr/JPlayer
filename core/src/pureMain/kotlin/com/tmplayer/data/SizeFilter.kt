@@ -23,20 +23,23 @@ object SizeFilter {
     const val STEP = 100 * MB
 
     /**
-     * No minimum at all: a fresh install hides nothing by size (the owner asked for this on
-     * 2026-11-06, J Player 1.0.12). The history ran the other way: 400 MB with a 2.5 GB top until
-     * 1.21, then 50 MB, when viewers saw a series with episodes 9 and 30 missing, the ones encoded
-     * a little smaller than the rest, and nothing said why; back to 400 MB in 1.28.2 once a chat
-     * said how many it hides ("n hidden"). The floor is now the viewer's own choice instead: the
-     * slider, the quick picks ([QUICK_MINIMUMS]) and Search's "hide small clips" (which keeps its
-     * own floor, [CLIP_MIN]) are all still there for anyone who wants one.
+     * The minimum a fresh install starts with: 100 MB (the owner asked for this on 2026-11-07,
+     * J Player 1.0.14). The history: 400 MB in the early builds (with a 2.5 GB top until 1.21,
+     * then 50 MB, when viewers saw a series with episodes 9 and 30 missing, the ones encoded
+     * a little smaller than the rest, and nothing said why; back to 400 MB in 1.28.2 once a
+     * chat said how many it hides, "n hidden"), then no minimum at all in 1.0.12 (2026-11-06,
+     * also at the owner's ask), and now 100 MB again. Only a fresh install sees this value:
+     * a stored minimum is read as stored and never rewritten, so an install that chose 0
+     * keeps 0. The maximum is unchanged at 8 GB ([DEFAULT_MAX]). No minimum stays reachable:
+     * [FLOOR] is the slider's low end, a [SCALE] corner and the first of [QUICK_MINIMUMS],
+     * and Search's "hide small clips" keeps its own floor, [CLIP_MIN].
      */
-    const val DEFAULT_MIN = FLOOR
+    const val DEFAULT_MIN = 100 * MB
 
     /**
      * Off the step grid, and the minimum a viewer who wants short episodes but no clips is most
-     * likely to pick. Also the floor Search's "hide small clips" uses, now that the shipped
-     * default no longer keeps clips out on its own.
+     * likely to pick. Also the floor Search's "hide small clips" uses, kept separate from
+     * [DEFAULT_MIN] so that switch keeps its own meaning whatever the shipped default is.
      */
     const val CLIP_MIN = 50 * MB
 
