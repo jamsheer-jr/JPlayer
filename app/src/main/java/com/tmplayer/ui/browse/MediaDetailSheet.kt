@@ -427,7 +427,12 @@ internal fun MediaDetailOpened(
             DetailAction.SharePoster -> { { scope.launch { sharePosterCard(context, item); if (asMenu) onDismiss() } } }
             DetailAction.OpenElsewhere -> { { scope.launch { shareVideo(context, item, send = false); if (asMenu) onDismiss() } } }
             DetailAction.CopyLink -> { { scope.launch { MessageLink.copy(context, item.chatId, item.messageId); if (asMenu) onDismiss() } } }
-            DetailAction.OpenChat -> { { onDismiss(); onOpenChat?.invoke() } }
+            // The hold menu closes, as it does for every line. The page itself stays: it is
+            // still under the chat the host opens, so Back from that chat lands on this same
+            // page again (owner, 2026-11-07: Back from a chat opened from a search result's
+            // page went to the search results, because the page had been dismissed, and its
+            // host's back stack cleared, on the way into the chat).
+            DetailAction.OpenChat -> { { if (asMenu) onDismiss(); onOpenChat?.invoke() } }
             DetailAction.SplitCopy, DetailAction.JoinCopies -> { {
                 val apart = action == DetailAction.SplitCopy
                 App.backgroundScope.launch { runCatching { settings.correct(listOf(item)) { it.copy(separate = apart) } } }

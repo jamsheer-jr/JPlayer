@@ -41,6 +41,25 @@ class DetailBackStackTest {
     }
 
     @Test
+    fun aPageLeftForItsChatIsStillTheTopPageWhenTheChatIsLeft() {
+        val pages = stack()
+        pages.open(video(1))
+        pages.push(video(2))
+        // Going into the top page's chat leaves the stack exactly as it was: the chat stands
+        // over the page rather than taking its place, so nothing is pushed and nothing is
+        // cleared on the way in (the detail page's Open chat line keeps its page, see
+        // MediaDetailOpened).
+        assertEquals(listOf(1L, 2L), pages.shown())
+        assertEquals(2L, pages.top?.page?.messageId)
+        // Back from the chat is the host leaving it, not a press on the stack: the same page
+        // is on top again, with the page under it still under it.
+        assertEquals(listOf(1L, 2L), pages.shown())
+        assertTrue(pages.back())
+        assertEquals(listOf(1L), pages.shown())
+        assertEquals("1:2", pages.top?.returnTo?.toId)
+    }
+
+    @Test
     fun openStartsAfresh() {
         val pages = stack()
         pages.open(video(1))
