@@ -1,5 +1,6 @@
 package com.tmplayer.ui.browse
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -162,6 +163,9 @@ internal fun ProfilePage(
     var namingProfile by remember { mutableStateOf(false) }
     var renamingProfile by remember { mutableStateOf<ViewerProfile?>(null) }
     var deletingProfile by remember { mutableStateOf<ViewerProfile?>(null) }
+    // Viewing activity (item 2): the active profile's watched titles with dates and times,
+    // and this device's data usage, over the page.
+    var showActivity by remember { mutableStateOf(false) }
     val activeSimple = profiles.firstOrNull { it.id == activeProfileId }?.simple == true
     // Switching into a PIN profile asks for its PIN first (item 8e); the pad is below.
     val switchToProfile: (ViewerProfile) -> Unit = { profile ->
@@ -370,6 +374,14 @@ internal fun ProfilePage(
                 label = s.browseTabHistory,
                 badge = null,
                 onClick = { onHistory(HistoryTab.Continue) },
+            )
+        }
+        item(key = "activity") {
+            ProfileEntryRow(
+                icon = TmIcons.History,
+                label = s.profileActivity,
+                badge = null,
+                onClick = { showActivity = true },
             )
         }
         // A Simple profile has no Settings (item 7g): the row is not drawn, and the way back
@@ -675,6 +687,18 @@ internal fun ProfilePage(
                 }
             },
             onCancel = { choosePinFor = null },
+        )
+    }
+
+    if (showActivity) {
+        BackHandler { showActivity = false }
+        ViewingActivity(
+            watchedHistory = watchedHistory,
+            onBack = { showActivity = false },
+            onOpenTitle = { item, title ->
+                showActivity = false
+                openDetail(item, title)
+            },
         )
     }
 }

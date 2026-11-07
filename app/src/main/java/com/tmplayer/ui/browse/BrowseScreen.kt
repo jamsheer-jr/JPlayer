@@ -1608,6 +1608,15 @@ internal fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeR
             runCatching { com.tmplayer.data.LocalDownloads.indexedBytes(statsSettings) }.getOrDefault(0L)
         }
     }
+    // Data usage (owner, v1.0.15, item 2): this app's own traffic on this device since it
+    // last restarted, from Android's counters: the total here, the split and the honest
+    // wording on the Viewing activity page the Profile page opens.
+    var usageBytes by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(statsContext) {
+        usageBytes = withContext(Dispatchers.Default) {
+            runCatching { com.tmplayer.data.DataUsage.read(statsContext)?.totalBytes }.getOrNull()
+        }
+    }
     var stats by remember { mutableStateOf<com.tmplayer.data.WatchStats?>(null) }
     LaunchedEffect(watched, continuing) {
         stats = withContext(Dispatchers.Default) {
@@ -1663,6 +1672,13 @@ internal fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeR
         if (downloadedBytes > 0) {
             M3Text(
                 s.browseStatsDownloaded(Translator.messages.formatter.bytes(downloadedBytes)),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+            )
+        }
+        usageBytes?.takeIf { it > 0 }?.let { bytes ->
+            M3Text(
+                s.profileDataUsageTotal(Translator.messages.formatter.bytes(bytes)),
                 style = MaterialTheme.typography.bodySmall,
                 color = Tone.muted,
             )
