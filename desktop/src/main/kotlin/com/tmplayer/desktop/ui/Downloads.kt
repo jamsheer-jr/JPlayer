@@ -1056,6 +1056,7 @@ private fun ActiveRow(state: ShellState, row: OfflineDownloads.Progress, onFreeU
         OfflineDownloads.Stage.Paused -> unfinishedAlso(s.downloadsPaused, row)
         OfflineDownloads.Stage.Offline -> unfinishedAlso(s.downloadsWaitingConnection, row)
         OfflineDownloads.Stage.NoWifi -> unfinishedAlso(s.downloadsWaitingWifi, row)
+        OfflineDownloads.Stage.Night -> unfinishedAlso(s.downloadsWaitingNight, row)
         OfflineDownloads.Stage.Moving ->
             if (row.heldByPlayer) s.downloadsFinishesWhenStopped else s.downloadsMovingIn
         OfflineDownloads.Stage.Failed -> row.failure ?: s.downloadsStopped

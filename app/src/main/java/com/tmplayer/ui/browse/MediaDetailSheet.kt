@@ -567,6 +567,7 @@ private fun cancelRow(s: Messages, entry: OfflineDownloads.Progress, run: () -> 
             OfflineDownloads.Stage.Failed -> s.gridCancelFailed
             OfflineDownloads.Stage.Offline -> s.gridCancelOffline
             OfflineDownloads.Stage.NoWifi -> s.gridCancelNoWifi
+            OfflineDownloads.Stage.Night -> s.gridCancelNight
             OfflineDownloads.Stage.Moving -> s.gridCancelRunning
             OfflineDownloads.Stage.Running -> s.gridCancelRunning
         },

@@ -2134,6 +2134,11 @@ private fun ActiveDownloadCard(
             fraction?.let { s.formatter.percent(it.toDouble()) },
             size,
         ).joinToString(DOT)
+        OfflineDownloads.Stage.Night -> listOfNotNull(
+            s.downloadsWaitingNight,
+            fraction?.let { s.formatter.percent(it.toDouble()) },
+            size,
+        ).joinToString(DOT)
         OfflineDownloads.Stage.NoWifi -> listOfNotNull(
             s.downloadsWaitingWifi,
             fraction?.let { s.formatter.percent(it.toDouble()) },
@@ -2233,7 +2238,7 @@ private fun ActiveDownloadCard(
                     }
                 // It will start itself the moment the signal is back, so the useful offer is the
                 // other one: hold it, and do not.
-                OfflineDownloads.Stage.Offline, OfflineDownloads.Stage.NoWifi ->
+                OfflineDownloads.Stage.Offline, OfflineDownloads.Stage.NoWifi, OfflineDownloads.Stage.Night ->
                     PrimaryAction(s.commonPause, TmIcons.Pause, onPause)
                 // Nothing to pause that has not started. Cancel below fills the row on its own.
                 OfflineDownloads.Stage.Queued -> Unit

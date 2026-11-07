@@ -67,6 +67,9 @@ private val PIP_ON_LEAVE = booleanPreferencesKey("pip_on_leave")
 // broken-history prune at launch, Clear history) would take this setting with them.
 private val RESUME_REWIND = longPreferencesKey("rewind_on_resume_ms")
 private val WIFI_ONLY = booleanPreferencesKey("wifi_only_downloads")
+private val NIGHT_DOWNLOADS = booleanPreferencesKey("night_downloads")
+private val NIGHT_DOWNLOAD_START = longPreferencesKey("night_download_start")
+private val NIGHT_DOWNLOAD_END = longPreferencesKey("night_download_end")
 private val SAVE_MOBILE_DATA = booleanPreferencesKey("save_mobile_data")
 private val REMOVE_AFTER_WATCHING = booleanPreferencesKey("remove_after_watching")
 private val LOW_STORAGE_MODE = booleanPreferencesKey("low_storage_mode")
@@ -1341,6 +1344,46 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     /** Read at the start of playback, where the flow's first emission has not arrived yet. */
     suspend fun wifiOnlyDownloadsNow(): Boolean = prefs.data.first()[WIFI_ONLY] ?: false
+
+    /**
+     * Night downloads (item 7c, v1.0.15): downloads the viewer starts run only inside the
+     * [NightWindow] between the stored start and end minutes of day. Off by default. The window
+     * never starts a download by itself: it only holds ones already asked for, and lets them go
+     * when the window opens.
+     */
+    val nightDownloads: Flow<Boolean> = read { it[NIGHT_DOWNLOADS] ?: false }
+
+    suspend fun setNightDownloads(value: Boolean) {
+        prefs.edit { it[NIGHT_DOWNLOADS] = value }
+    }
+
+    /** The window's start, a minute of day, cleaned the way [NightWindow] cleans it. */
+    val nightDownloadStart: Flow<Int> = read {
+        NightWindow.clean((it[NIGHT_DOWNLOAD_START] ?: NightWindow.DEFAULT_START.toLong()).toInt())
+    }
+
+    suspend fun setNightDownloadStart(minutes: Int) {
+        prefs.edit { it[NIGHT_DOWNLOAD_START] = NightWindow.clean(minutes).toLong() }
+    }
+
+    /** The window's end, a minute of day, cleaned the way [NightWindow] cleans it. */
+    val nightDownloadEnd: Flow<Int> = read {
+        NightWindow.clean((it[NIGHT_DOWNLOAD_END] ?: NightWindow.DEFAULT_END.toLong()).toInt())
+    }
+
+    suspend fun setNightDownloadEnd(minutes: Int) {
+        prefs.edit { it[NIGHT_DOWNLOAD_END] = NightWindow.clean(minutes).toLong() }
+    }
+
+    /** The whole night window at once, for the download service's watcher. */
+    suspend fun nightWindowNow(): Triple<Boolean, Int, Int> {
+        val stored = prefs.data.first()
+        return Triple(
+            stored[NIGHT_DOWNLOADS] ?: false,
+            NightWindow.clean((stored[NIGHT_DOWNLOAD_START] ?: NightWindow.DEFAULT_START.toLong()).toInt()),
+            NightWindow.clean((stored[NIGHT_DOWNLOAD_END] ?: NightWindow.DEFAULT_END.toLong()).toInt()),
+        )
+    }
 
     /**
      * "Save mobile data": on a metered connection a streamed video is fetched only a bounded

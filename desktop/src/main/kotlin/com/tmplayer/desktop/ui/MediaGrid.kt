@@ -1073,6 +1073,7 @@ internal fun Poster(
                         OfflineDownloads.Stage.Paused -> s.gridStagePaused
                         OfflineDownloads.Stage.Offline -> s.gridStageWaiting
                         OfflineDownloads.Stage.NoWifi -> s.gridStageNoWifi
+                        OfflineDownloads.Stage.Night -> s.gridStageNight
                         OfflineDownloads.Stage.Moving -> s.gridStageMoving
                         OfflineDownloads.Stage.Failed -> s.gridStageFailed
                     },

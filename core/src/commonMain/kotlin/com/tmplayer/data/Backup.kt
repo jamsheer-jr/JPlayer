@@ -200,6 +200,11 @@ object Backups {
         "min_size_bytes" to Kind.LONG,
         "new_video_alerts" to Kind.BOOL,
         "night_mode" to Kind.BOOL,
+        // Night downloads (item 7c, v1.0.15): the switch and the window's two ends, each a
+        // minute of day stored whole, so LONG like the other whole numbers here.
+        "night_downloads" to Kind.BOOL,
+        "night_download_start" to Kind.LONG,
+        "night_download_end" to Kind.LONG,
         "even_volume" to Kind.BOOL,
         "notify_downloads" to Kind.BOOL,
         "notify_episodes" to Kind.BOOL,

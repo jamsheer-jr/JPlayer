@@ -51,6 +51,13 @@ object OfflineDownloads {
          */
         NoWifi,
 
+        /**
+         * Held because night downloads are on and the night window has not opened yet (item 7c,
+         * v1.0.15). Waits for the window in exactly the way [Offline] waits for a signal: nothing
+         * the viewer did is undone, and the download resumes by itself when the window opens.
+         */
+        Night,
+
         /** Stopped by something that went wrong. Resumable in exactly the same way as paused. */
         Failed,
 

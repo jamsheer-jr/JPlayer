@@ -139,16 +139,31 @@ class DownloadService : Service() {
     private fun watchTheNetwork() {
         scope.launch {
             val television = FormFactor.isTv(applicationContext)
-            val wifiOnly = SettingsStore(applicationContext).wifiOnlyDownloads
+            val store = SettingsStore(applicationContext)
+            val wifiOnly = store.wifiOnlyDownloads
                 .map { MeteredPolicy.wifiOnlyInForce(it, television) }
+            // The night window (item 7c, v1.0.15) is a clock, not a signal: nothing announces
+            // its opening, so the watcher asks every half minute. The settings are read each
+            // time, so a window changed in Settings takes hold without a restart.
+            val nightHold = kotlinx.coroutines.flow.flow {
+                while (true) {
+                    val (on, start, end) = store.nightWindowNow()
+                    val now = java.util.Calendar.getInstance()
+                    val minute = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+                    emit(!NightWindow.allowed(on, minute, start, end))
+                    delay(NIGHT_CHECK_MS)
+                }
+            }
             combine(
                 NetworkMonitor.status,
                 NetworkMonitor.metered,
                 wifiOnly,
-            ) { status, metered, onlyOverWifi ->
+                nightHold,
+            ) { status, metered, onlyOverWifi, heldForNight ->
                 when {
                     status == NetworkStatus.Offline -> OfflineDownloads.Stage.Offline
                     onlyOverWifi && metered -> OfflineDownloads.Stage.NoWifi
+                    heldForNight -> OfflineDownloads.Stage.Night
                     else -> null
                 }
             }
@@ -344,7 +359,8 @@ class DownloadService : Service() {
     private fun releaseWhenUsable() {
         val held = OfflineDownloads.ordered
             .filter {
-                it.stage == OfflineDownloads.Stage.Offline || it.stage == OfflineDownloads.Stage.NoWifi
+                it.stage == OfflineDownloads.Stage.Offline || it.stage == OfflineDownloads.Stage.NoWifi ||
+                    it.stage == OfflineDownloads.Stage.Night
             }
             .sortedBy { it.order }
         if (held.isEmpty()) return
@@ -897,7 +913,8 @@ class DownloadService : Service() {
             return
         }
         val waitingOnTheWorld = OfflineDownloads.active.value.values.any {
-            it.stage == OfflineDownloads.Stage.Offline || it.stage == OfflineDownloads.Stage.NoWifi
+            it.stage == OfflineDownloads.Stage.Offline || it.stage == OfflineDownloads.Stage.NoWifi ||
+                it.stage == OfflineDownloads.Stage.Night
         }
         if (waitingOnTheWorld) {
             refresh()
@@ -1017,6 +1034,7 @@ class DownloadService : Service() {
                 OfflineDownloads.Stage.Paused -> L.downloadsPaused
                 OfflineDownloads.Stage.Offline -> L.downloadsWaitingConnection
                 OfflineDownloads.Stage.NoWifi -> L.downloadsWaitingWifi
+                OfflineDownloads.Stage.Night -> L.downloadsWaitingNight
                 OfflineDownloads.Stage.Moving ->
                     if (row.heldByPlayer) L.downloadsFinishesAfterPlayback else L.downloadsMovingIntoDownloads
                 OfflineDownloads.Stage.Failed -> continue
@@ -1099,6 +1117,7 @@ class DownloadService : Service() {
         val paused = rows.count { it.stage == OfflineDownloads.Stage.Paused }
         val offline = rows.count { it.stage == OfflineDownloads.Stage.Offline }
         val noWifi = rows.count { it.stage == OfflineDownloads.Stage.NoWifi }
+        val night = rows.count { it.stage == OfflineDownloads.Stage.Night }
         val moving = rows.count { it.stage == OfflineDownloads.Stage.Moving }
         val builder = builder().setOngoing(true).setGroup(GROUP).setGroupSummary(true)
 
@@ -1116,6 +1135,17 @@ class DownloadService : Service() {
         if (current == null) {
             // Nothing moving. Either the signal went, which the service deliberately stays alive
             // for, or it is on its way out and this is the last thing it will draw.
+            if (night > 0 && offline == 0 && noWifi == 0) {
+                // Held only by the clock (item 7c, v1.0.15): the service stays for the window
+                // the way it stays for a signal, and says which one it is waiting on.
+                return builder
+                    .setContentTitle(L.downloadsWaitingNight)
+                    .setContentText(L.notifyCarryOn)
+                    .setProgress(0, 0, false)
+                    .addAction(pauseAction())
+                    .addAction(cancelAction(rows.size))
+                    .build()
+            }
             if (offline > 0 || noWifi > 0) {
                 val forWifi = noWifi > offline
                 val held = maxOf(offline, noWifi)
@@ -1264,6 +1294,8 @@ class DownloadService : Service() {
     private fun Intent.fileId(): Int = getIntExtra(EXTRA_FILE_ID, EVERYTHING)
 
     companion object {
+        /** How often the night window watcher asks the clock (item 7c, v1.0.15). */
+        const val NIGHT_CHECK_MS = 30_000L
         const val ACTION_DOWNLOAD = "com.tmplayer.action.DOWNLOAD"
         const val ACTION_CANCEL = "com.tmplayer.action.CANCEL_DOWNLOAD"
         const val ACTION_PAUSE = "com.tmplayer.action.PAUSE_DOWNLOAD"

@@ -128,6 +128,7 @@ import com.tmplayer.data.DeviceQuirks
 import com.tmplayer.data.DiskInfo
 import com.tmplayer.data.DiskSpace
 import com.tmplayer.data.MeteredPolicy
+import com.tmplayer.data.NightWindow
 import com.tmplayer.data.Notice
 import com.tmplayer.data.OfflineDownloads
 import com.tmplayer.data.RestorePlan
@@ -329,6 +330,9 @@ fun SettingsScreen(
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
     val wifiOnly by settings.wifiOnlyDownloads.collectAsStateWithLifecycle(initialValue = false)
+    val nightDownloads by settings.nightDownloads.collectAsStateWithLifecycle(initialValue = false)
+    val nightStart by settings.nightDownloadStart.collectAsStateWithLifecycle(initialValue = NightWindow.DEFAULT_START)
+    val nightEnd by settings.nightDownloadEnd.collectAsStateWithLifecycle(initialValue = NightWindow.DEFAULT_END)
     val saveMobileData by settings.saveMobileData.collectAsStateWithLifecycle(initialValue = false)
     val trickplayOn by settings.trickplay.collectAsStateWithLifecycle(initialValue = true)
     val watchNextOn by settings.watchNext.collectAsStateWithLifecycle(initialValue = false)
@@ -1820,6 +1824,47 @@ fun SettingsScreen(
                             icon = TmIcons.Wifi,
                             checked = wifiOnly,
                             onToggle = { scope.launch { settings.setWifiOnlyDownloads(!wifiOnly) } },
+                        )
+                    }
+                }
+                // Night downloads (item 7c, v1.0.15): downloads the viewer starts wait for the
+                // night window, on a television as much as a phone (a TV downloads overnight
+                // just as well), so this row is offered on both. The window's ends step by the
+                // hour, the way the other steppers here step.
+                item {
+                    ToggleRow(
+                        title = s.settingsNightDownloads,
+                        subtitle = if (nightDownloads) s.settingsNightDownloadsOn else s.settingsNightDownloadsOff,
+                        icon = TmIcons.Clock,
+                        checked = nightDownloads,
+                        onToggle = { scope.launch { settings.setNightDownloads(!nightDownloads) } },
+                    )
+                }
+                if (nightDownloads) {
+                    item {
+                        StepperRow(
+                            title = s.settingsNightStart,
+                            subtitle = s.settingsNightStartDetail,
+                            value = nightClock(nightStart),
+                            icon = TmIcons.Clock,
+                            canDecrease = true,
+                            canIncrease = true,
+                            onStep = { direction ->
+                                scope.launch { settings.setNightDownloadStart(nightStart + direction * 60) }
+                            },
+                        )
+                    }
+                    item {
+                        StepperRow(
+                            title = s.settingsNightEnd,
+                            subtitle = s.settingsNightEndDetail,
+                            value = nightClock(nightEnd),
+                            icon = TmIcons.Clock,
+                            canDecrease = true,
+                            canIncrease = true,
+                            onStep = { direction ->
+                                scope.launch { settings.setNightDownloadEnd(nightEnd + direction * 60) }
+                            },
                         )
                     }
                 }
@@ -3442,6 +3487,12 @@ internal fun TickRow(label: String, checked: Boolean, onToggle: () -> Unit) {
  * greyed at the ends, because they are what says the row can be moved at all.
  */
 @Composable
+/** A minute of day as a clock reading, "23:00": the night window's ends (item 7c, v1.0.15). */
+private fun nightClock(minutes: Int): String {
+    val clean = NightWindow.clean(minutes)
+    return (clean / 60).toString().padStart(2, '0') + ":" + (clean % 60).toString().padStart(2, '0')
+}
+
 private fun StepperRow(
     title: String,
     subtitle: String,
