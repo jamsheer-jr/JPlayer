@@ -308,6 +308,22 @@ class GlobalSearchViewModel(
         }
     }
 
+    /**
+     * A deliberate fresh run of the words on screen (the phone search's pull to refresh):
+     * Telegram is asked again even though the same words were answered a moment ago, and the
+     * fresh answer takes the place of what is listed, the way a changed query's answer does.
+     * That is the opposite of [retry] and of a re-run from the viewer's own typing, which keep
+     * what is shown until their own answer lands and never let an empty first page take its
+     * place (see [start]'s preserve). The kept pages for these words go first, so the run
+     * cannot be answered out of the cache instead of by Telegram.
+     */
+    fun refresh() {
+        val now = _state.value
+        if (now.query.isEmpty) return
+        cache?.remove { it == keyOf(now.query, now.filters) }
+        start(now.query.text, settle = 0, force = true)
+    }
+
     /** After a failure: the same query again, without the wait. */
     fun retry() {
         val text = _state.value.query.text

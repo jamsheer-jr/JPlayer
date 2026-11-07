@@ -69,6 +69,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -100,6 +101,7 @@ import com.tmplayer.data.SearchQuality
 import com.tmplayer.data.SearchSort
 import com.tmplayer.ui.components.PhoneSheet
 import com.tmplayer.ui.components.Spinner
+import com.tmplayer.ui.components.TouchPullRefresh
 import com.tmplayer.ui.components.secondaryPress
 import com.tmplayer.ui.components.TmSecondaryButton
 import com.tmplayer.ui.i18n.LocalStrings
@@ -108,10 +110,12 @@ import com.tmplayer.ui.nav.BackHandler
 import com.tmplayer.ui.theme.FloatingTone
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.floatingBorder
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import com.tmplayer.ui.components.SlowAnswerNotice
 
 /**
@@ -127,7 +131,9 @@ import com.tmplayer.ui.components.SlowAnswerNotice
  * posted in; a tap opens it as a video's tile does.
  *
  * Back closes the keyboard first (the system does that), then the filter sheet, then the search.
- * There is no swipe down to close: the page is a list, and a list is swiped.
+ * There is no swipe down to close: the page is a list, and a list is swiped. A pull down on the
+ * list is the one swipe with a job of its own: it runs the search again fresh
+ * ([GlobalSearchViewModel.refresh]), on the typed results and on the page before typing alike.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -153,6 +159,8 @@ internal fun PhoneSearchScreen(
     onSort: (SearchSort) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
+    /** A pull down on the list: the search runs again fresh, Telegram asked anew. */
+    onRefresh: () -> Unit,
     onRemoveRecent: (String) -> Unit,
     /** Clears them all and hands back what was there, for the Undo. */
     onClearRecent: () -> List<String>,
@@ -199,9 +207,31 @@ internal fun PhoneSearchScreen(
     val briefs = remember(state.chats, chats) { state.chats + chats.associate { it.id to ChatBrief.of(it) } }
     val titleOf: (Long) -> String = { id -> briefs[id]?.title.orEmpty() }
 
+    // A pull down runs the search again fresh. The spinner stays for a short acknowledgement
+    // at least, and until the fresh run lands at most, the way a pulled page of the browser
+    // keeps its own (PhonePageFrame).
+    var pulling by remember { mutableStateOf(false) }
+    val runBusy by rememberUpdatedState(state.searching || state.stillSearching || state.settling)
+    LaunchedEffect(pulling) {
+        if (!pulling) return@LaunchedEffect
+        delay(PULL_ACK_MS)
+        withTimeoutOrNull(PULL_HOLD_MS) { snapshotFlow { runBusy }.first { busy -> !busy } }
+        pulling = false
+    }
+
     Box(Modifier.fillMaxSize().background(Tone.background)) {
         Column(Modifier.fillMaxSize().imePadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
+            TouchPullRefresh(
+                isRefreshing = pulling,
+                onRefresh = {
+                    if (!pulling) {
+                        pulling = true
+                        onRefresh()
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -257,6 +287,7 @@ internal fun PhoneSearchScreen(
             }
             // A long run of results is one hold away from its end.
             FastScroller(listState)
+            }
             }
 
             // The filters once there is something to filter, or a filter is on.
@@ -550,6 +581,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
             }
         }
     }
+    // The cam copies the Playback switch keeps out of these results, counted the way the
+    // chats count theirs: a plain line over the results, in the status line's own style.
+    if (state.camHidden > 0) {
+        item(key = "cam-hidden") { Note(LocalStrings.current.browseHiddenByCam(state.camHidden)) }
+    }
     val shown = state.shown
     when {
         // While the typing settles too, rather than a heading over nothing until Telegram is asked.
@@ -699,6 +735,12 @@ private fun Note(text: String, spinner: Boolean = false, action: (@Composable ()
         action?.invoke()
     }
 }
+
+/** How long a pull's spinner stays after the pull, as the acknowledgement of it. */
+private const val PULL_ACK_MS = 900L
+
+/** The longest the pull's spinner waits on a fresh run that says it is still going. */
+private const val PULL_HOLD_MS = 8_000L
 
 /** Videos to carry on with on an empty search: three is a glance, more is History. */
 private const val CONTINUE_SHOWN = 3

@@ -250,6 +250,51 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
+    fun `a pull refresh asks Telegram again for the same words, typing them again does not`() = runTest(dispatcher) {
+        val model = GlobalSearchViewModel(source, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        model.type("harbour")
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.shown.map { it.lead.messageId })
+        val before = asked.size
+        // The pull is the viewer asking for fresh answers: the same words go to Telegram again.
+        model.refresh()
+        advanceUntilIdle()
+        assertTrue(asked.size > before)
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.shown.map { it.lead.messageId })
+        assertFalse(model.state.value.busy)
+        // The snapshot rule for the viewer's own typing stands: the same words, asked for by
+        // typing or the search key, are not asked twice.
+        val afterRefresh = asked.size
+        model.type("harbour ")
+        model.submit("harbour")
+        advanceUntilIdle()
+        assertEquals(afterRefresh, asked.size)
+    }
+
+    @Test
+    fun `a pull refresh takes the fresh answer, even an empty one, where a re-run keeps what was shown`() = runTest(dispatcher) {
+        var answerEmpty = false
+        val flaky = VideoSearchSource { query, cursor, filters ->
+            if (answerEmpty) AllChatsPage(emptyList(), done) else source.page(query, cursor, filters)
+        }
+        val model = GlobalSearchViewModel(flaky, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        model.type("harbour")
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.groups.map { it.lead.messageId })
+        answerEmpty = true
+        // A re-run (Retry) keeps the shown cards when its first page comes back empty.
+        model.retry()
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L, 3L), model.state.value.groups.map { it.lead.messageId })
+        // The pull asks for fresh answers, so an empty fresh answer is the answer: the list
+        // takes it, as a changed query's empty answer does.
+        model.refresh()
+        advanceUntilIdle()
+        assertTrue(model.state.value.groups.isEmpty())
+        assertFalse(model.state.value.busy)
+    }
+
+    @Test
     fun `a new query still starts clean and an empty answer empties the list`() = runTest(dispatcher) {
         val model = GlobalSearchViewModel(source, known = { emptyList() }, work = dispatcher, settleMs = 0)
         model.type("harbour")

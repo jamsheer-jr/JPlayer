@@ -252,6 +252,7 @@ internal fun PhoneBrowse(
                 onSort = search::setSort,
                 onLoadMore = search::loadMore,
                 onRetry = search::retry,
+                onRefresh = search::refresh,
                 onRemoveRecent = { entry -> scope.launch { settings.removeRecentSearch(entry) } },
                 onClearRecent = {
                     val before = recent
