@@ -665,10 +665,12 @@ private fun Actions(
  * button are two faces of the one store and neither can disagree with the other. Focus
  * takes the focus fill on a television, as [HeroPill] does; under a finger it presses in
  * a little, as every button here does. A show's page draws the same pill beside its own
- * Play, wired to the show's Watch later switch, which writes the same store.
+ * Play, wired to the show's Watch later switch, which writes the same store. The Home
+ * banner draws it beside its own Play too (owner, v1.0.15), wired to the same store, so
+ * the pill is public: the app module's carousel composes it.
  */
 @Composable
-internal fun MyListPill(listed: Boolean, onClick: () -> Unit) {
+fun MyListPill(listed: Boolean, onClick: () -> Unit) {
     val s = LocalStrings.current
     val tv = !isTouch()
     val interactions = remember { MutableInteractionSource() }

@@ -54,6 +54,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -68,10 +69,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.data.FeaturedPick
 import com.tmplayer.data.HomeFeatured
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.SeriesShelf
+import com.tmplayer.data.SettingsStore
+import com.tmplayer.data.WatchLaterRecord
+import com.tmplayer.data.WatchLaterStore
 import com.tmplayer.ui.components.EdgeBackdrop
 import com.tmplayer.ui.components.BackdropSource
 import com.tmplayer.ui.components.isTouch
@@ -93,7 +98,7 @@ import kotlinx.coroutines.launch
  * The phone's featured carousel at the top of Home: the newest different films and shows in
  * the starred chats ([HomeFeatured]: ten pages, six of them films and four shows), one
  * full-bleed page each, swiped through. Only the
- * picture and the name move with a swipe: Play and Details stay put at the foot, acting on the page
+ * picture and the name move with a swipe: Play, My List and Details stay put at the foot, acting on the page
  * up, and the pages move on by themselves every [ADVANCE_MS]. Over the buttons the name (its
  * logo where TMDB has one), a line of facts and two lines of the overview ([FeaturedInfo]); under
  * them the dots ([CarouselDots]) say which page is up.
@@ -148,6 +153,45 @@ internal fun FeaturedCarousel(
         }
         val s = LocalStrings.current
         val count = picks.size
+        // My List on the banner itself (owner, v1.0.15): the one Watch later store, read and
+        // written here the way a video's own page reads and writes it (MediaDetailOpened), so
+        // the banner's pill, the detail page's pill and a show's page's pill are three faces of
+        // the one list and none can disagree with another. A show stands in it by its chat and
+        // key, a lone title by its own message, as the store's two key sets keep them.
+        val bannerContext = LocalContext.current
+        val laterStore = remember(bannerContext) { WatchLaterStore(bannerContext) }
+        val laterKeys by remember(laterStore) { laterStore.keys }.collectAsStateWithLifecycle(initialValue = emptySet())
+        val laterShows by remember(laterStore) { laterStore.showIds }.collectAsStateWithLifecycle(initialValue = emptySet())
+        val listedOf: (FeaturedPick) -> Boolean = { pick ->
+            val series = pick.series
+            if (series != null) {
+                WatchLaterRecord.showId(pick.item.chatId, series.key) in laterShows
+            } else {
+                SettingsStore.progressKey(pick.item.chatId, pick.item.messageId) in laterKeys
+            }
+        }
+        val toggleListed: (FeaturedPick) -> Unit = { pick ->
+            val series = pick.series
+            val item = pick.item
+            val chat = chatTitle(item.chatId)
+            val listed = listedOf(pick)
+            // On the app's scope, as the detail page's write runs: the carousel turning under
+            // the press must not take the write with it.
+            com.tmplayer.App.backgroundScope.launch {
+                runCatching {
+                    when {
+                        series != null && !listed -> laterStore.add(WatchLaterRecord.ofShow(series, chat, System.currentTimeMillis()))
+                        series != null -> laterStore.removeShow(item.chatId, series.key)
+                        !listed -> laterStore.add(WatchLaterRecord.of(item, chat, System.currentTimeMillis()))
+                        else -> laterStore.remove(item.chatId, item.messageId)
+                    }
+                }
+            }
+            com.tmplayer.ui.components.showMessage(
+                bannerContext,
+                if (listed) s.detailWatchLaterRemoved(series?.title ?: item.title) else s.detailWatchLaterAdded(series?.title ?: item.title),
+            )
+        }
         val latest by rememberUpdatedState(picks)
         // The page up, by key, so a carousel that refills stays on the page being looked at.
         var currentKey by remember { mutableStateOf(picks.first().key) }
@@ -232,6 +276,8 @@ internal fun FeaturedCarousel(
                 latest.getOrNull(pager.currentPage)?.let { pick ->
                     FeaturedControls(
                         pick, watch, chatTitle, onPlay, onDetails,
+                        listed = listedOf(pick),
+                        onMyList = { toggleListed(pick) },
                         wide = true,
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = start + HERO_START_EXTRA, bottom = WIDE_FOOT),
                     )
@@ -251,7 +297,11 @@ internal fun FeaturedCarousel(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     latest.getOrNull(pager.currentPage)?.let { pick ->
-                        FeaturedControls(pick, watch, chatTitle, onPlay, onDetails)
+                        FeaturedControls(
+                            pick, watch, chatTitle, onPlay, onDetails,
+                            listed = listedOf(pick),
+                            onMyList = { toggleListed(pick) },
+                        )
                     }
                     // Which page is up, under Play: a swipe turns the pages, so the dots are a mark only.
                     CarouselDots(count = count, current = pager.currentPage)
@@ -394,7 +444,9 @@ private fun FeaturedPage(
 }
 
 /**
- * Play and Details at the carousel's foot, for the page up; they stay put while the pages move.
+ * Play, My List and Details at the carousel's foot, for the page up; they stay put while the
+ * pages move. My List is the detail page's own pill, beside Play as the streaming apps set it
+ * (owner, v1.0.15), switching to its listed face while the page's title stands in Watch later.
  * Upright Play stretches across the foot; on its side ([wide]) it keeps its own width at the start.
  */
 @Composable
@@ -404,6 +456,8 @@ private fun FeaturedControls(
     chatTitle: (Long) -> String,
     onPlay: (MediaItem, String) -> Unit,
     onDetails: (FeaturedPick) -> Unit,
+    listed: Boolean,
+    onMyList: () -> Unit,
     wide: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -438,6 +492,7 @@ private fun FeaturedControls(
             stretch = !wide,
             modifier = if (wide) Modifier.warmUpOnIntent(playItem) else Modifier.weight(1f, fill = false).then(Modifier.warmUpOnIntent(playItem)),
         )
+        MyListPill(listed = listed, onClick = onMyList)
         com.tmplayer.ui.components.IconTip(s.detailOpenDetails) {
             Box(
                 Modifier
