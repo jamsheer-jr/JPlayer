@@ -60,6 +60,30 @@ class SameTitleTest {
     }
 
     @Test
+    fun `a detail opened in one chat gathers the copies the other chats hold`() {
+        // Owner, v1.0.14 (item 34): the same widening a Search opening arrives with.
+        val opened = video(1, 10, "Khalifa.mkv", caption = "Khalifa (2026)", date = 300)
+        val elsewhere = video(3, 12, "Khalifa 2026 2160p.mkv", date = 100)
+        val otherFilm = video(2, 11, "Night.Train.2019.1080p.mkv", date = 200)
+        // A same named trailer is no copy: the film evidence asks for about the same length.
+        val trailer = video(4, 13, "Khalifa.2026.Trailer.mkv", duration = 60)
+        val widened = SameTitle.withPoolCopies(opened, listOf(elsewhere, otherFilm, trailer))
+        assertEquals(setOf(10L, 12L), widened.versions.map { it.messageId }.toSet())
+        // Nothing more in the pool: the item stands exactly as opened.
+        assertEquals(opened, SameTitle.withPoolCopies(opened, listOf(otherFilm)))
+        assertEquals(opened, SameTitle.withPoolCopies(opened, emptyList()))
+    }
+
+    @Test
+    fun `an episode gathers its other encodes across chats, and no other episode`() {
+        val opened = video(1, 20, "Harbour.Notes.S01E02.720p.mkv")
+        val encode = video(2, 21, "Harbour Notes S01E02 1080p.mkv")
+        val next = video(2, 22, "Harbour.Notes.S01E03.1080p.mkv")
+        val widened = SameTitle.withPoolCopies(opened, listOf(encode, next))
+        assertEquals(setOf(20L, 21L), widened.versions.map { it.messageId }.toSet())
+    }
+
+    @Test
     fun `one online match is one tile whatever the names say`() {
         val entries = listOf(
             ShelfEntry.File(video(1, 1, "KLF_final_cut.mkv")),

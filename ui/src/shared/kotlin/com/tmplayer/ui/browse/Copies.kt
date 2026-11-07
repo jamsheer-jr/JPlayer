@@ -167,9 +167,19 @@ internal fun Versions(
     started: (MediaItem) -> Boolean = { false },
     hideCamCopies: Boolean = true,
 ) {
-    if (item.versions.size <= 1 || onPick == null) return
+    if (onPick == null) return
+    // Every copy of the title, whichever chat holds it (owner, v1.0.14): the list the
+    // page was opened from folded only its own items, so a page opened from inside one
+    // chat widened its versions from everything the app has listed, exactly as a Search
+    // or Home opening arrives with. Each row's chat name still comes from [copyChat]:
+    // the page's own chat by the handed over name, the rest where an earlier page
+    // offered them with one, and no name where none is known rather than a wrong one.
+    val full = remember(item.id, item.versions) {
+        com.tmplayer.data.SameTitle.withPoolCopies(item, com.tmplayer.online.KnownMedia.all())
+    }
+    if (full.versions.size <= 1) return
     // The same file posted twice is one choice, not two identical rows.
-    val allFiles = remember(item.versions) { VideoCopies.distinctFiles(item.versions) }
+    val allFiles = remember(full.versions) { VideoCopies.distinctFiles(full.versions) }
     if (allFiles.size <= 1) return
     val s = LocalStrings.current
     val files = remember(allFiles, hideCamCopies) {
@@ -185,12 +195,12 @@ internal fun Versions(
         )
         return
     }
-    var open by rememberSaveable(item.id) { mutableStateOf(false) }
-    val summary = remember(item, chatTitle, s) {
+    var open by rememberSaveable(full.id) { mutableStateOf(false) }
+    val summary = remember(full, chatTitle, s) {
         listOfNotNull(
-            copyHeading(item),
-            item.sizeBytes.takeIf { it > 0 && VideoCopies.heightOf(item) != null }?.let { s.formatter.size(it) },
-            copyChat(item, item, chatTitle)?.let { s.detailCopyFrom(it) },
+            copyHeading(full),
+            full.sizeBytes.takeIf { it > 0 && VideoCopies.heightOf(full) != null }?.let { s.formatter.size(it) },
+            copyChat(full, full, chatTitle)?.let { s.detailCopyFrom(it) },
         ).joinToString("  ·  ")
     }
     // A phone lists the copies in its bottom sheet, over the page, and a television on a page of
@@ -200,14 +210,14 @@ internal fun Versions(
     val list: @Composable (Boolean, androidx.compose.ui.focus.FocusRequester?) -> Unit = { withHeader, chosenFocus ->
         CopyChooser(
             header = withHeader,
-            item = item,
+            item = full,
             files = files,
             chatTitle = chatTitle,
             started = started,
             chosenFocus = chosenFocus,
             onChoose = { copy ->
                 open = false
-                if (copy.id != item.id) onPick(copy.asVersion(item))
+                if (copy.id != full.id) onPick(copy.asVersion(full))
             },
         )
     }
@@ -231,17 +241,17 @@ internal fun Versions(
         }
     }
     if ((sheet != null || tv) && open) {
-        val cover = rememberCover(item)
-        val wide = com.tmplayer.ui.online.rememberMeta(item, showOnly = true)?.wideUrl
-        val art = rememberArtItem(item)
-        val source = remember(item.id, art, cover, wide) {
+        val cover = rememberCover(full)
+        val wide = com.tmplayer.ui.online.rememberMeta(full, showOnly = true)?.wideUrl
+        val art = rememberArtItem(full)
+        val source = remember(full.id, art, cover, wide) {
             com.tmplayer.ui.components.BackdropSource(art.miniThumbnail, art.thumbnailFileId, cover, wide)
         }
         if (tv) {
             TvCopiesPage(
                 source = source,
-                title = SeriesShelf.tileTitle(item),
-                subtitle = copiesSubtitle(item, files, chatTitle, s),
+                title = SeriesShelf.tileTitle(full),
+                subtitle = copiesSubtitle(full, files, chatTitle, s),
                 onClose = { open = false },
                 list = { focus -> list(false, focus) },
             )
@@ -253,8 +263,8 @@ internal fun Versions(
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 CopiesHeader(
                     source = source,
-                    title = SeriesShelf.tileTitle(item),
-                    subtitle = copiesSubtitle(item, files, chatTitle, s),
+                    title = SeriesShelf.tileTitle(full),
+                    subtitle = copiesSubtitle(full, files, chatTitle, s),
                     onClose = { open = false },
                 )
                 Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) { list(false, null) }

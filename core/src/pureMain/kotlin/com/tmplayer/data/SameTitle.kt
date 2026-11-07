@@ -152,5 +152,38 @@ object SameTitle {
         return lead.copy(versions = sequenced.map { it.copy(versions = emptyList()).keptReads(it) }).keptReads(lead)
     }
 
+    /**
+     * [item] with every copy of it in [pool], whichever chat holds each (owner, v1.0.14):
+     * a detail page opened from inside one chat lists the same copies and versions a
+     * Search or Home opening does, where the list it was opened from folded only its own
+     * items. Item 18 did the same for a series' episodes; this is the film and episode
+     * copies side. The evidence is the shelves' and search's own: for a film, the same
+     * [filmKey] at about the same length ([sameLength]); for anything else, the same
+     * copy key ([SeriesShelf.sameVideoKey]). Found copies fold in one by one ([fold]),
+     * so the order and the lead are the settled ones, and the item comes back unchanged
+     * when the pool holds nothing more.
+     */
+    fun withPoolCopies(item: MediaItem, pool: List<MediaItem>): MediaItem {
+        if (pool.isEmpty()) return item
+        val film = filmKey(item)
+        val copyKey = if (film == null) SeriesShelf.sameVideoKey(item) else null
+        if (film == null && copyKey == null) return item
+        val held = copiesOf(item).mapTo(HashSet()) { it.id }
+        var widened = item
+        for (candidate in pool) {
+            if (candidate.id in held || candidate.extra != null) continue
+            val match = if (film != null) {
+                filmKey(candidate) == film && sameLength(candidate, item)
+            } else {
+                SeriesShelf.sameVideoKey(candidate) == copyKey
+            }
+            if (match) {
+                widened = fold(widened, candidate)
+                held += candidate.id
+            }
+        }
+        return widened
+    }
+
     private fun copiesOf(item: MediaItem): List<MediaItem> = item.versions.ifEmpty { listOf(item) }
 }
