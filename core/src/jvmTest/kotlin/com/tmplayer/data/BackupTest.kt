@@ -232,6 +232,31 @@ class BackupTest {
     }
 
     @Test
+    fun `collections are joined by name, never replaced, and counted on their own`() {
+        val mine = Collections.encode(listOf(VideoCollection("Mine", listOf("1_2"))))
+        val device = mapOf<String, Any>("collections" to mine)
+        val theirs = Collections.encode(
+            listOf(
+                VideoCollection("mine", listOf("3_4")),
+                VideoCollection("Theirs", listOf("5_6")),
+            ),
+        )
+        val file = backup(settings = mapOf("collections" to theirs))
+        val writes = Backups.settingsWrites(device, file)
+        assertEquals(
+            listOf(VideoCollection("Mine", listOf("1_2", "3_4")), VideoCollection("Theirs", listOf("5_6"))),
+            Collections.decode(writes["collections"] as String),
+        )
+        val plan = Backups.plan(file, device, emptyMap(), MetaSettings())
+        assertEquals(2, plan.collectionsAdded)
+        assertEquals(0, plan.settingsChanged)
+        assertTrue(BackupWords.restoreMessage(plan).contains(com.tmplayer.i18n.L.backupRestoreCollections(2)))
+        // A file with nothing new for the collections writes nothing for them.
+        assertFalse(Backups.settingsWrites(device, backup(settings = mapOf("collections" to mine))).containsKey("collections"))
+        assertEquals(0, Backups.plan(backup(settings = mapOf("collections" to mine)), device, emptyMap(), MetaSettings()).collectionsAdded)
+    }
+
+    @Test
     fun `a watched mark keeps the newer time and stays manual once manual`() {
         val mine = watchedRecord(1, at = 50, manual = true)
         val device = mapOf<String, Any>("w_${mine.key}" to mine.encode())

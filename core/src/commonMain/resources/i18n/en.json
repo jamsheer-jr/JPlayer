@@ -82,6 +82,7 @@
     "read_failed": "That file could not be read.",
     "restore": "Restore",
     "restore_bookmarks": "{count, plural, one {# bookmark is added.} other {# bookmarks are added.}}",
+    "restore_collections": "{count, plural, one {# collection is added, its titles joined with yours.} other {# collections are added, their titles joined with yours.}}",
     "restore_confirm": "Restore",
     "restore_detail": "Add a backup's lists and the places you stopped at to this device and take its settings.",
     "restore_favourites": "{count, plural, one {# chat gets its star.} other {# chats get their star.}}",

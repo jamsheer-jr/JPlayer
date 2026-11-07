@@ -137,6 +137,14 @@ internal fun ProfilePage(
     val openDetail: (MediaItem, String) -> Unit = { item, title -> detailStack = detailStack + (item to title) }
     // The New collection name prompt, the same sheet the popover opened (v1.0.13).
     var namingCollection by remember { mutableStateOf(false) }
+    // Back up and Restore on this page too (owner, v1.0.14, item 26): Settings, About's
+    // own actions over the same flows, their messages on this page's message line, and a
+    // picked file's plan confirmed here before anything is merged.
+    var restorePlan by remember { mutableStateOf<com.tmplayer.data.RestorePlan?>(null) }
+    val backupActions = com.tmplayer.ui.settings.rememberBackupActions(
+        onPlan = { restorePlan = it },
+        say = onMessage,
+    )
 
     LazyColumn(
         Modifier.fillMaxSize().background(Tone.background),
@@ -300,6 +308,22 @@ internal fun ProfilePage(
                 onClick = onSettings,
             )
         }
+        item(key = "backup") {
+            ProfileEntryRow(
+                icon = TmIcons.Download,
+                label = s.backupBackUp,
+                badge = null,
+                onClick = backupActions.backUp,
+            )
+        }
+        item(key = "restore") {
+            ProfileEntryRow(
+                icon = TmIcons.Refresh,
+                label = s.backupRestore,
+                badge = null,
+                onClick = backupActions.restore,
+            )
+        }
         if (updateVersion != null) {
             item(key = "update") {
                 ProfileEntryRow(
@@ -311,6 +335,21 @@ internal fun ProfilePage(
                 )
             }
         }
+    }
+
+    restorePlan?.let { plan ->
+        com.tmplayer.ui.components.TvConfirm(
+            title = s.backupRestoreTitle,
+            message = com.tmplayer.data.BackupWords.restoreMessage(plan),
+            detail = s.backupRestoreUntouched,
+            confirmLabel = s.backupRestoreConfirm,
+            destructive = false,
+            onConfirm = {
+                restorePlan = null
+                backupActions.apply(plan.backup)
+            },
+            onDismiss = { restorePlan = null },
+        )
     }
 
     continueMenu?.let { record ->

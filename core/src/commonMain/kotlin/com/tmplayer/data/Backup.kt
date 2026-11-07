@@ -73,6 +73,8 @@ data class RestorePlan(
     /** Settings, the poster switches among them, whose value on this device differs from the file's. */
     val settingsChanged: Int,
     val favouritesAdded: Int,
+    /** Collections in the backup that add a collection here, or titles to one here (owner, v1.0.14). */
+    val collectionsAdded: Int = 0,
     val watchedAdded: Int,
     /** Videos saved for later in the backup that this device's list lacks. */
     val watchLaterAdded: Int = 0,
@@ -84,7 +86,7 @@ data class RestorePlan(
     val searchesAdded: Int,
 ) {
     val nothing: Boolean
-        get() = settingsChanged + favouritesAdded + watchedAdded + watchLaterAdded + bookmarksAdded + resumeAdded + memoryAdded +
+        get() = settingsChanged + favouritesAdded + collectionsAdded + watchedAdded + watchLaterAdded + bookmarksAdded + resumeAdded + memoryAdded +
             searchesAdded == 0
 }
 
@@ -264,6 +266,13 @@ object Backups {
     )
 
     private const val FAVOURITES_KEY = "favorite_chats"
+
+    /**
+     * The collections' stored name. They travel inside the settings (they always have, and
+     * older files carry them nowhere else), but they are a list of the viewer's own, so the
+     * merge joins them like the other lists instead of replacing them like a setting.
+     */
+    private const val COLLECTIONS_KEY = "collections"
     private const val RECENT_SEARCHES = "recent_searches"
     private const val WATCHED_PREFIX = "w_"
     private const val WATCH_LATER_PREFIX = "l_"
@@ -542,6 +551,26 @@ object Backups {
 
     // ---- merging ----------------------------------------------------------------------------
 
+    /**
+     * [device]'s collections with [file]'s joined in: a collection is the same one by its
+     * name (the store's own rule, case apart), its titles the union of both, the device's
+     * first, and the store's caps hold on the way out.
+     */
+    private fun joinCollections(device: List<VideoCollection>, file: List<VideoCollection>): List<VideoCollection> {
+        val out = device.toMutableList()
+        for (incoming in file) {
+            val index = out.indexOfFirst { it.name.equals(incoming.name, ignoreCase = true) }
+            if (index < 0) {
+                if (out.size < Collections.MAX_COLLECTIONS) out += incoming
+            } else {
+                val current = out[index]
+                val keys = (current.keys + incoming.keys.filter { it !in current.keys }).take(Collections.MAX_KEYS)
+                if (keys != current.keys) out[index] = current.copy(keys = keys)
+            }
+        }
+        return out
+    }
+
     /** What [settingsWrites], [watchedWrites] and [metadataAfter] would change, counted. */
     fun plan(
         backup: Backup,
@@ -558,10 +587,17 @@ object Backups {
             backup.metadata["enabled"]?.let { it != metadata.enabled },
             backup.metadata["skip_times"]?.let { it != metadata.skipTimes },
         ).count { it == true }
+        val deviceCollections = Collections.decode(settings[COLLECTIONS_KEY] as? String)
+        val fileCollections = Collections.decode(backup.settings[COLLECTIONS_KEY] as? String)
         return RestorePlan(
             backup = backup,
-            settingsChanged = writes.keys.count { it in SETTINGS } + metaChanged,
+            // The collections write is counted as collections, not as a replaced setting.
+            settingsChanged = writes.keys.count { it in SETTINGS && it != COLLECTIONS_KEY } + metaChanged,
             favouritesAdded = (backup.favourites - favouritesBefore).size,
+            collectionsAdded = fileCollections.count { incoming ->
+                val mine = deviceCollections.firstOrNull { it.name.equals(incoming.name, ignoreCase = true) }
+                mine == null || incoming.keys.any { it !in mine.keys }
+            },
             watchedAdded = backup.watched.count { "$WATCHED_PREFIX${it.key}" !in watched },
             watchLaterAdded = backup.watchLater.count { "$WATCH_LATER_PREFIX${it.id}" !in watched },
             bookmarksAdded = bookmarksToAdd(bookmarks, backup).size,
@@ -578,7 +614,20 @@ object Backups {
      */
     fun settingsWrites(device: Map<String, Any>, backup: Backup): Map<String, Any> = buildMap {
         for ((name, value) in backup.settings) {
+            // The collections are joined below, never replaced like a setting.
+            if (name == COLLECTIONS_KEY) continue
             if (SETTINGS[name]?.let { fits(value, it) } == true && device[name] != value) put(name, value)
+        }
+
+        // The collections joined (owner, v1.0.14): this device's stay as they are, one the
+        // file has and this device lacks is added, and one both have gains the titles it
+        // lacks, this device's order first. Read from the settings the value travels in,
+        // through the store's own decode, so a damaged line loses only itself.
+        val deviceCollections = Collections.decode(device[COLLECTIONS_KEY] as? String)
+        val fileCollections = Collections.decode(backup.settings[COLLECTIONS_KEY] as? String)
+        if (fileCollections.isNotEmpty()) {
+            val joined = joinCollections(deviceCollections, fileCollections)
+            if (joined != deviceCollections) put(COLLECTIONS_KEY, Collections.encode(joined))
         }
 
         val favourites = favouritesOf(device)

@@ -63,6 +63,7 @@ object BackupWords {
             if (plan.nothing) add(L.backupRestoreNothing)
             if (plan.settingsChanged > 0) add(L.backupRestoreSettings(plan.settingsChanged))
             if (plan.favouritesAdded > 0) add(L.backupRestoreFavourites(plan.favouritesAdded))
+            if (plan.collectionsAdded > 0) add(L.backupRestoreCollections(plan.collectionsAdded))
             if (plan.watchedAdded > 0) add(L.backupRestoreWatched(plan.watchedAdded))
             if (plan.watchLaterAdded > 0) add(L.backupRestoreWatchLater(plan.watchLaterAdded))
             if (plan.bookmarksAdded > 0) add(L.backupRestoreBookmarks(plan.bookmarksAdded))
