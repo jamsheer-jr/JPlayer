@@ -193,6 +193,51 @@ class TmdbApi(
         }
 
     /**
+     * One person by name, for a cast member whose extras carry no TMDB id of their own (kept
+     * from before ids were read, or another provider's cast): the candidates in TMDB's order,
+     * as their ids and names, and the caller takes the one whose name matches exactly.
+     */
+    suspend fun searchPerson(key: String, name: String, language: String): MetaReply<List<Pair<String, String>>> =
+        get(key, "search/person", "query=${enc(name)}&include_adult=false&language=$language") { json ->
+            objects(json.optJSONArray("results")).mapNotNull { entry ->
+                val id = entry.optInt("id").takeIf { it > 0 }?.toString() ?: return@mapNotNull null
+                val found = entry.optString("name").trim()
+                if (found.isBlank()) null else id to found
+            }
+        }
+
+    /**
+     * A person's whole TMDB filmography in one call: their combined credits, acting and crew,
+     * films and shows together, tidied by [PersonFilmography.tidy]. Reading is garbage safe:
+     * an entry that is neither a film nor a show, has no usable id, or names no title is left
+     * out and the rest still read.
+     */
+    suspend fun personCredits(key: String, personId: String, language: String): MetaReply<List<PersonCredit>> =
+        get(key, "person/$personId/combined_credits", "language=$language") { json ->
+            fun credits(name: String, role: (JSONObject) -> String): List<PersonCredit> =
+                objects(json.optJSONArray(name)).mapNotNull { entry ->
+                    val film = when (entry.optString("media_type")) {
+                        "movie" -> true
+                        "tv" -> false
+                        else -> return@mapNotNull null
+                    }
+                    val id = entry.optInt("id").takeIf { it > 0 }?.toString() ?: return@mapNotNull null
+                    val title = entry.optString(if (film) "title" else "name").trim()
+                    if (title.isBlank()) return@mapNotNull null
+                    PersonCredit(
+                        ref = MetaRef(MetaProvider.Tmdb, if (film) MetaKind.Film else MetaKind.Show, id, title),
+                        year = yearOf(if (film) entry.optString("release_date") else entry.optString("first_air_date")),
+                        role = role(entry).trim(),
+                        posterUrl = image(entry, "poster_path", POSTER_SIZE),
+                    )
+                }
+            PersonFilmography.tidy(
+                credits("cast") { it.optString("character") },
+                credits("crew") { it.optString("job") },
+            )
+        }
+
+    /**
      * The detail page's extras in one call: [MetaExtras] from the title's own page with its credits,
      * videos, age ratings and recommendations appended (and similar titles, for when nobody has
      * recommended any). Videos in the UI language and English, and those with no language.
@@ -233,7 +278,7 @@ class TmdbApi(
                 } else {
                     objects(person.optJSONArray("roles")).maxByOrNull { it.optInt("episode_count") }?.optString("character").orEmpty()
                 }
-                MetaPerson(person.optString("name"), role.trim(), image(person, "profile_path", PROFILE_SIZE))
+                MetaPerson(person.optString("name"), role.trim(), image(person, "profile_path", PROFILE_SIZE), person.optInt("id").takeIf { it > 0 }?.toString())
             }
             .filter { it.name.isNotBlank() }
         val directors = if (film) {

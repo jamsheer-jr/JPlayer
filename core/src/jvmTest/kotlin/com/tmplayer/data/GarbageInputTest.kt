@@ -384,6 +384,8 @@ class GarbageInputTest {
                     tmdb.extras("k", true, "1", "en", "GB")
                     tmdb.extras("k", false, "1", "en", "GB")
                     tmdb.trending("k", "en")
+                    tmdb.personCredits("k", "1", "en")
+                    tmdb.searchPerson("k", "q", "en")
                 }
             }
             val maze = TvMazeApi(http, limiter, "t")

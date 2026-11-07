@@ -738,6 +738,70 @@ class OnlineMetadata(
 
     private val cardScores = LruMap<String, CardScore>(CARD_SCORE_ENTRIES)
 
+    /** Filmographies asked for this run, by person id and language: [personFilmography]. */
+    private val filmographyMemory = LruMap<String, List<PersonCredit>>(EXTRAS_MEMORY_ENTRIES)
+
+    /**
+     * A person's whole TMDB filmography (owner, v1.0.15, item 17), for their page: one
+     * combined credits call, kept in memory for the run. The person is found by the TMDB id
+     * their cast entry carries; without one (an answer kept from before ids were read, or
+     * another provider's cast) TMDB is searched by name and only an exact name match is
+     * taken, since a like-named stranger's credits would be a worse page than none. Null
+     * while lookups are off, when TMDB cannot be asked, or when TMDB has no such person:
+     * the page then keeps its in-chats list alone.
+     */
+    suspend fun personFilmography(person: MetaPerson): List<PersonCredit>? {
+        val s = store.now
+        if (!s.enabled || !tmdbUsable(s)) return null
+        if (paused(MetaProvider.Tmdb)) return null
+        val key = activeKey(s)
+        var id = person.tmdbId?.takeIf { it.isNotBlank() && it.all(Char::isDigit) }
+        if (id == null) {
+            val name = person.name.trim()
+            if (name.isEmpty()) return null
+            val reply = retrying { tmdb.searchPerson(key, name, tmdbLanguage()) }
+            trouble(MetaProvider.Tmdb, reply, key)?.let { return null }
+            id = (reply as MetaReply.Ok).value.firstOrNull { MetaMatch.exact(name, listOf(it.second)) }?.first ?: return null
+        }
+        val lang = tmdbLanguage()
+        val cacheKey = listOf("person", id, lang).joinToString("|")
+        filmographyMemory[cacheKey]?.let { return it }
+        return lockFor(cacheKey).withLock {
+            filmographyMemory[cacheKey]?.let { return@withLock it }
+            if (paused(MetaProvider.Tmdb)) return@withLock null
+            val reply = retrying { tmdb.personCredits(key, id, lang) }
+            trouble(MetaProvider.Tmdb, reply, key)?.let { return@withLock null }
+            val credits = (reply as MetaReply.Ok).value
+            filmographyMemory[cacheKey] = credits
+            credits
+        }
+    }
+
+    /**
+     * The titles among [items] whose match is already known, one per title (a show at its
+     * earliest episode), from the answers kept in memory or on the disk: how a person's page
+     * marks which of their credits the viewer has ([PersonFilmography.mark]), as [moreLikeThis]
+     * matches its own. No new lookups; run it off the main thread.
+     */
+    fun knownTitles(items: Collection<MediaItem>): List<KnownTitle> {
+        if (items.isEmpty() || !store.now.enabled) return emptyList()
+        val lang = tmdbLanguage()
+        val asked = HashMap<String, MetaInfo?>()
+        val best = LinkedHashMap<String, Pair<KnownTitle, Int>>()
+        for (item in items) {
+            val full = item.metaQuery ?: continue
+            val show = full.showOnly()
+            val cacheKey = show.cacheKey(lang)
+            val info = if (cacheKey in asked) asked[cacheKey] else cachedMatch(show).also { asked[cacheKey] = it }
+            info ?: continue
+            val match = MetaRef.matchKey(info.provider, info.kind, info.id)
+            val order = (full.season ?: 0) * 10_000 + (full.episode ?: 0)
+            val held = best[match]
+            if (held == null || order < held.second) best[match] = KnownTitle(item, info) to order
+        }
+        return best.values.map { it.first }
+    }
+
     private fun rememberedExtras(key: String, info: MetaInfo): MetaExtras? {
         extrasMemory[key]?.let { return it }
         val stored = cache.extras(key)?.withProviderScore(info.provider) ?: return null
@@ -1162,6 +1226,7 @@ class OnlineMetadata(
         cache.purge()
         memory.clear()
         extrasMemory.clear()
+        filmographyMemory.clear()
         seasonMemory.clear()
         logoMemory.clear()
         runtimeVerdicts.clear()

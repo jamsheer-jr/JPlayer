@@ -12,6 +12,12 @@ data class MetaPerson(
     val name: String,
     val role: String = "",
     val photoUrl: String? = null,
+    /**
+     * The person's own TMDB id, where the cast came from TMDB: how their page asks TMDB for
+     * their full credits (see [PersonFilmography]). Null for the other providers' casts, and
+     * for answers kept from before it was read, where the page falls back to a name search.
+     */
+    val tmdbId: String? = null,
 )
 
 /** A trailer on YouTube, the only site it is opened from. [key] is YouTube's video id. */
@@ -116,7 +122,7 @@ data class MetaExtras(
         .put("certification", certification.orEmpty())
         .put("directors", JSONArray(directors))
         .put("creators", JSONArray(creators))
-        .put("cast", JSONArray(cast.map { JSONObject().put("name", it.name).put("role", it.role).put("photo", it.photoUrl.orEmpty()) }))
+        .put("cast", JSONArray(cast.map { JSONObject().put("name", it.name).put("role", it.role).put("photo", it.photoUrl.orEmpty()).put("tmdb", it.tmdbId.orEmpty()) }))
         .put("trailer", trailer?.key.orEmpty())
         .put(
             "similar",
@@ -158,7 +164,7 @@ data class MetaExtras(
                 certification = json.optString("certification").ifBlank { null },
                 directors = strings("directors"),
                 creators = strings("creators"),
-                cast = objects("cast").map { MetaPerson(it.optString("name"), it.optString("role"), it.optString("photo").ifBlank { null }) },
+                cast = objects("cast").map { MetaPerson(it.optString("name"), it.optString("role"), it.optString("photo").ifBlank { null }, it.optString("tmdb").ifBlank { null }) },
                 trailer = json.optString("trailer").ifBlank { null }?.let { MetaTrailer(it) },
                 similar = objects("similar").mapNotNull {
                     runCatching {
