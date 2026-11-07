@@ -627,6 +627,17 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         else listOf(ViewerProfile(ViewerProfiles.DEFAULT_ID, "")) + stored
     }
 
+    /** The active profile itself: its stored line, or the unnamed default before it has one. */
+    val activeProfile: Flow<ViewerProfile> = read { prefs ->
+        val id = prefs[ACTIVE_PROFILE] ?: ViewerProfiles.DEFAULT_ID
+        ViewerProfiles.find(ViewerProfiles.decode(prefs[VIEWER_PROFILES]), id)
+            ?: ViewerProfile(ViewerProfiles.DEFAULT_ID, "")
+    }
+
+    /** Whether the active profile is a Simple one (item 7g), read off the disk. */
+    suspend fun simpleProfileActiveNow(): Boolean =
+        ViewerProfiles.find(viewerProfilesNow(), activeProfileIdNow())?.simple == true
+
     suspend fun viewerProfilesNow(): List<ViewerProfile> =
         ViewerProfiles.decode(prefs.data.first()[VIEWER_PROFILES])
 
@@ -1414,17 +1425,36 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         prefs.edit { it[HOME_CAROUSEL] = value }
     }
 
-    /** Which rows Home shows ([HomeLayout]); every row on by default. */
-    val homeLayout: Flow<HomeLayout> = read {
-        HomeLayout.of(
-            carousel = it[HOME_CAROUSEL],
-            continueWatching = it[HOME_CONTINUE],
-            recentlyAdded = it[HOME_RECENT],
-            starredRows = it[HOME_STARRED_ROWS],
-            catalogRows = it[HOME_CATALOG],
-            hiddenCatalog = HomeLayout.groupsOf(it[HOME_HIDDEN_CATALOG]).toSet(),
-            catalogOrder = HomeLayout.groupsOf(it[HOME_CATALOG_ORDER]),
-        )
+    /**
+     * Which rows Home shows ([HomeLayout]); every row on by default.
+     *
+     * While a Simple profile is active (item 7g) the layout is the clean form whatever the
+     * switches say: no banner (the carousel flag is what the banner hangs on), no Recently
+     * added, no starred or catalog rows, just the profile's own Continue watching. The stored
+     * switches are untouched, so the full profile's Home is exactly as it was on return.
+     */
+    val homeLayout: Flow<HomeLayout> = read { prefs ->
+        val activeId = prefs[ACTIVE_PROFILE] ?: ViewerProfiles.DEFAULT_ID
+        val simple = ViewerProfiles.find(ViewerProfiles.decode(prefs[VIEWER_PROFILES]), activeId)?.simple == true
+        if (simple) {
+            HomeLayout(
+                carousel = false,
+                continueWatching = true,
+                recentlyAdded = false,
+                starredRows = false,
+                catalogRows = false,
+            )
+        } else {
+            HomeLayout.of(
+                carousel = prefs[HOME_CAROUSEL],
+                continueWatching = prefs[HOME_CONTINUE],
+                recentlyAdded = prefs[HOME_RECENT],
+                starredRows = prefs[HOME_STARRED_ROWS],
+                catalogRows = prefs[HOME_CATALOG],
+                hiddenCatalog = HomeLayout.groupsOf(prefs[HOME_HIDDEN_CATALOG]).toSet(),
+                catalogOrder = HomeLayout.groupsOf(prefs[HOME_CATALOG_ORDER]),
+            )
+        }
     }
 
     suspend fun setHomeHiddenCatalog(groups: Set<String>) {

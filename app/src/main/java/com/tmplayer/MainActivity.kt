@@ -1882,6 +1882,9 @@ private fun Root() {
         // not repeat that chat's own row as a row of its own would.
         // Null until the setting is read, so no row that is off is fetched for the first frame.
         val homeLayout by remember { settings.homeLayout }.collectAsStateWithLifecycle(initialValue = null)
+        // The active viewer profile (v1.0.15, item 1): a Simple one (item 7g) closes Settings
+        // wherever it is asked for, below in openSettings.
+        val activeProfile by remember { settings.activeProfile }.collectAsStateWithLifecycle(initialValue = null)
         val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
         val hideShortVideos by remember { settings.hideShortVideos }.collectAsStateWithLifecycle(initialValue = true)
         val homeRows = rememberHomeRows(
@@ -2292,6 +2295,13 @@ private fun Root() {
                     if (settingsCameFrom is Screen.Chats) railReturn = com.tmplayer.ui.browse.RailReturn.Profile
                     if (tvBar && settingsCameFrom is Screen.Downloads) tvBarHold++
                     screen = settingsCameFrom
+                }
+                // A Simple profile never reaches Settings (v1.0.15, item 7g): whatever asked
+                // for it, a menu, the Profile page's rows or a restored screen, lands on the
+                // Profile page instead, whose switcher is the way back to a full profile.
+                if (activeProfile?.simple == true) {
+                    LaunchedEffect(Unit) { openProfile() }
+                    return@screens
                 }
                 BackHandler(onBack = leaveSettings)
                 val lock = appLock

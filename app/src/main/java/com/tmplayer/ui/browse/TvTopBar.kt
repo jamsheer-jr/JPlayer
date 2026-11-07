@@ -32,10 +32,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,10 +62,16 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.tmplayer.data.SettingsStore
+import com.tmplayer.data.ViewerProfile
+import com.tmplayer.data.ViewerProfiles
 import com.tmplayer.ui.components.MenuAction
 import com.tmplayer.ui.components.TvMenu
 import com.tmplayer.ui.i18n.LocalStrings
 import com.tmplayer.ui.icons.TmIcons
+import com.tmplayer.ui.lock.PinPad
+import com.tmplayer.ui.lock.PinPurpose
+import kotlinx.coroutines.launch
 import com.tmplayer.ui.theme.Motion
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
@@ -145,6 +154,18 @@ internal fun TvTopBar(
 ) {
     val s = LocalStrings.current
     var profileOpen by remember { mutableStateOf(false) }
+    // Viewer profiles (v1.0.15, item 1): the television's switcher lives in this same
+    // account menu, under its own rows, so the bar's focus order and the menu's first rows
+    // are exactly as they were. The store is read here, as the phone's Profile page reads
+    // it, rather than threaded through every caller of the bar.
+    val profileContext = LocalContext.current
+    val profileSettings = remember(profileContext) { SettingsStore(profileContext) }
+    val profiles by profileSettings.allProfiles.collectAsState(initial = emptyList())
+    val activeProfileId by profileSettings.activeProfileId.collectAsState(initial = ViewerProfiles.DEFAULT_ID)
+    val profilePinIds by profileSettings.profilePinIds.collectAsState(initial = emptySet())
+    var pinForProfile by remember { mutableStateOf<ViewerProfile?>(null) }
+    val profileScope = rememberCoroutineScope()
+    val activeSimple = profiles.firstOrNull { it.id == activeProfileId }?.simple == true
     val ground = Tone.background
     val homeFocus = remember { FocusRequester() }
     val chatsFocus = remember { FocusRequester() }
@@ -248,12 +269,57 @@ internal fun TvTopBar(
                 add(MenuAction(s.profileWatched, TmIcons.Check, detail = nav.watchedCount.takeIf { it > 0 }?.toString(), onSelect = go { nav.onHistory(HistoryTab.Watched) }))
                 add(MenuAction(s.browseTabWatchLater, TmIcons.Clock, onSelect = go { nav.onHistory(HistoryTab.WatchLater) }))
                 // Settings, with the account at its top and Sign out at its foot, as on the phone.
-                add(MenuAction(s.navSettings, TmIcons.Settings, onSelect = go(nav.onSettings)))
+                // A Simple profile has none (item 7g): its row is not drawn here either.
+                if (!activeSimple) add(MenuAction(s.navSettings, TmIcons.Settings, onSelect = go(nav.onSettings)))
                 // Home and the chat list fetch again from here: Home also refreshes itself when
                 // the app comes back after a while (MainActivity).
                 if (onRefresh != null) add(MenuAction(s.commonRefresh, TmIcons.Refresh, onSelect = { profileOpen = false; onRefresh() }))
                 nav.updateVersion?.let { version -> add(MenuAction(s.navUpdate, TmIcons.Refresh, detail = version, onSelect = go(nav.onUpdate))) }
+                // The viewer profiles, last in the menu: one row each, the active one marked,
+                // a PIN profile asking for its PIN before the switch (item 8e). Rows are only
+                // added once a second profile exists, so a one profile install's menu is
+                // unchanged, focus order included.
+                if (profiles.size > 1) {
+                    for (profile in profiles) {
+                        val name = profile.name.ifBlank { s.profileDefaultName }
+                        add(
+                            MenuAction(
+                                label = name,
+                                icon = TmIcons.Account,
+                                detail = when {
+                                    profile.id == activeProfileId -> s.profileCurrent
+                                    profile.id in profilePinIds -> s.lockEnterPin
+                                    profile.simple -> s.profileSimple
+                                    else -> null
+                                },
+                                onSelect = go {
+                                    when {
+                                        profile.id == activeProfileId -> Unit
+                                        profile.id in profilePinIds -> pinForProfile = profile
+                                        else -> profileScope.launch { profileSettings.setActiveProfile(profile.id) }
+                                    }
+                                },
+                            ),
+                        )
+                    }
+                }
             },
+        )
+    }
+
+    pinForProfile?.let { profile ->
+        PinPad(
+            settings = profileSettings,
+            purpose = PinPurpose.Check,
+            title = s.lockEnterPin,
+            showForgot = false,
+            profileCheck = { pin -> profileSettings.checkProfilePin(profile.id, pin) },
+            profileAttempts = { profileSettings.profilePinAttemptsNow(profile.id) },
+            onDone = {
+                pinForProfile = null
+                profileScope.launch { profileSettings.setActiveProfile(profile.id) }
+            },
+            onCancel = { pinForProfile = null },
         )
     }
 }

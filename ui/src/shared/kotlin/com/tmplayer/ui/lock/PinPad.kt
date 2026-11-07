@@ -110,6 +110,15 @@ fun PinPad(
     showForgot: Boolean = purpose == PinPurpose.Check,
     /** The app's mark and name over the lock: the pad that stands in for the whole app at its opening. */
     brand: Boolean = false,
+    /**
+     * Checks a typed PIN against a viewer profile's PIN instead of the app lock's
+     * (v1.0.15, item 8e), with that profile's own wrong guess count beside it:
+     * [SettingsStore.checkProfilePin] and [SettingsStore.profilePinAttemptsNow] bound to the
+     * profile. Null, the pad checks the app lock's PIN, as it always has. The forgotten PIN
+     * line is the app lock's own story, so it is not shown for a profile's pad.
+     */
+    profileCheck: (suspend (String) -> PinCheck)? = null,
+    profileAttempts: (suspend () -> PinAttempts)? = null,
 ) {
     val s = LocalStrings.current
     val scope = rememberCoroutineScope()
@@ -127,7 +136,9 @@ fun PinPad(
     // A wait earned before this pad opened is still a wait.
     LaunchedEffect(purpose) {
         if (purpose != PinPurpose.Check) return@LaunchedEffect
-        val attempts = runCatching { settings.pinAttemptsNow() }.getOrDefault(PinAttempts())
+        val attempts = runCatching {
+            profileAttempts?.invoke() ?: settings.pinAttemptsNow()
+        }.getOrDefault(PinAttempts())
         if (attempts.waitMs(PinClock.now()) > 0) waitUntil = attempts.waitUntil
     }
     // The countdown, a second at a time, and the keys back once it runs out.
@@ -166,7 +177,9 @@ fun PinPad(
                 busy = true
                 scope.launch {
                     // The hash is deliberately slow; off the thread drawing the keys.
-                    val verdict = withContext(Dispatchers.Default) { settings.checkPin(pin) }
+                    val verdict = withContext(Dispatchers.Default) {
+                        profileCheck?.invoke(pin) ?: settings.checkPin(pin)
+                    }
                     busy = false
                     entered = ""
                     when (verdict) {

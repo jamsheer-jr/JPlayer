@@ -3,6 +3,7 @@ package com.tmplayer.ui.browse
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.material3.MaterialTheme as M3MaterialTheme
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,8 +56,12 @@ import com.tmplayer.data.MediaItem
 import com.tmplayer.data.ResumeRecord
 import com.tmplayer.data.SettingsStore
 import com.tmplayer.data.VideoCollection
+import com.tmplayer.data.ViewerProfile
+import com.tmplayer.data.ViewerProfiles
 import com.tmplayer.data.WatchLaterRecord
 import com.tmplayer.data.WatchedRecord
+import com.tmplayer.ui.lock.PinPad
+import com.tmplayer.ui.lock.PinPurpose
 import com.tmplayer.ui.components.GeneratedCover
 import com.tmplayer.ui.components.LocalBottomChrome
 import com.tmplayer.ui.components.MediaArt
@@ -143,6 +149,28 @@ internal fun ProfilePage(
     val openDetail: (MediaItem, String) -> Unit = { item, title -> details.open(item to title) }
     // The New collection name prompt, the same sheet the popover opened (v1.0.13).
     var namingCollection by remember { mutableStateOf(false) }
+    // Viewer profiles (v1.0.15, items 1, 7g and 8e): the switcher under the account header.
+    // Every list on this page already reads the active profile's records, so a switch redraws
+    // the page as the picked viewer; the sheets and pads below are this section's own.
+    val profiles by settings.allProfiles.collectAsState(initial = emptyList())
+    val activeProfileId by settings.activeProfileId.collectAsState(initial = ViewerProfiles.DEFAULT_ID)
+    val profilePinIds by settings.profilePinIds.collectAsState(initial = emptySet())
+    val watchedStore = remember(context) { com.tmplayer.data.WatchedStore(context) }
+    var profileMenu by remember { mutableStateOf<ViewerProfile?>(null) }
+    var pinForProfile by remember { mutableStateOf<ViewerProfile?>(null) }
+    var choosePinFor by remember { mutableStateOf<ViewerProfile?>(null) }
+    var namingProfile by remember { mutableStateOf(false) }
+    var renamingProfile by remember { mutableStateOf<ViewerProfile?>(null) }
+    var deletingProfile by remember { mutableStateOf<ViewerProfile?>(null) }
+    val activeSimple = profiles.firstOrNull { it.id == activeProfileId }?.simple == true
+    // Switching into a PIN profile asks for its PIN first (item 8e); the pad is below.
+    val switchToProfile: (ViewerProfile) -> Unit = { profile ->
+        when {
+            profile.id == activeProfileId -> profileMenu = profile
+            profile.id in profilePinIds -> pinForProfile = profile
+            else -> scope.launch { settings.setActiveProfile(profile.id) }
+        }
+    }
     // Back up and Restore on this page too (owner, v1.0.14, item 26): Settings, About's
     // own actions over the same flows, their messages on this page's message line, and a
     // picked file's plan confirmed here before anything is merged.
@@ -164,6 +192,38 @@ internal fun ProfilePage(
     ) {
         item(key = "account") {
             ProfileAccountHeader(account, onAccount)
+        }
+        item(key = "profiles-heading") {
+            ProfileHeading(s.profileProfiles)
+        }
+        item(key = "profiles") {
+            Column {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    items(profiles, key = { "p-${it.id}" }) { profile ->
+                        ProfileProfileChip(
+                            profile = profile,
+                            fallbackName = s.profileDefaultName,
+                            active = profile.id == activeProfileId,
+                            onClick = { switchToProfile(profile) },
+                            onLongClick = { profileMenu = profile },
+                        )
+                    }
+                    if (ViewerProfiles.canAdd(profiles)) {
+                        item(key = "p-add") {
+                            ProfileAddChip(label = s.profileAdd, onClick = { namingProfile = true })
+                        }
+                    }
+                }
+                M3Text(
+                    s.profileProfilesDetail,
+                    style = M3MaterialTheme.typography.bodyMedium,
+                    color = Tone.muted,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                )
+            }
         }
         item(key = "downloads") {
             ProfileWideCard(
@@ -312,13 +372,17 @@ internal fun ProfilePage(
                 onClick = { onHistory(HistoryTab.Continue) },
             )
         }
-        item(key = "settings") {
-            ProfileEntryRow(
-                icon = TmIcons.Settings,
-                label = s.navSettings,
-                badge = null,
-                onClick = onSettings,
-            )
+        // A Simple profile has no Settings (item 7g): the row is not drawn, and the way back
+        // is the profile switcher above, which stands on this page itself.
+        if (!activeSimple) {
+            item(key = "settings") {
+                ProfileEntryRow(
+                    icon = TmIcons.Settings,
+                    label = s.navSettings,
+                    badge = null,
+                    onClick = onSettings,
+                )
+            }
         }
         item(key = "backup") {
             ProfileEntryRow(
@@ -460,6 +524,157 @@ internal fun ProfilePage(
             onClose = { namingCollection = false },
             hint = s.detailCollectionName,
             maxLength = com.tmplayer.data.Collections.MAX_NAME,
+        )
+    }
+
+    profileMenu?.let { profile ->
+        val displayName = profile.name.ifBlank { s.profileDefaultName }
+        TvMenu(
+            title = displayName,
+            subtitle = when {
+                profile.id == activeProfileId -> s.profileCurrent
+                profile.simple -> s.profileSimple
+                else -> null
+            },
+            onDismiss = { profileMenu = null },
+            actions = buildList {
+                if (profile.id != activeProfileId) {
+                    add(MenuAction(s.profileSwitch, TmIcons.Account) {
+                        profileMenu = null
+                        switchToProfile(profile)
+                    })
+                }
+                add(MenuAction(s.gridRename, TmIcons.Edit) {
+                    profileMenu = null
+                    renamingProfile = profile
+                })
+                if (!profile.isDefault) {
+                    add(
+                        MenuAction(
+                            label = if (profile.simple) s.profileMakeFull else s.profileMakeSimple,
+                            icon = TmIcons.Account,
+                            detail = s.profileSimpleDetail,
+                        ) {
+                            profileMenu = null
+                            scope.launch { settings.setViewerProfileSimple(profile.id, !profile.simple) }
+                        },
+                    )
+                }
+                if (profile.id in profilePinIds) {
+                    add(MenuAction(s.lockChangePin, TmIcons.Lock) {
+                        profileMenu = null
+                        choosePinFor = profile
+                    })
+                    add(MenuAction(s.lockRemovePin, TmIcons.Lock) {
+                        profileMenu = null
+                        scope.launch {
+                            settings.removeProfilePin(profile.id)
+                            onMessage(s.lockPinRemovedToast)
+                        }
+                    })
+                } else {
+                    add(MenuAction(s.lockSetPin, TmIcons.Lock, detail = s.lockEnterPin) {
+                        profileMenu = null
+                        choosePinFor = profile
+                    })
+                }
+                if (!profile.isDefault) {
+                    add(MenuAction(s.commonDelete, TmIcons.Delete, destructive = true) {
+                        profileMenu = null
+                        deletingProfile = profile
+                    })
+                }
+            },
+        )
+    }
+
+    deletingProfile?.let { profile ->
+        com.tmplayer.ui.components.TvConfirm(
+            title = s.commonDelete,
+            message = profile.name.ifBlank { s.profileDefaultName },
+            detail = s.profileDeleteDetail,
+            confirmLabel = s.commonDelete,
+            onConfirm = {
+                deletingProfile = null
+                scope.launch {
+                    settings.removeViewerProfile(profile.id)
+                    watchedStore.clearProfile(ViewerProfiles.prefixFor(profile.id))
+                }
+            },
+            onDismiss = { deletingProfile = null },
+        )
+    }
+
+    if (namingProfile) {
+        com.tmplayer.player.BookmarkNoteSheet(
+            title = s.profileAdd,
+            initial = "",
+            saveLabel = s.gridRenameSave,
+            onSave = { typed ->
+                namingProfile = false
+                val name = typed.trim()
+                if (name.isNotEmpty()) {
+                    scope.launch {
+                        settings.addViewerProfile(name, simple = false)
+                            ?.let { settings.setActiveProfile(it.id) }
+                    }
+                }
+            },
+            onDismiss = { namingProfile = false },
+            onClose = { namingProfile = false },
+            hint = s.profileNameHint,
+            maxLength = ViewerProfiles.MAX_NAME,
+        )
+    }
+
+    renamingProfile?.let { profile ->
+        com.tmplayer.player.BookmarkNoteSheet(
+            title = s.gridRename,
+            initial = profile.name,
+            saveLabel = s.gridRenameSave,
+            onSave = { typed ->
+                renamingProfile = null
+                val name = typed.trim()
+                if (name.isNotEmpty()) {
+                    scope.launch { settings.renameViewerProfile(profile.id, name) }
+                }
+            },
+            onDismiss = { renamingProfile = null },
+            onClose = { renamingProfile = null },
+            hint = s.profileNameHint,
+            maxLength = ViewerProfiles.MAX_NAME,
+        )
+    }
+
+    pinForProfile?.let { profile ->
+        PinPad(
+            settings = settings,
+            purpose = PinPurpose.Check,
+            title = s.lockEnterPin,
+            showForgot = false,
+            profileCheck = { pin -> settings.checkProfilePin(profile.id, pin) },
+            profileAttempts = { settings.profilePinAttemptsNow(profile.id) },
+            onDone = {
+                pinForProfile = null
+                scope.launch { settings.setActiveProfile(profile.id) }
+            },
+            onCancel = { pinForProfile = null },
+        )
+    }
+
+    choosePinFor?.let { profile ->
+        PinPad(
+            settings = settings,
+            purpose = PinPurpose.Choose,
+            title = s.lockNewPin,
+            onDone = { pin ->
+                choosePinFor = null
+                scope.launch {
+                    settings.setProfilePin(profile.id, pin)
+                    onMessage(s.lockPinSetToast)
+                }
+            },
+            onCancel = { choosePinFor = null },
         )
     }
 }
@@ -780,6 +995,87 @@ private fun ProfileChatChip(chat: ChatSummary, onClick: () -> Unit) {
             chat.title,
             style = M3MaterialTheme.typography.bodySmall,
             color = Tone.text,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+/**
+ * One viewer profile in the switcher: its initial in a circle, ringed in the accent while it
+ * is the active one, its name under it. A tap switches to it (or opens its menu, for the
+ * active one); a hold opens the menu that renames it, makes it Simple or full, sets its PIN
+ * or deletes it.
+ */
+@Composable
+private fun ProfileProfileChip(
+    profile: ViewerProfile,
+    fallbackName: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val s = LocalStrings.current
+    val name = profile.name.ifBlank { fallbackName }
+    Column(
+        Modifier.width(76.dp).combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(M3MaterialTheme.colorScheme.surfaceContainerHighest)
+                .then(if (active) Modifier.border(2.dp, Tone.accent, CircleShape) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            M3Text(
+                name.take(1).uppercase(),
+                style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = if (active) Tone.accent else Tone.text,
+            )
+        }
+        M3Text(
+            name,
+            style = M3MaterialTheme.typography.bodySmall,
+            color = Tone.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        M3Text(
+            if (active) s.profileCurrent else if (profile.simple) s.profileSimple else "",
+            style = M3MaterialTheme.typography.labelSmall,
+            color = Tone.muted,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** The switcher's last chip while there is room for another profile: a tap asks for its name. */
+@Composable
+private fun ProfileAddChip(label: String, onClick: () -> Unit) {
+    Column(
+        Modifier.width(76.dp).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .border(1.5.dp, Tone.muted, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            M3Icon(TmIcons.Add, contentDescription = label, tint = Tone.muted, modifier = Modifier.size(24.dp))
+        }
+        M3Text(
+            label,
+            style = M3MaterialTheme.typography.bodySmall,
+            color = Tone.muted,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
