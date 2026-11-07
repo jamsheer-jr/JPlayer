@@ -909,6 +909,7 @@ private fun Root() {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
                 HomeViewModel(
                     sizeLimits = { settings.minSizeBytes.first() to settings.maxSizeBytes.first() },
+                    hideShortVideos = { settings.hideShortVideos.first() },
                     cached = true,
                     // Home's refetches wait while a video plays (see HomeViewModel's busy).
                     busy = { com.tmplayer.data.WatchCache.anyPlaying() },
@@ -1881,11 +1882,13 @@ private fun Root() {
         // Null until the setting is read, so no row that is off is fetched for the first frame.
         val homeLayout by remember { settings.homeLayout }.collectAsStateWithLifecycle(initialValue = null)
         val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
+        val hideShortVideos by remember { settings.hideShortVideos }.collectAsStateWithLifecycle(initialValue = true)
         val homeRows = rememberHomeRows(
             homeViewModel, chats, favorites, continueWatching, watchLater, watchedVideos.values,
             recentMinStarred = 1,
             layout = homeLayout,
             collections = collections,
+            hideShortVideos = hideShortVideos,
         )
         val tvChannelsOn by settings.tvChannels.collectAsStateWithLifecycle(initialValue = null)
         TvHomeChannels(

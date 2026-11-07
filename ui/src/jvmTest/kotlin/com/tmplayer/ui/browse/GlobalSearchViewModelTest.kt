@@ -356,6 +356,41 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
+    fun `videos under five minutes are excluded from the shown groups and counted, unstated lengths stay`() = runTest(dispatcher) {
+        val shortSource = VideoSearchSource { query, cursor, filters ->
+            if (query != "harbour") {
+                AllChatsPage(emptyList(), done)
+            } else {
+                AllChatsPage(
+                    listOf(
+                        video(71, "Harbour.Lights.2019.1080p.WEB-DL.mkv"),
+                        video(72, "Harbour.Lights.2019.720p.WEB-DL.mkv").copy(durationSec = 120),
+                        video(73, "Harbour.Shadows.2020.1080p.WEB-DL.mkv").copy(durationSec = 0),
+                    ),
+                    done,
+                )
+            }
+        }
+        val model = GlobalSearchViewModel(shortSource, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        model.type("harbour")
+        advanceUntilIdle()
+        // The Lights card keeps only its long copy; the Shadows card stands on its
+        // unstated length copy, which is never hidden as short; one copy is counted.
+        assertEquals(1, model.state.value.shortHidden)
+        assertEquals(
+            listOf(71L),
+            model.state.value.shown.first { it.lead.messageId == 71L }.copies.map { it.messageId },
+        )
+        assertTrue(model.state.value.shown.any { it.lead.messageId == 73L })
+        model.setHideShortVideos(false)
+        assertEquals(0, model.state.value.shortHidden)
+        assertEquals(
+            listOf(71L, 72L),
+            model.state.value.shown.first { it.lead.messageId == 71L }.copies.map { it.messageId },
+        )
+    }
+
+    @Test
     fun `the search ask is per chat while a choice narrows or is unread, account wide only on a known every chat`() {
         // Owner, v1.0.15: "Global Search off" must take effect. A picked set asks per chat;
         // a stored answer still being read (null ids, not known) must not be taken for the

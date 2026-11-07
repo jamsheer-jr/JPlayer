@@ -42,6 +42,8 @@ class RowFeed internal constructor(
     private val keep: suspend (List<MediaItem>) -> List<MediaItem>,
     /** Where the shelf is arranged: off the main thread. */
     private val work: CoroutineContext,
+    /** Videos under 5 minutes left out of the page (the Playback switch), as the row itself was screened. */
+    private val hideShortVideos: Boolean = false,
 ) {
     /**
      * @param entries the page's tiles, the row's own first.
@@ -69,7 +71,7 @@ class RowFeed internal constructor(
     private val items = ArrayList<MediaItem>(seed)
 
     private val _state = MutableStateFlow(
-        State(entries = HomeRows.seeAll(row, emptyList()).orEmpty(), done = FeedMerge.horizon(lanes) == null),
+        State(entries = HomeRows.seeAll(row, emptyList(), hideShortVideos).orEmpty(), done = FeedMerge.horizon(lanes) == null),
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -135,7 +137,7 @@ class RowFeed internal constructor(
     private suspend fun publish() = publishing.withLock {
         val settled = FeedMerge.settled(items, lanes)
         val shape = row
-        val shaped = withContext(work) { HomeRows.seeAll(shape, settled).orEmpty() }
+        val shaped = withContext(work) { HomeRows.seeAll(shape, settled, hideShortVideos).orEmpty() }
         val done = FeedMerge.horizon(lanes) == null
         _state.update { it.copy(entries = shaped, done = done) }
     }

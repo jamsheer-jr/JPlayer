@@ -835,6 +835,8 @@ class MediaListViewModel(
     private val maxSizeBytes: Long,
     /** Cam family copies left out of the listing (the Playback switch, on by default). */
     private val hideCamCopies: Boolean = true,
+    /** Videos under 5 minutes left out of the listing (the Playback switch, on by default). */
+    private val hideShortVideos: Boolean = true,
     /**
      * Told about a search once it has found something and the viewer has stopped typing, so it can
      * be offered again as a recent search. See [com.tmplayer.data.RecentSearches].
@@ -916,6 +918,22 @@ class MediaListViewModel(
      * ignores the hiding as it ignores the size limits.
      */
     val camHidden: StateFlow<Int> = _camHidden.asStateFlow()
+
+    /** Videos [keep] has turned away as under 5 minutes since the listing last started over. */
+    private var hiddenByShort: Int
+        get() = _shortHidden.value
+        set(value) {
+            _shortHidden.value = value
+        }
+
+    private val _shortHidden = MutableStateFlow(0)
+
+    /**
+     * How many videos the under 5 minute hiding has kept out of the pages read so far, the
+     * count behind the chat's short pill and the empty state, as [camHidden] counts its own.
+     * Always 0 during a search, which ignores the hiding as it ignores the size limits.
+     */
+    val shortHidden: StateFlow<Int> = _shortHidden.asStateFlow()
 
     /** Set once [hiddenNotice] has had something to say for this opening of the chat. */
     private var toldHidden = false
@@ -1147,7 +1165,7 @@ class MediaListViewModel(
         if (items.isEmpty()) return items
         val split = SizeFilter.split(items, minSizeBytes, maxSizeBytes) { it.sizeBytes }
         hiddenBySize += split.hidden
-        return withoutCam(split.kept)
+        return withoutShort(withoutCam(split.kept))
     }
 
     /**
@@ -1159,6 +1177,19 @@ class MediaListViewModel(
         if (!hideCamCopies || items.isEmpty()) return items
         val kept = items.filterNot(::isCamCopy)
         hiddenByCam += items.size - kept.size
+        return kept
+    }
+
+    /**
+     * [items] without their videos under 5 minutes while [hideShortVideos] is on, counting
+     * what was left out, as [withoutCam] counts its own. Runs after [withoutCam], so a copy
+     * that is both is counted once, as a cam copy. A video whose length is not stated is
+     * never one of these ([com.tmplayer.data.ShortVideos]).
+     */
+    private fun withoutShort(items: List<MediaItem>): List<MediaItem> {
+        if (!hideShortVideos || items.isEmpty()) return items
+        val kept = items.filterNot(::isShortCopy)
+        hiddenByShort += items.size - kept.size
         return kept
     }
 
@@ -1270,6 +1301,7 @@ class MediaListViewModel(
         cursors = MediaCursors()
         hiddenBySize = 0
         hiddenByCam = 0
+        hiddenByShort = 0
         _selfDestructing.value = 0
         archives = emptyList()
         val searching = query.isNotBlank()
@@ -1393,6 +1425,7 @@ class MediaListViewModel(
         _selfDestructing.value = grid.selfDestructing
         hiddenBySize = 0
         hiddenByCam = 0
+        hiddenByShort = 0
         val items = keep(grid.items)
         if (items.isEmpty() && !grid.endReached) {
             _state.value = UiState.Loading(if (query.isNotBlank()) L.browseSearching else L.browseFindingVideos)
@@ -1454,7 +1487,7 @@ class MediaListViewModel(
         if (query.isNotBlank()) return Fuzzy.rank(items, query) { it.searchText }
         val split = SizeFilter.split(items, minSizeBytes, maxSizeBytes) { it.sizeBytes }
         hiddenBySize += split.hidden
-        return withoutCam(split.kept)
+        return withoutShort(withoutCam(split.kept))
     }
 
     /** Downloaded videos told apart from cached ones, when the platform keeps an index. */
@@ -1568,6 +1601,7 @@ class MediaListViewModel(
             listOfNotNull(
                 if (hiddenBySize > 0) "${L.browseHiddenBySize(hiddenBySize)} ${L.browseSizeLimitsInSettings}" else null,
                 if (hiddenByCam > 0) "${L.browseHiddenByCam(hiddenByCam)} ${L.browseCamCopiesInSettings}" else null,
+                if (hiddenByShort > 0) "${L.browseHiddenByShort(hiddenByShort)} ${L.browseHiddenByShortSettings}" else null,
             ).joinToString(" ").takeIf { it.isNotEmpty() }
         } else {
             null

@@ -260,6 +260,11 @@ class SettingsBook(private val kv: KeyValueStore) : AllowedChatsSource, Correcti
 
     suspend fun setHideCamCopies(value: Boolean) = kv.edit { it[HIDE_CAM_COPIES] = value }
 
+    /** As SettingsStore.hideShortVideos: videos under 5 minutes hidden unless the viewer turns it off. */
+    val hideShortVideos: Flow<Boolean> = read { it.flag(HIDE_SHORT_VIDEOS) ?: true }
+
+    suspend fun setHideShortVideos(value: Boolean) = kv.edit { it[HIDE_SHORT_VIDEOS] = value }
+
     val lastChatId: Flow<Long> = read { it.long(LAST_CHAT) ?: 0L }
 
     suspend fun setLastChat(chatId: Long) = kv.edit { it[LAST_CHAT] = chatId }
@@ -438,6 +443,7 @@ class SettingsBook(private val kv: KeyValueStore) : AllowedChatsSource, Correcti
         const val MAX_SIZE = "max_size_bytes"
         const val AUTOPLAY_NEXT = "autoplay_next"
         const val HIDE_CAM_COPIES = "hide_cam_copies"
+        const val HIDE_SHORT_VIDEOS = "hide_short_videos"
         const val LAST_CHAT = "last_chat"
         const val RECENT_SEARCHES = "recent_searches"
         const val REMEMBER_SEARCHES = "remember_searches"

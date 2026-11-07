@@ -118,7 +118,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 @Composable
 fun HomePage(state: ShellState, chats: ChatListViewModel) {
     val model = rememberViewModel(Unit) {
-        HomeViewModel(sizeLimits = { state.settings.minSizeBytes.first() to state.settings.maxSizeBytes.first() }, cached = true)
+        HomeViewModel(sizeLimits = { state.settings.minSizeBytes.first() to state.settings.maxSizeBytes.first() }, hideShortVideos = { state.settings.hideShortVideos.first() }, cached = true)
     }
     // Up to date while Home is open: when its rows are a minute old, then every few minutes, in
     // place, the cards staying where they are.
@@ -143,7 +143,8 @@ fun HomePage(state: ShellState, chats: ChatListViewModel) {
     // Recently added's search is asked for as soon as the setting is read (rememberHomeRows), not
     // once the chat list has loaded and the row is drawn: the loader waits on the carousel, and
     // the carousel on this row. Only while the row or the carousel is on.
-    val rows = rememberHomeRows(model, list, favourites, history, later, watched.values, recentMinStarred = 1, layout = layout)
+    val hideShortVideos by state.settings.hideShortVideos.collectAsState(initial = true)
+    val rows = rememberHomeRows(model, list, favourites, history, later, watched.values, recentMinStarred = 1, layout = layout, hideShortVideos = hideShortVideos)
     // With nothing of its own to show yet, Home waits on the chat list, or says why it failed,
     // rather than greet somebody with starred chats as a first run. With starred chats it waits a
     // moment for them, so the carousel does not land over Continue watching, but never for the

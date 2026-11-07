@@ -152,6 +152,8 @@ fun MediaDetailScreen(
     topEndAction: (@Composable () -> Unit)? = null,
     /** Cam family copies hidden in the versions list (the Playback switch, on by default). */
     hideCamCopies: Boolean = true,
+    /** Versions under 5 minutes hidden in the versions list (the Playback switch, on by default). */
+    hideShortVideos: Boolean = true,
 ) {
     // The open itself asks the chats for the rest of this title, so the copies and the
     // episodes fill in here rather than waiting on a visit to the Chats tab (owner, v1.0.14).
@@ -169,7 +171,7 @@ fun MediaDetailScreen(
     // looked up, as the card it was opened from did.
     val art = rememberArtItem(item)
     val source = remember(item.id, art, cover, meta?.wideUrl) { BackdropSource(art.miniThumbnail, art.thumbnailFileId, cover, meta?.wideUrl) }
-    val page = DetailPage(item, chatTitle, watched, finished, rows, meta, extras, source, firstAction, onOpenItem, bookmarks, onOpenBookmark, onPickCopy, copyStarted, metaState, extrasState, hideCamCopies)
+    val page = DetailPage(item, chatTitle, watched, finished, rows, meta, extras, source, firstAction, onOpenItem, bookmarks, onOpenBookmark, onPickCopy, copyStarted, metaState, extrasState, hideCamCopies, hideShortVideos)
     // Decided on the first frame and kept for the visit, the phone turned included.
     val holds = rememberHolds(page, firstPaint)
     BoxWithConstraints(modifier.fillMaxSize().background(Tone.background)) {
@@ -248,6 +250,8 @@ private class DetailPage(
     val extrasState: MetaState<MetaExtras>,
     /** Cam family copies hidden in the versions list (the Playback switch, on by default). */
     val hideCamCopies: Boolean = true,
+    /** Versions under 5 minutes hidden in the versions list (the Playback switch, on by default). */
+    val hideShortVideos: Boolean = true,
 )
 
 /**
@@ -350,7 +354,7 @@ private fun CinemaLayout(page: DetailPage, holds: Holds, height: Dp) {
                     // A television keeps the everyday buttons beside Play and the rest at the foot
                     // of the page, as a phone does; Right walks along the first, Down reaches the rest.
                     Actions(page, holds, onEpisodes = episodesButton(page.item, page.meta, episodes), headlineOnly = tv)
-                    Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies)
+                    Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos)
                     TelegramQualityLine(page.item)
                 }
                 Spacer(Modifier.height(if (tv) 8.dp else 4.dp))
@@ -423,7 +427,7 @@ private fun StackedLayout(page: DetailPage, holds: Holds, width: Dp, height: Dp)
                 }
                 Box(Modifier.riseIn(3, enabled = touch)) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies)
+                        Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos)
                         TelegramQualityLine(page.item)
                     }
                 }

@@ -136,12 +136,20 @@ data class GlobalSearchState(
      * card's copies in [shown], so the card's lead, its count and its page all follow.
      */
     val hideCamCopies: Boolean = true,
+    /**
+     * Videos under 5 minutes hidden (the Playback switch, on by default): screened out of
+     * each card's copies in [shown] the same way as [hideCamCopies], a copy that is both
+     * counted once, as a cam copy ([camHidden]).
+     */
+    val hideShortVideos: Boolean = true,
 ) {
-    /** What the list shows: [groups] through the filters and the cam hiding, the kids lock already applied. */
+    /** What the list shows: [groups] through the filters and the cam and short hiding, the kids lock already applied. */
     val shown: List<ResultGroup> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val base = GlobalSearch.filter(groups, filters, query)
-        if (!hideCamCopies) base else base.mapNotNull { group ->
-            val kept = group.copies.filterNot(::isCamCopy)
+        if (!hideCamCopies && !hideShortVideos) base else base.mapNotNull { group ->
+            val kept = group.copies.filterNot { copy ->
+                (hideCamCopies && isCamCopy(copy)) || (hideShortVideos && isShortCopy(copy))
+            }
             when {
                 kept.isEmpty() -> null
                 kept.size == group.copies.size -> group
@@ -154,6 +162,12 @@ data class GlobalSearchState(
     val camHidden: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
         if (!hideCamCopies) 0
         else GlobalSearch.filter(groups, filters, query).sumOf { group -> group.copies.count(::isCamCopy) }
+    }
+
+    /** How many copies the under 5 minute hiding leaves out of [shown], cam copies not counted twice. */
+    val shortHidden: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        if (!hideShortVideos) 0
+        else GlobalSearch.filter(groups, filters, query).sumOf { group -> group.copies.count { copy -> !isCamCopy(copy) && isShortCopy(copy) } }
     }
 
     /** For an empty list: which filters hide what was found. */
@@ -192,6 +206,8 @@ class GlobalSearchViewModel(
     private val identity: SearchIdentity = SearchIdentity.Default,
     /** Cam family copies hidden in the results (the Playback switch), until the screen says otherwise. */
     private val hideCamCopies: Boolean = true,
+    /** Videos under 5 minutes hidden in the results (the Playback switch), until the screen says otherwise. */
+    private val hideShortVideos: Boolean = true,
     /**
      * Where Telegram's pages are kept by query ([PageQueries]), so searching the same words again
      * lists them at once and asks again only once they are [PageQueries.SEARCH_STALE_MS] old.
@@ -221,7 +237,7 @@ class GlobalSearchViewModel(
         cache?.update<Answer>(keyOf(query, filters)) { it?.copy(pages = it.pages + page, cursor = page.cursor) }
     }
 
-    private val _state = MutableStateFlow(GlobalSearchState(hideCamCopies = hideCamCopies))
+    private val _state = MutableStateFlow(GlobalSearchState(hideCamCopies = hideCamCopies, hideShortVideos = hideShortVideos))
     val state: StateFlow<GlobalSearchState> = _state.asStateFlow()
 
     /**
@@ -289,6 +305,15 @@ class GlobalSearchViewModel(
      */
     fun setHideCamCopies(on: Boolean) {
         _state.update { if (it.hideCamCopies == on) it else it.copy(hideCamCopies = on) }
+    }
+
+    /**
+     * The Playback switch for videos under 5 minutes, as the screen reads it from Settings.
+     * Like [setHideCamCopies], it only screens the answer: [shown] and
+     * [GlobalSearchState.shortHidden] are worked out from the cards already listed.
+     */
+    fun setHideShortVideos(on: Boolean) {
+        _state.update { if (it.hideShortVideos == on) it else it.copy(hideShortVideos = on) }
     }
 
     fun setFilters(filters: SearchFilters) {
@@ -415,7 +440,7 @@ class GlobalSearchViewModel(
             // Cleared, or down to one letter: whatever was waiting to be asked is dropped, and the
             // screen goes back to its recent searches.
             localNow = emptyList()
-            _state.value = GlobalSearchState(query = query, filters = now.filters, sort = now.sort, hideCamCopies = now.hideCamCopies)
+            _state.value = GlobalSearchState(query = query, filters = now.filters, sort = now.sort, hideCamCopies = now.hideCamCopies, hideShortVideos = now.hideShortVideos)
             return
         }
         localNow = emptyList()
@@ -430,6 +455,7 @@ class GlobalSearchViewModel(
             searching = settle <= 0,
             settling = settle > 0,
             hideCamCopies = now.hideCamCopies,
+            hideShortVideos = now.hideShortVideos,
         )
         val kept = cache?.peek<Answer>(keyOf(query, now.filters), PageQueries.SEARCH_STALE_MS)
         if (kept != null) {

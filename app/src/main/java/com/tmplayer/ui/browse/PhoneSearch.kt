@@ -611,6 +611,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
     if (state.camHidden > 0) {
         item(key = "cam-hidden") { Note(LocalStrings.current.browseHiddenByCam(state.camHidden)) }
     }
+    // The videos under 5 minutes the other Playback switch keeps out, counted the same way.
+    if (state.shortHidden > 0) {
+        item(key = "short-hidden") { Note(LocalStrings.current.browseHiddenByShort(state.shortHidden)) }
+    }
     val shown = state.shown
     when {
         // While the typing settles too, rather than a heading over nothing until Telegram is asked.

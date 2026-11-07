@@ -321,6 +321,8 @@ fun SettingsScreen(
     val hideRipTags by settings.hideRipTags.collectAsStateWithLifecycle(initialValue = false)
     // On until read, which is the stored default: cam copies are hidden unless turned off.
     val hideCamCopies by settings.hideCamCopies.collectAsStateWithLifecycle(initialValue = true)
+    // On until read, as the cam switch's is: videos under 5 minutes are hidden unless turned off.
+    val hideShortVideos by settings.hideShortVideos.collectAsStateWithLifecycle(initialValue = true)
     val hiddenTitleWords by settings.hiddenTitleWords.collectAsStateWithLifecycle(initialValue = emptySet())
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
@@ -1043,6 +1045,19 @@ fun SettingsScreen(
                         icon = TmIcons.Info,
                         checked = hideCamCopies,
                         onToggle = { scope.launch { settings.setHideCamCopies(!hideCamCopies) } },
+                    )
+                }
+                // The length rule beside it (owner, v1.0.15): while this is on, a video
+                // whose stated length is under 5 minutes is left out of the same lists,
+                // Home shelves among them, and each place says how many it left out. A
+                // video whose length Telegram does not state is never hidden by this.
+                item {
+                    ToggleRow(
+                        title = s.settingsHideShortVideos,
+                        subtitle = if (hideShortVideos) s.settingsHideShortVideosOn else s.settingsHideShortVideosOff,
+                        icon = TmIcons.Info,
+                        checked = hideShortVideos,
+                        onToggle = { scope.launch { settings.setHideShortVideos(!hideShortVideos) } },
                     )
                 }
                 // The viewer's own words for that same switch (owner, v1.0.11): each word a

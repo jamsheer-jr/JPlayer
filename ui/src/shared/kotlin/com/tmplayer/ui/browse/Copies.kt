@@ -97,6 +97,14 @@ fun isCamCopy(copy: MediaItem): Boolean =
     MediaFacts.isCamSource(MediaFacts.read(copy.fileName.ifBlank { copy.title }, copy.width, copy.height).source)
 
 /**
+ * Whether [copy] is a short video (its stated length under 5 minutes: see
+ * [com.tmplayer.data.ShortVideos]), the videos the Playback switch "Hide videos
+ * under 5 minutes" leaves out of the same lists as [isCamCopy]. A copy whose
+ * length Telegram does not state (0) is never one of these.
+ */
+fun isShortCopy(copy: MediaItem): Boolean = com.tmplayer.data.ShortVideos.isShort(copy)
+
+/**
  * What else sets a copy apart, for the line under its [copyHeading]: the size (when the heading
  * did not already give it), the length, when it was posted, the chat where the copies span more
  * than one, whether it is on this device and whether its chat allows saving.
@@ -158,7 +166,9 @@ fun copyChat(copy: MediaItem, item: MediaItem, chatTitle: String): String? =
  * While [hideCamCopies] is on (the Playback switch, on by default), cam family files are left
  * out of the list and counted on a line of their own under the summary, so the versions are
  * never short with no word why. When every version is a cam copy that line is the whole of
- * the section, rather than a bare empty list.
+ * the section, rather than a bare empty list. The under 5 minute switch ([hideShortVideos],
+ * also on by default) screens the same list the same way, with a counted line of its own;
+ * a version counted by both is counted once, as a cam copy.
  */
 @Composable
 internal fun Versions(
@@ -167,6 +177,7 @@ internal fun Versions(
     chatTitle: String = "",
     started: (MediaItem) -> Boolean = { false },
     hideCamCopies: Boolean = true,
+    hideShortVideos: Boolean = true,
 ) {
     if (onPick == null) return
     // Every copy of the title, whichever chat holds it (owner, v1.0.14): the list the
@@ -188,17 +199,28 @@ internal fun Versions(
     val allFiles = remember(full.versions) { VideoCopies.distinctFiles(full.versions) }
     if (allFiles.size <= 1) return
     val s = LocalStrings.current
-    val files = remember(allFiles, hideCamCopies) {
-        if (hideCamCopies) allFiles.filterNot { isCamCopy(it.first) } else allFiles
+    val files = remember(allFiles, hideCamCopies, hideShortVideos) {
+        allFiles.filterNot { (lead, _) ->
+            (hideCamCopies && isCamCopy(lead)) || (hideShortVideos && isShortCopy(lead))
+        }
     }
-    val camHidden = allFiles.size - files.size
+    val camHidden = if (hideCamCopies) allFiles.count { isCamCopy(it.first) } else 0
+    val shortHidden = if (hideShortVideos) allFiles.count { !isCamCopy(it.first) && isShortCopy(it.first) } else 0
     if (files.isEmpty()) {
-        Text(
-            s.detailCamHidden(camHidden),
-            style = MaterialTheme.typography.bodySmall,
-            color = Tone.muted,
-            modifier = Modifier.padding(start = 4.dp),
-        )
+        Column {
+            if (camHidden > 0) Text(
+                s.detailCamHidden(camHidden),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+            if (shortHidden > 0) Text(
+                s.detailShortHidden(shortHidden),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
         return
     }
     var open by rememberSaveable(full.id) { mutableStateOf(false) }
@@ -237,6 +259,14 @@ internal fun Versions(
         if (camHidden > 0) {
             Text(
                 s.detailCamHidden(camHidden),
+                style = MaterialTheme.typography.bodySmall,
+                color = Tone.muted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
+        if (shortHidden > 0) {
+            Text(
+                s.detailShortHidden(shortHidden),
                 style = MaterialTheme.typography.bodySmall,
                 color = Tone.muted,
                 modifier = Modifier.padding(start = 4.dp),

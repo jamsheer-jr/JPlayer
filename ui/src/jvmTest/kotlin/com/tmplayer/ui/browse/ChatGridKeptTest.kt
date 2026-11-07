@@ -28,7 +28,7 @@ class ChatGridKeptTest {
     private val chatId = 4242L
 
     private fun video(id: Long, size: Long) = MediaItem(
-        chatId = chatId, messageId = id, fileId = id.toInt(), title = "v$id", sizeBytes = size, durationSec = 60,
+        chatId = chatId, messageId = id, fileId = id.toInt(), title = "v$id", sizeBytes = size, durationSec = 3_600,
         mimeType = "video/mp4", thumbnailFileId = 0, miniThumbnail = null, date = 0, fileName = "v$id.mp4",
     )
 
@@ -100,6 +100,37 @@ class ChatGridKeptTest {
         assertTrue(wideShown is UiState.Content)
         assertEquals(4, (wideShown as UiState.Content).value.items.size)
         assertEquals(0, wide.camHidden.value)
+    }
+
+    @Test
+    fun `videos under five minutes are kept out of a kept listing and counted, unstated lengths stay`() {
+        PageQueries.cache.put(
+            QueryKey.ChatMedia(chatId),
+            ChatGrid(
+                items = listOf(
+                    video(300, 500L).copy(durationSec = 120),
+                    video(299, 500L).copy(durationSec = 0),
+                    video(298, 500L).copy(durationSec = 300),
+                    video(297, 500L).copy(durationSec = 3_600),
+                ),
+                cursors = MediaCursors(video = 1, document = 1, animation = 1),
+                endReached = true,
+                scrollIndex = 0,
+            ),
+        )
+        val model = MediaListViewModel(chatId, minSizeBytes = 0, maxSizeBytes = Long.MAX_VALUE)
+        val shown = model.state.value
+        assertTrue("drawn at once, not Loading: $shown", shown is UiState.Content)
+        val items = (shown as UiState.Content).value.items
+        // The 2 minute video goes and the count says so; the unstated length (0), the
+        // exactly 5 minute one and the long one stay.
+        assertEquals(listOf(299L, 298L, 297L), items.map { it.messageId })
+        assertEquals(1, model.shortHidden.value)
+        val wide = MediaListViewModel(chatId, minSizeBytes = 0, maxSizeBytes = Long.MAX_VALUE, hideShortVideos = false)
+        val wideShown = wide.state.value
+        assertTrue(wideShown is UiState.Content)
+        assertEquals(4, (wideShown as UiState.Content).value.items.size)
+        assertEquals(0, wide.shortHidden.value)
     }
 
     @Test

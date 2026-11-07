@@ -220,6 +220,8 @@ class HomeViewModel(
     private val source: HomeSource = TdHomeSource,
     /** The size limits from Settings, applied as in a chat's grid; read per fetch so a change lands on refresh. */
     private val sizeLimits: suspend () -> Pair<Long, Long> = { SizeFilter.DEFAULT_MIN to SizeFilter.DEFAULT_MAX },
+    /** Whether videos under 5 minutes are hidden (the Playback switch); read per fetch like [sizeLimits]. */
+    private val hideShortVideos: suspend () -> Boolean = { true },
     /** Where the shows in progress and their new episodes are worked out: off the main thread. */
     private val work: kotlin.coroutines.CoroutineContext = Dispatchers.Default,
     /**
@@ -651,6 +653,7 @@ class HomeViewModel(
         // Where the read stopped, for a See all page to read on from.
         if (lane == null) reads.remove(chatId) else reads[chatId] = lane
         val kept = carryReads(withinLimits(items).take(ROW_KEEP), _loaded.value[chatId].orEmpty() + _recent.value.orEmpty())
+        shortHidden()
         _partial.update { if (ended && kept.size == items.size) it - chatId else it + chatId }
         // Unchanged rows are not written again, so nothing recomposes for an answer that is the same.
         _loaded.update { if (it[chatId] == kept) it else it + (chatId to kept) }
@@ -867,7 +870,7 @@ class HomeViewModel(
             is HomeRow.Chat -> listOf(row.chatId)
             else -> return null
         }
-        HomeRows.seeAll(row, emptyList()) ?: return null
+        HomeRows.seeAll(row, emptyList(), shortHiddenCached) ?: return null
         val key = row.key
         feeds[key]?.let { return it.also { feed -> feed.reshape(row) } }
         val held = _loaded.value.filterKeys { it in chats }
@@ -879,8 +882,12 @@ class HomeViewModel(
             seed = seed,
             row = row,
             read = { chatId, cursors -> source.chatMediaFrom(chatId, cursors) },
-            keep = { withinLimits(it) },
+            keep = { items ->
+                val base = withinLimits(items)
+                if (shortHidden()) com.tmplayer.data.ShortVideos.kept(base) else base
+            },
             work = work,
+            hideShortVideos = shortHiddenCached,
         )
         feeds[key] = feed
         return feed
@@ -889,6 +896,17 @@ class HomeViewModel(
     private suspend fun withinLimits(items: List<MediaItem>): List<MediaItem> {
         val (min, max) = runCatching { sizeLimits() }.getOrDefault(SizeFilter.DEFAULT_MIN to SizeFilter.DEFAULT_MAX)
         return items.filter { SizeFilter.matches(it.sizeBytes, min, max) }
+    }
+
+    /** The under 5 minute switch as last read, for the places that cannot suspend ([seeAll]). */
+    @Volatile
+    private var shortHiddenCached: Boolean = true
+
+    /** The under 5 minute switch, read fresh and remembered for [shortHiddenCached]. */
+    private suspend fun shortHidden(): Boolean {
+        val on = runCatching { hideShortVideos() }.getOrDefault(true)
+        shortHiddenCached = on
+        return on
     }
 
     companion object {
@@ -1031,6 +1049,8 @@ fun rememberHomeRows(
     layout: HomeLayout? = HomeLayout(),
     /** The viewer's own collections, drawn as Home rows: see [HomeRows.build]. */
     collections: List<com.tmplayer.data.VideoCollection> = emptyList(),
+    /** Videos under 5 minutes hidden from the rows and shelves (the Playback switch): see [HomeRows.build]. */
+    hideShortVideos: Boolean = false,
 ): List<HomeRow> {
     // The chats the viewer added (HX27): with a choice made, Recently added reads them one by one
     // ([HomeLayout.chosenChats]) rather than Telegram's newest across the whole account, which a
@@ -1092,7 +1112,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1138,7 +1158,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         // The first build on a cold start (owner, v1.0.14): the full build below waits on
@@ -1164,6 +1184,7 @@ fun rememberHomeRows(
                     watchedKeys = watched.mapTo(HashSet()) { it.key },
                     phoneOrder = phoneOrder,
                     nowMs = System.currentTimeMillis(),
+                    hideShortVideos = hideShortVideos,
                 )
             }
             if (early.isNotEmpty()) {
@@ -1186,6 +1207,7 @@ fun rememberHomeRows(
                 // directly under Continue watching; a television keeps its arrangement.
                 phoneOrder = phoneOrder,
                 nowMs = System.currentTimeMillis(),
+                hideShortVideos = hideShortVideos,
             )
         }
         homeMemo.built = inputs

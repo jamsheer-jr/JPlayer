@@ -40,6 +40,7 @@ private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
 private val DETAIL_FIRST = booleanPreferencesKey("detail_first")
 private val HIDE_RIP_TAGS = booleanPreferencesKey("hide_rip_tags")
 private val HIDE_CAM_COPIES = booleanPreferencesKey("hide_cam_copies")
+private val HIDE_SHORT_VIDEOS = booleanPreferencesKey("hide_short_videos")
 private val COMPACT_NAV = booleanPreferencesKey("compact_nav")
 private val DOWNMIX_STEREO = booleanPreferencesKey("downmix_stereo")
 private val VOLUME_BOOST = booleanPreferencesKey("volume_boost")
@@ -643,6 +644,18 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHideCamCopies(value: Boolean) {
         prefs.edit { it[HIDE_CAM_COPIES] = value }
+    }
+
+    /**
+     * Whether videos whose stated length is under 5 minutes (see [ShortVideos]) are
+     * hidden from the lists the cam switch screens, Home shelves among them. On by
+     * default, like [hideCamCopies]; a video whose length Telegram does not state
+     * (0) is never hidden by this.
+     */
+    val hideShortVideos: Flow<Boolean> = read { it[HIDE_SHORT_VIDEOS] ?: true }
+
+    suspend fun setHideShortVideos(value: Boolean) {
+        prefs.edit { it[HIDE_SHORT_VIDEOS] = value }
     }
 
     /**

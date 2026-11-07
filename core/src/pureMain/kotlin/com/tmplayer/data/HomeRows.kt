@@ -299,6 +299,15 @@ object HomeRows {
         phoneOrder: Boolean = false,
         /** Now, for the Weekly shelf (new arrivals this week); zero turns that shelf off. */
         nowMs: Long = 0L,
+        /**
+         * Videos under 5 minutes left out of the rows and shelves (the Playback switch,
+         * see [ShortVideos]): the pools the rows are built from are screened before
+         * anything is arranged, so a short video is no tile, no episode of a show tile
+         * and no copy counted in a shelf. Continue watching and Watch later are the
+         * viewer's own lists and are never screened. Off by default here, as the
+         * screens pass the switch in.
+         */
+        hideShortVideos: Boolean = false,
     ): List<HomeRow> {
         // A phone's catalog shelves, held back until Recently added stands (owner, v1.0.13):
         // the series shelves and the foot shelves are gathered here and laid down together,
@@ -309,6 +318,10 @@ object HomeRows {
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
         // through still shows in its chat's row rather than vanishing from Home altogether.
         val continueWatching = if (layout.continueWatching) continueWatching else emptyList()
+        // The under 5 minute screening (see the parameter): the chats' videos and the
+        // search across chats, screened once here so every row and shelf below agrees.
+        val loaded = if (hideShortVideos) loaded.mapValues { (_, items) -> ShortVideos.kept(items) } else loaded
+        val recent = if (hideShortVideos) recent?.let(ShortVideos::kept) else recent
 
         val distinct = continueWatching.distinctBy { keyOf(it.chatId, it.messageId) }
         val everyResume = foldCopies(distinct)
@@ -827,19 +840,22 @@ object HomeRows {
      * them, each show with every episode read since, then everything else, newest first. A page that grows only at its foot, so nothing on screen moves when a page
      * lands. Null for a row that reads no chats (Continue watching, Watch later, New episodes).
      */
-    fun seeAll(row: HomeRow, items: List<MediaItem>): List<ShelfEntry>? {
+    fun seeAll(row: HomeRow, items: List<MediaItem>, hideShortVideos: Boolean = false): List<ShelfEntry>? {
         val entries = when (row) {
             is HomeRow.Chat -> row.entries
             is HomeRow.Recent -> row.entries
             else -> return null
         }
+        // The pages read on are screened as the row was ([build]'s screening): the
+        // row's own tiles already were, so only what is read past them needs it.
+        val read = if (hideShortVideos) ShortVideos.kept(items) else items
         val own = entries.flatMap { entry ->
             when (entry) {
                 is ShelfEntry.File -> listOf(entry.item)
                 is ShelfEntry.Show -> entry.series.episodes.flatMap { it.copies }
             }
         }
-        val pool = (own + items).distinctBy { it.id }.sortedWith(FeedMerge.newestFirst)
+        val pool = (own + read).distinctBy { it.id }.sortedWith(FeedMerge.newestFirst)
         val arranged = SeriesShelf.arrange(pool)
         val byKey = arranged.associateBy { it.key }
         val first = entries.map { byKey[it.key] ?: it }

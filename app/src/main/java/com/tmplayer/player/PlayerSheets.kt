@@ -45,6 +45,7 @@ import com.tmplayer.ui.browse.copyFit
 import com.tmplayer.ui.browse.copyHeading
 import com.tmplayer.ui.browse.copySound
 import com.tmplayer.ui.browse.isCamCopy
+import com.tmplayer.ui.browse.isShortCopy
 import com.tmplayer.i18n.Translator
 import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
@@ -988,7 +989,10 @@ internal fun SleepSheet(
  * While the Playback switch "Hide cam and PreDVD copies" is on, cam family copies are left
  * out and counted on a line at the foot, as the other lists count theirs. The copy playing
  * is never left out: the sheet always shows what is playing, ticked as it is today, under
- * its own quality's heading even when no other copy sits there.
+ * its own quality's heading even when no other copy sits there. The "Hide videos under
+ * 5 minutes" switch screens this sheet the same way, with a counted line of its own, and
+ * the playing copy is exempt from that rule too; a copy hidden by both is counted once,
+ * as a cam copy.
  */
 @Composable
 internal fun CopiesSheet(
@@ -1008,11 +1012,16 @@ internal fun CopiesSheet(
     val context = LocalContext.current
     val settings = remember(context) { SettingsStore(context) }
     val hideCam by settings.hideCamCopies.collectAsState(initial = true)
-    // The copy playing always stays, even when it is itself a cam copy.
-    val visible = remember(copies, hideCam, playing) {
-        if (hideCam) copies.filter { copy -> copy.id == playing || !isCamCopy(copy) } else copies
+    val hideShort by settings.hideShortVideos.collectAsState(initial = true)
+    // The copy playing always stays, even when it is itself a cam copy or a short one.
+    val visible = remember(copies, hideCam, hideShort, playing) {
+        copies.filter { copy ->
+            copy.id == playing ||
+                (!hideCam || !isCamCopy(copy)) && (!hideShort || !isShortCopy(copy))
+        }
     }
-    val camHidden = copies.size - visible.size
+    val camHidden = if (hideCam) copies.count { it.id != playing && isCamCopy(it) } else 0
+    val shortHidden = if (hideShort) copies.count { it.id != playing && !isCamCopy(it) && isShortCopy(it) } else 0
     // Sorted and grouped the one way copies are always offered ([VideoCopies.tiersOf]), the
     // grouping the detail page's Versions shares, so the two lists never disagree: best
     // picture first, the biggest of it next, the copies stating no quality last. The copy
@@ -1086,6 +1095,14 @@ internal fun CopiesSheet(
             if (camHidden > 0) {
                 Text(
                     s.playerCamHidden(camHidden),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Tone.muted,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+            }
+            if (shortHidden > 0) {
+                Text(
+                    s.playerShortHidden(shortHidden),
                     style = MaterialTheme.typography.bodySmall,
                     color = Tone.muted,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
