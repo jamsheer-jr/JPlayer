@@ -1939,6 +1939,9 @@ private fun DownloadCard(
         // A download that stopped part way says so, and what it holds here (user, 2026-10-18).
         if (row.partial) (if (row.cached) s.downloadsPartCached else s.downloadsUnfinishedOnDevice(size = s.formatter.bytes(row.bytes))) else null,
         if (row.missing) s.downloadsFileMissing else null,
+        // A finished download says so on its own card (owner, v1.0.14): the states above say
+        // theirs, and a whole one said nothing until now, only the section heading over it.
+        if (!row.partial && !row.missing && !row.cached) s.downloadsDownloaded else null,
     ).joinToString(DOT)
 
     // The clean name the rest of the app uses for it, with the file's own name on a quiet line of
