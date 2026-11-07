@@ -430,6 +430,22 @@ private fun ActionsPill(actions: @Composable RowScope.() -> Unit, modifier: Modi
 internal val LocalTouchRail = compositionLocalOf { false }
 
 /**
+ * Runs [action] when the bar button of the page this is on is pressed again, beside
+ * [ScrollToTopOnReselect]: the page's own second answer to the press (Home reads itself
+ * fresh, owner v1.0.15). Only the page on screen answers ([LocalPageOnScreen]).
+ */
+@Composable
+internal fun RefreshOnReselect(destination: TouchDestination, action: () -> Unit) {
+    val chrome = LocalTouchChrome.current ?: return
+    val onScreen = LocalPageOnScreen.current
+    val act by rememberUpdatedState(action)
+    LaunchedEffect(chrome, onScreen, destination) {
+        if (!onScreen) return@LaunchedEffect
+        chrome.reselected.collect { if (it == destination) act() }
+    }
+}
+
+/**
  * Takes a list back to its top when the bar button of the page it is on is pressed again, as a
  * tab bar does. Only the page on screen answers ([LocalPageOnScreen]): Home and Chats stay
  * composed side by side in their pager.

@@ -193,6 +193,8 @@ internal fun HomePane(
     onDetails: (MediaItem, String) -> Unit = onHoldMedia,
     /** A live or file stream from the built-in channel's posts (v1.0.10): plays in the player. */
     onPlayStream: (StreamLink) -> Unit = {},
+    /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
+    onRefreshHome: () -> Unit = {},
     /**
      * The television's page heading. With the carousel up it stands on the carousel's picture
      * (true: the words in the colours for art) and scrolls away with it; otherwise it sits over
@@ -371,6 +373,9 @@ internal fun HomePane(
     val listState = com.tmplayer.ui.components.rememberAheadListState(column = true)
     // Home pressed again on the bar: back to the top, the featured carousel whole.
     ScrollToTopOnReselect(TouchDestination.Home) { animate -> listState.toTop(animate) }
+    // And Home read fresh on the same press (owner, v1.0.15): the shelves and banner
+    // reload, and the refresh reads the Live row's posts again with them.
+    RefreshOnReselect(TouchDestination.Home) { onRefreshHome() }
     // Back from Home's rows to the TV top bar: the same, as Home looks when it opens.
     if (!touch) {
         // The bar takes the page's ground behind it once the rows run up under it.

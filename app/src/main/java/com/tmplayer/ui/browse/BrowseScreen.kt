@@ -693,6 +693,7 @@ internal fun BrowseScreen(
                                     query = ""
                                 },
                                 onOpenChat = { id -> data.chats.firstOrNull { it.id == id }?.let(onOpenChat) },
+                                onRefreshHome = onRefreshHome,
                                 // A stream from the built-in channel's posts plays in the player
                                 // itself, live ones as live (v1.0.10).
                                 onPlayStream = { link ->
@@ -1148,9 +1149,18 @@ internal fun BrowseScreen(
                 inProfile = !tab.isHome && !tab.onChatsPage,
                 searchOpen = tvSearchOpen,
                 onHome = {
+                    // Home pressed on the bar while Home is already up (owner, v1.0.15):
+                    // the phone's second press, on the television. Home goes back to its
+                    // top and reads itself fresh, the Live row's posts with it (the
+                    // refresh the host wires reads those too).
+                    val again = tab.isHome && !tvSearchOpen
                     tvSearchOpen = false
                     onPickTab(BrowseSection.of(BrowseTab.Home))
                     query = ""
+                    if (again) {
+                        TvBarSignals.homeToTop.tryEmit(Unit)
+                        onRefreshHome()
+                    }
                 },
                 onChats = {
                     tvSearchOpen = false
