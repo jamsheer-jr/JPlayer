@@ -1117,6 +1117,18 @@ fun SeriesPanel(
                     focusRequester = playFocus,
                 )
             }
+            // My List beside Play, as on a video's page (owner, v1.0.14): the same pill in
+            // Play's colours, pressing the show's own Watch later switch, so it and the round
+            // Watch later button among the others are two faces of the one store. Keyed on a
+            // constant, so a remote's focus stays on it as a press turns Add into Remove.
+            val myList: @Composable () -> Unit = {
+                val listed = showActions?.watchLater
+                if (listed != null) {
+                    androidx.compose.runtime.key("seriesMyList") {
+                        MyListPill(listed = listed, onClick = { showActions?.onWatchLater(!listed) })
+                    }
+                }
+            }
             Column(Modifier.padding(pad), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (large) {
                     // Play a size up, and the trailer and the downloads as round buttons beside it.
@@ -1131,6 +1143,7 @@ fun SeriesPanel(
                             focusRequester = playFocus,
                             large = true,
                         )
+                        myList()
                         // The same short words under the buttons as a video's page and the phone's.
                         others.forEach { action ->
                             val trailerSlot = trailerGhost && action.label == s.metadataTrailer
@@ -1147,6 +1160,7 @@ fun SeriesPanel(
                 } else if (tv) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         hero(Modifier)
+                        myList()
                         others.forEach { action ->
                             RoundAction(
                                 action.label, action.icon, action.run,
@@ -1165,6 +1179,7 @@ fun SeriesPanel(
                     // so the trailer arriving later never moves it.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         hero(Modifier)
+                        myList()
                         others.forEach { action ->
                             RoundAction(
                                 action.label, action.icon, action.run,
@@ -1179,6 +1194,14 @@ fun SeriesPanel(
                     }
                 } else {
                     hero(Modifier.fillMaxWidth())
+                    // My List under a full width Play, centred on it, as on a video's page.
+                    if (showActions?.watchLater != null) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) { myList() }
+                    }
                     if (others.isNotEmpty()) {
                         // Under a full width Play, centred on it, as on a video's page.
                         FlowRow(

@@ -652,26 +652,29 @@ private fun Actions(
 }
 
 /**
- * "+ My List" beside Play (owner, v1.0.13, the streaming apps' placement): a secondary pill
- * of Play's own height in the quiet surface fill, a plus while the title is unlisted and a
- * tick with plain "My List" once it stands in Watch later. It presses the Watch later row's
- * own action, so it and the round Watch later button are two faces of the one store and
- * neither can disagree with the other. Focus takes the focus fill on a television, as
- * [HeroPill] does; under a finger it presses in a little, as every button here does.
+ * "+ My List" beside Play (owner, v1.0.13, the streaming apps' placement): a pill of Play's
+ * own height in Play's own colours (owner, v1.0.14: [Tone.hero] under [Tone.onHero], the
+ * pair [HeroPill] itself wears, where v1.0.13 drew it in the quiet surface fill), a plus
+ * while the title is unlisted and a tick with plain "My List" once it stands in Watch
+ * later. It presses the Watch later row's own action, so it and the round Watch later
+ * button are two faces of the one store and neither can disagree with the other. Focus
+ * takes the focus fill on a television, as [HeroPill] does; under a finger it presses in
+ * a little, as every button here does. A show's page draws the same pill beside its own
+ * Play, wired to the show's Watch later switch, which writes the same store.
  */
 @Composable
-private fun MyListPill(listed: Boolean, onClick: () -> Unit) {
+internal fun MyListPill(listed: Boolean, onClick: () -> Unit) {
     val s = LocalStrings.current
     val tv = !isTouch()
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusVisibleAsState()
-    val ink = if (focused) Tone.onFocusFill else Tone.text
+    val ink = if (focused) Tone.onFocusFill else Tone.onHero
     Row(
         Modifier
             .heightIn(min = if (tv) 48.dp else 52.dp)
             .then(if (tv) Modifier else Modifier.pressScale(interactions, com.tmplayer.ui.components.Micro.PillPressScale))
             .clip(CircleShape)
-            .background(if (focused) Tone.focusFill else Tone.surfaceHigh)
+            .background(if (focused) Tone.focusFill else Tone.hero)
             .clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onClick)
             .padding(start = 18.dp, end = 22.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
