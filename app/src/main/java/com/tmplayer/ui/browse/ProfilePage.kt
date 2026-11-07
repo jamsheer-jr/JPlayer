@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -146,9 +149,15 @@ internal fun ProfilePage(
         say = onMessage,
     )
 
+    // The page stands on its own under the status bar, with no bar of its own over it, so the
+    // list itself keeps the header clear of the status bar (owner, v1.0.15: the account header
+    // crowded the top of his phone). At the foot it keeps the floating bar's room and a full
+    // row's worth more: with only a small extra the last rows still slid under the floating
+    // pill, their titles half covered, his Watch later row among them.
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     LazyColumn(
         Modifier.fillMaxSize().background(Tone.background),
-        contentPadding = PaddingValues(bottom = LocalBottomChrome.current + 24.dp),
+        contentPadding = PaddingValues(top = statusTop, bottom = LocalBottomChrome.current + 56.dp),
     ) {
         item(key = "account") {
             ProfileAccountHeader(account, onAccount)
