@@ -6990,6 +6990,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             else Chapters.labelAt(chapters, player?.currentPosition ?: 0L) ?: L.playerBeforeFirstChapter
         override fun watched() = onWatchedList
         override fun bookmarks() = if (hasMessage()) bookmarkActions() else null
+        // The Continue link (item 7f, v1.0.15): this video at this second, as shareWatchParty
+        // builds it; the panel draws it as a QR code instead of sending it to the share sheet.
+        override fun continueLink() = if (hasMessage()) {
+            PartyLinks.build(chatId, messageId, ((player?.currentPosition ?: 0L) / 1000L).toInt())
+        } else {
+            null
+        }
         override fun playbackDetails() = this@PlayerActivity.playbackDetails()
         override fun onPhoneEntry(entry: PhoneMenuEntry) = onPhoneMenuEntry(entry)
         override fun onTvEntry(entry: PlayerMenuEntry) = onTvMenuEntry(entry)

@@ -1792,6 +1792,8 @@
     "close_details_hint": "Close (I)",
     "connecting": "Connecting to Telegram…",
     "connecting_telegram": "Connecting to Telegram",
+    "continue_qr": "Continue on TV",
+    "continue_qr_blurb": "Point the other device at this code, or open the link in J Player there: the video picks up at this moment.",
     "copies": "Copies",
     "copies_note": "Switching keeps your place",
     "copies_other": "Other copies",

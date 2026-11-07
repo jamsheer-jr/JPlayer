@@ -145,6 +145,13 @@ interface PlayerMoreHost {
     /** The video's bookmarks and what to do with them, or null for a video with no message. */
     fun bookmarks(): BookmarkSheetActions?
 
+    /**
+     * The Continue link for this video at this moment (item 7f, v1.0.15): the Watch party link
+     * ([com.tmplayer.data.PartyLinks]) the Continue page draws as a QR code, or null for a
+     * video with no message to point at.
+     */
+    fun continueLink(): String? = null
+
     /** The playback details' heading and lines, or null before there is a player. */
     fun playbackDetails(): Pair<String, List<String>>?
     /** The subtitle look's current size and position, for their lines in the panel. */
@@ -201,6 +208,9 @@ class PlayerMorePanel(
         data object Sync : Page
         data object Keys : Page
         class Details(val title: String, val lines: List<String>) : Page
+
+        /** The Continue code's page (item 7f, v1.0.15): the link it carries, drawn as a QR. */
+        class ContinueQr(val link: String) : Page
         class Bookmarks(val actions: BookmarkSheetActions) : Page
         class BookmarkActions(val mark: Bookmark, val actions: BookmarkSheetActions) : Page
 
@@ -398,7 +408,7 @@ class PlayerMorePanel(
     private enum class Kind {
         LockScreen, PictureInPicture, PlaybackDetails, StartOver, PictureShape, ResetZoom, Stereo, Speed,
         VolumeBoost, NightMode, EvenVolume, SleepTimer, AbLoop, NextChapter, PreviousChapter,
-        NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, WatchParty, OpenInAnotherApp,
+        NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, WatchParty, ContinueQr, OpenInAnotherApp,
         LoadSubtitleFile, LoadSubtitleUrl, TranslateSubtitles, SubtitleSize, SubtitlePosition, SubtitleSync, SaveToDownloads, MarkWatched, RemoteKeys,
     }
 
@@ -413,7 +423,17 @@ class PlayerMorePanel(
         val kinds = if (host.tv) host.tvEntries().map { Kind.valueOf(it.name) } else host.phoneEntries().map { Kind.valueOf(it.name) }
         val bookmarks = remember { host.bookmarks() }
         val count = bookmarks?.bookmarks?.collectAsState()?.value?.size ?: 0
-        val lines = kinds.map { line(it, count) }
+        // Continue on TV (item 7f, v1.0.15) is the panel's own line, not a menu entry: it sits
+        // with Watch party on the phone and after Bookmarks on a television, the two places a
+        // viewer looks for a way to carry the video elsewhere. Only for a video with a message,
+        // which is what its link is made of.
+        val lines = kinds.map { line(it, count) }.toMutableList().apply {
+            if (host.continueLink() != null) {
+                val qr = line(Kind.ContinueQr, count)
+                val after = indexOfFirst { it.kind == Kind.WatchParty || it.kind == Kind.Bookmarks }
+                if (after >= 0) add(after + 1, qr) else add(qr)
+            }
+        }
         val requesters = remember { mutableMapOf<Kind, FocusRequester>() }
         Header(title = s.playerMoreOptions, subtitle = host.title().ifBlank { null })
         // A phone draws the same lines as a grid of icon circles (J Player, 2026-11-06): the
@@ -554,6 +574,7 @@ class PlayerMorePanel(
             Kind.AddBookmark -> Line(kind, s.playerAddBookmark, TmIcons.Add, null)
             Kind.Bookmarks -> Line(kind, s.playerBookmarks, TmIcons.Bookmark, bookmarkCount.takeIf { it > 0 }?.let { s.playerBookmarksCount(it) })
             Kind.WatchParty -> Line(kind, s.playerWatchParty, TmIcons.Group, null)
+            Kind.ContinueQr -> Line(kind, s.playerContinueQr, TmIcons.Tv, null)
             Kind.OpenInAnotherApp -> Line(kind, s.playerOpenInAnotherApp, TmIcons.OpenExternal, null)
             Kind.LoadSubtitleFile -> Line(kind, s.playerLoadSubtitleFile, TmIcons.Subtitles, null)
             Kind.LoadSubtitleUrl -> Line(kind, s.playerLoadSubtitleUrl, TmIcons.Download, null)
@@ -592,6 +613,7 @@ class PlayerMorePanel(
             Kind.SubtitleSync -> Page.Sync
             Kind.RemoteKeys -> Page.Keys
             Kind.Bookmarks -> host.bookmarks()?.let { Page.Bookmarks(it) }
+            Kind.ContinueQr -> host.continueLink()?.let { Page.ContinueQr(it) }
             Kind.PlaybackDetails -> host.playbackDetails()?.let { (title, lines) -> Page.Details(title, lines) }
             // The phone asks for a note first, at the moment the line was chosen; the television
             // saves at once, without the keyboard.
@@ -677,6 +699,7 @@ class PlayerMorePanel(
             )
             Page.Keys -> RemoteKeysPage(onBack = ::back)
             is Page.Details -> PlaybackDetailsSheet(current.title, current.lines, onClose = ::back)
+            is Page.ContinueQr -> ContinueQrSheet(current.link, onClose = ::back)
             is Page.Bookmarks -> {
                 val actions = current.actions
                 val list by actions.bookmarks.collectAsState()

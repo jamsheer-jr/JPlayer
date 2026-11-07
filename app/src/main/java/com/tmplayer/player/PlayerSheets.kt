@@ -1114,6 +1114,49 @@ internal fun CopiesSheet(
 }
 
 /**
+ * The Continue code (item 7f, v1.0.15): [link], this video at this moment in the Watch party
+ * link scheme, drawn as a QR code on the white plate a camera can read across a room, the way
+ * the sign in pane draws its own. The other device opens the link in J Player (a scan, or Open
+ * link) and the video picks up at this moment, with its own account: the code is a reference,
+ * never a copy and never a session.
+ */
+@Composable
+internal fun ContinueQrSheet(link: String, onClose: () -> Unit) {
+    val s = LocalStrings.current
+    val touch = isTouch()
+    val closeFocus = remember { FocusRequester() }
+    val bitmap by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, key1 = link) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.tmplayer.ui.auth.QrCode.render(link, 720)
+        }
+    }
+    ChoiceSheet(title = s.playerContinueQr, onDismiss = onClose, onClose = onClose, closeFocus = closeFocus, ignoreRelease = !touch, fullScreen = true) {
+        ChoiceList {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier
+                        .size(260.dp)
+                        .clip(RoundedCornerShape(Corner.ExtraLarge))
+                        .background(androidx.compose.ui.graphics.Color.White)
+                        .padding(14.dp),
+                ) {
+                    val rendered = bitmap
+                    if (rendered != null) {
+                        androidx.compose.foundation.Image(
+                            bitmap = rendered,
+                            contentDescription = s.playerContinueQr,
+                            modifier = Modifier.size(232.dp),
+                        )
+                    }
+                }
+                Text(s.playerContinueQrBlurb, style = MaterialTheme.typography.bodyLarge, color = Tone.text)
+            }
+        }
+        FocusOnOpen(closeFocus)
+    }
+}
+
+/**
  * What is actually playing, a line a figure, in the pickers' panel. Nothing in it is chosen, so
  * the remote starts on Close, and Back or Close shuts it.
  */
