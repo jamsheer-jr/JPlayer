@@ -1069,6 +1069,11 @@ private fun Root() {
     var settingsCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
     // Where leaving the Profile page goes back to: the page its picture was pressed on.
     var profileCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
+    // Where leaving a chat goes back to, where that is not the browser: a chat opened from
+    // the Profile page (a starred chat, or a detail page's Open chat) returns to the Profile
+    // page, not to Home (owner, v1.0.15). Recorded by openChat from the screen that asked;
+    // the browser stays the default, as it is for every chat opened from it.
+    var mediaCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
     // On a television, the rail item to put the remote back on when Back from Settings or
     // Downloads returns to the browser: the place it was pressed, not the first tile of the page.
     var railReturn by remember { mutableStateOf<com.tmplayer.ui.browse.RailReturn?>(null) }
@@ -1389,6 +1394,9 @@ private fun Root() {
 
     /** Opening a chat is what makes it the one to reopen on the next launch. */
     fun openChat(chat: ChatSummary) {
+        // Where Back from this chat goes (see mediaCameFrom): the screen that asked, kept
+        // across a hop from one chat into another, so the first asker is the return.
+        if (screen !is Screen.Media) mediaCameFrom = screen
         screen = Screen.Media(chat)
         scope.launch { settings.rememberChatOpened(chat.id) }
     }
@@ -2148,7 +2156,11 @@ private fun Root() {
                     // Backing out of a chat is the viewer asking for the chat list. Honour that
                     // for the rest of the session rather than jumping them back in.
                     autoOpened = true
-                    screen = Screen.Chats
+                    // A chat opened from the Profile page goes back to it (owner, v1.0.15):
+                    // the actual previous surface, as a chat opened from a detail page goes
+                    // back to that page (v1.0.14 item 9). Every other chat goes to the
+                    // browser, as it always has.
+                    screen = if (mediaCameFrom is Screen.Profile) mediaCameFrom else Screen.Chats
                 }
                 BackHandler(onBack = leaveChat)
                 MediaGridScreen(
@@ -2418,7 +2430,12 @@ private fun Root() {
         if (!FormFactor.isTv(context)) {
             androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                 DownloadOrb(
-                    onOpen = { screen = Screen.Downloads },
+                    // Through openDownloads, not a bare screen change (owner, v1.0.15): the
+                    // Downloads screen's Back goes to downloadsCameFrom, and setting the
+                    // screen alone left that at whatever an earlier visit had set, so Back
+                    // from Downloads opened this way landed on Home instead of the page
+                    // the orb was tapped on (the Profile page among them).
+                    onOpen = { if (screen !is Screen.Downloads) openDownloads() },
                     modifier = androidx.compose.ui.Modifier
                         .align(androidx.compose.ui.Alignment.TopEnd)
                         .padding(top = 10.dp, end = 12.dp),

@@ -135,9 +135,12 @@ internal fun ProfilePage(
     val starredChats = remember(chats, favorites) { chats.filter { it.id in favorites } }
     // The overflow menu of one Continue watching card, with the actions its History card offers.
     var continueMenu by remember { mutableStateOf<ResumeRecord?>(null) }
-    // A title's detail page, stacked the way the browser stacks its pages.
-    var detailStack by remember { mutableStateOf<List<Pair<MediaItem, String>>>(emptyList()) }
-    val openDetail: (MediaItem, String) -> Unit = { item, title -> detailStack = detailStack + (item to title) }
+    // A title's detail page, on the browser's own stack (owner, v1.0.15): the stack is
+    // kept across this page leaving the screen, as the browser's is, so a title opened
+    // here, then its chat, comes back to this page with its page still standing (the
+    // v1.0.14 item 9 rule), rather than the page being gone and Back landing on Home.
+    val details = rememberDetailBackStack<Pair<MediaItem, String>>(itemOf = { it.first }, labelOf = { it.second }, rebuild = { item, chat -> item to chat })
+    val openDetail: (MediaItem, String) -> Unit = { item, title -> details.open(item to title) }
     // The New collection name prompt, the same sheet the popover opened (v1.0.13).
     var namingCollection by remember { mutableStateOf(false) }
     // Back up and Restore on this page too (owner, v1.0.14, item 26): Settings, About's
@@ -398,7 +401,8 @@ internal fun ProfilePage(
         )
     }
 
-    detailStack.lastOrNull()?.let { (item, title) ->
+    details.top?.let { entry ->
+        val (item, title) = entry.page
         MediaDetailOpened(
             item = item,
             chatTitle = title,
@@ -412,11 +416,15 @@ internal fun ProfilePage(
                 }
             },
             onOpenChat = chats.firstOrNull { it.id == item.chatId }?.let { chat -> { onOpenChat(chat) } },
-            onDismiss = { detailStack = emptyList() },
+            onDismiss = { details.clear() },
             onOpenItem = { other ->
-                detailStack = detailStack + (other to (chats.firstOrNull { it.id == other.chatId }?.title ?: title))
+                details.push(other to (chats.firstOrNull { it.id == other.chatId }?.title ?: title))
             },
-            onBack = if (detailStack.size > 1) ({ detailStack = detailStack.dropLast(1) }) else null,
+            onTurnTo = { other ->
+                details.turn(other to (chats.firstOrNull { it.id == other.chatId }?.title ?: title))
+            },
+            onBack = if (details.canGoBack) ({ details.back() }) else null,
+            returnTo = entry.returnTo,
         )
     }
 
