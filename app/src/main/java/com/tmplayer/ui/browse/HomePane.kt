@@ -270,6 +270,11 @@ internal fun HomePane(
     val bannerSettings = remember(bannerContext) { SettingsStore(bannerContext) }
     val bannerMode by remember(bannerSettings) { bannerSettings.homeBannerMode }.collectAsState(initial = "auto")
     val bannerPins by remember(bannerSettings) { bannerSettings.homeBannerPins }.collectAsState(initial = emptyList())
+    // The catalog's hidden groups and their order, for the Categories picker on Home
+    // itself (owner, v1.0.14, item 23): the same store Settings writes, read through the
+    // one SettingsStore this page already keeps, so a change in either place is the
+    // change in both.
+    val homeLayout by remember(bannerSettings) { bannerSettings.homeLayout }.collectAsState(initial = com.tmplayer.data.HomeLayout())
     val bannerRecent = when {
         bannerMode == "off" -> null
         bannerMode == "pinned" && bannerPins.isNotEmpty() -> {
@@ -309,9 +314,9 @@ internal fun HomePane(
     // line shows either way, so the carousel's empty place is explained.
     val listed = remember(rows) { rows.filter { it !is HomeRow.Recent || it.asRow || it.noneChosen } }
     // The phone's category chips (owner, v1.0.14, item 13): the jumps to the Shows, Movies
-    // and Anime shelves Home has this time, in that order, and Categories, which opens an
-    // index of every shelf present. Each label is its shelf's own heading, so no new words
-    // are wanted. Worked out here rather than in the list, because the chips now stand
+    // and Anime shelves Home has this time, in that order, and Categories, which opens
+    // the categories picker on Home itself (item 23, below). Each label is its shelf's
+    // own heading, so no new words are wanted. Worked out here rather than in the list, because the chips now stand
     // above the banner (see the list below) and the banner's place in the list, which the
     // status bar colours and the carousel's own turning read, depends on whether they
     // stand there. A television never has them: its list is exactly as it was.
@@ -994,24 +999,59 @@ internal fun HomePane(
         FastScroller(listState)
     }
 
-    // The Categories index (phone, v1.0.13): every shelf Home has this time, under its own
-    // heading; a tap closes the sheet and jumps the list to that shelf, by the same offset
-    // the category pills jump with.
+    // The Categories picker on Home itself (phone, owner, v1.0.14, item 23): the same
+    // sheet Settings, Home, Categories offers, over the same store, so the two stay in
+    // sync: every catalog group with its shown or hidden state, a tap turning it over,
+    // and the move buttons writing the order whole, exactly as the Settings sheet does.
+    // It replaces the index this chip opened before (v1.0.13), which only jumped to a
+    // shelf; the Shows, Movies and Anime chips still jump, and a hidden shelf leaves
+    // Home on the next build, as it does from Settings.
     if (categoriesOpen) {
+        val ordered = (homeLayout.catalogOrder + com.tmplayer.data.HomeLayout.CATALOG_GROUPS).distinct()
         ChoiceSheet(
-            title = s.homeCategories,
+            title = s.settingsHomeCategories,
+            note = s.settingsHomeCategoriesDetail,
             onDismiss = { categoriesOpen = false },
             onClose = { categoriesOpen = false },
         ) {
             ChoiceList {
-                listed.filterIsInstance<HomeRow.Catalog>().forEach { row ->
-                    ChoiceLine(
-                        title = homeRowTitle(row, s),
-                        selected = null,
-                    ) {
-                        categoriesOpen = false
-                        val index = listed.indexOf(row)
-                        if (index >= 0) scope.launch { listState.animateScrollToItem(index + 4) }
+                ordered.forEachIndexed { index, group ->
+                    val shown = group !in homeLayout.hiddenCatalog
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChoiceLine(
+                            title = com.tmplayer.ui.settings.homeCategoryLabel(group, s),
+                            detail = if (shown) s.settingsHomeCategoryShown else s.settingsHomeCategoryHidden,
+                            selected = null,
+                            icon = if (shown) TmIcons.Check else null,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            val next = if (shown) homeLayout.hiddenCatalog + group else homeLayout.hiddenCatalog - group
+                            scope.launch { bannerSettings.setHomeHiddenCatalog(next) }
+                        }
+                        androidx.compose.material3.IconButton(
+                            enabled = index > 0,
+                            onClick = {
+                                val next = ordered.toMutableList()
+                                val other = next[index - 1]
+                                next[index - 1] = group
+                                next[index] = other
+                                scope.launch { bannerSettings.setHomeCatalogOrder(next) }
+                            },
+                        ) {
+                            androidx.compose.material3.Icon(TmIcons.ChevronUp, contentDescription = s.settingsMoveUp)
+                        }
+                        androidx.compose.material3.IconButton(
+                            enabled = index < ordered.lastIndex,
+                            onClick = {
+                                val next = ordered.toMutableList()
+                                val other = next[index + 1]
+                                next[index + 1] = group
+                                next[index] = other
+                                scope.launch { bannerSettings.setHomeCatalogOrder(next) }
+                            },
+                        ) {
+                            androidx.compose.material3.Icon(TmIcons.ChevronDown, contentDescription = s.settingsMoveDown)
+                        }
                     }
                 }
             }
