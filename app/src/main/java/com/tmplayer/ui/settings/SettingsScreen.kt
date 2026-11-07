@@ -1936,7 +1936,13 @@ fun SettingsScreen(
                         ActionRow(
                             title = entry.name.ifBlank { s.settingsAccountUnnamed },
                             subtitle = if (entry.slot == activeSlot) {
-                                s.settingsAccountActive
+                                // The signed in account's own number beside Active
+                                // (owner, v1.0.14), from the live account: the stored
+                                // entries carry no number, and another slot's number
+                                // cannot be read without switching to it. No number
+                                // given, no addition to the line.
+                                val number = account?.phoneNumber?.takeIf { it.isNotBlank() }
+                                if (number != null) s.settingsAccountActive + "  ·  " + number else s.settingsAccountActive
                             } else {
                                 entry.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: s.settingsAccountSaved
                             },

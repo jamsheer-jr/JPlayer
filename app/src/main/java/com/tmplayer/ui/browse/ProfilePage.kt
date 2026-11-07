@@ -410,8 +410,9 @@ internal fun ProfilePage(
 
 /**
  * The account at the top of the page: the signed in Telegram account's picture and name, with
- * its @username under the name. A tap opens the account page inside Settings, where the
- * accounts on this device are switched and another is added.
+ * its @username under the name and its own phone number under that, where the account gives
+ * one. A tap opens the account page inside Settings, where the accounts on this device are
+ * switched and another is added.
  */
 @Composable
 private fun ProfileAccountHeader(account: Account?, onAccount: () -> Unit) {
@@ -451,6 +452,19 @@ private fun ProfileAccountHeader(account: Account?, onAccount: () -> Unit) {
             if (username != null) {
                 M3Text(
                     "@$username",
+                    style = M3MaterialTheme.typography.bodyMedium,
+                    color = Tone.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // The account's own number under the name (owner, v1.0.14): only where the
+            // account gives one; an account that returns none shows no line rather than
+            // an invented one.
+            val phoneNumber = account?.phoneNumber?.takeIf { it.isNotBlank() }
+            if (phoneNumber != null) {
+                M3Text(
+                    phoneNumber,
                     style = M3MaterialTheme.typography.bodyMedium,
                     color = Tone.muted,
                     maxLines = 1,

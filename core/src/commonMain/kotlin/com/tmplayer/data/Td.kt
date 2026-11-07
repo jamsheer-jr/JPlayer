@@ -1620,6 +1620,13 @@ object Td {
             username = user.usernames?.activeUsernames?.firstOrNull().orEmpty(),
             miniThumbnail = user.profilePhoto?.minithumbnail?.data,
             photoFileId = user.profilePhoto?.small?.id ?: 0,
+            // The account's own number, as TDLib hands it over for the signed in user
+            // (owner, v1.0.14): digits with the country code, no plus, so the plus is
+            // put back for display. An account that gives none (a number TDLib does not
+            // return) leaves it blank, and the pages that show it leave the line out.
+            phoneNumber = user.phoneNumber.orEmpty().let { number ->
+                if (number.isBlank() || number.startsWith("+")) number else "+$number"
+            },
         )
     }
 
@@ -1714,9 +1721,12 @@ data class Account(
     val username: String,
     val miniThumbnail: ByteArray?,
     val photoFileId: Int,
+    /** The account's own phone number, with its plus, or blank where TDLib gives none. */
+    val phoneNumber: String = "",
 ) {
     override fun equals(other: Any?) = other is Account && other.name == name &&
-        other.username == username && other.photoFileId == photoFileId
+        other.username == username && other.photoFileId == photoFileId &&
+        other.phoneNumber == phoneNumber
 
     override fun hashCode() = name.hashCode() * 31 + photoFileId
 }
