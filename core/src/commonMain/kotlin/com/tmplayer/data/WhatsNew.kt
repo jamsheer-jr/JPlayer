@@ -41,6 +41,6 @@ object WhatsNew {
      * The x.y.z of a version string, without a build suffix such as the promo build's `-promo`, or
      * null when there is none.
      */
-    internal fun release(version: String): String? =
+    fun release(version: String): String? =
         Regex("""^v?(\d+\.\d+\.\d+)""").find(version.trim())?.groupValues?.get(1)
 }
