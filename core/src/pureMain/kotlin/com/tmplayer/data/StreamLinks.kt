@@ -34,9 +34,13 @@ data class StreamLink(
 /**
  * Reads the stream links out of channel posts. The owner posts a stream as one message whose
  * text names it and carries the address: an http or https link ending in .m3u8 (live) or .mp4
- * (a plain file), with a query string allowed after the extension. The name is the text
- * before the link, first line, trimmed; a post that names nothing falls back to the channel's
- * name. Reading is garbage safe: any text may be scanned, and only well shaped links come out.
+ * (a plain file), with a query string allowed after the extension. The name is the pipe name
+ * on the link's own line, else the text before the link, first line, trimmed; a post that
+ * names nothing falls back to a name from the link itself ([linkOwnName]: its file name or
+ * its host), and only a link that gives neither falls back to the channel's name, which is
+ * the stream's [StreamLink.source] either way, never its headline by choice (owner,
+ * v1.0.15). Reading is garbage safe: any text may be scanned, and only well shaped links
+ * come out.
  */
 object StreamLinks {
 
@@ -79,31 +83,17 @@ object StreamLinks {
     fun inPost(text: String, fallbackName: String): StreamLink? {
         for (match in CANDIDATE.findAll(text)) {
             driveDirect(match.value)?.let { direct ->
-                val lineStart = text.lastIndexOf('\n', match.range.first - 1) + 1
-                val lineEnd = text.indexOf('\n', match.range.last + 1).let { if (it < 0) text.length else it }
-                val piped = text.substring(lineStart, lineEnd).substringAfter('|', "").trim()
-                val before = text.substring(0, match.range.first)
-                    .lineSequence().firstOrNull()?.trim().orEmpty()
                 return StreamLink(
                     url = direct,
-                    name = piped.ifBlank { before }.ifBlank { fallbackName },
+                    name = postedName(text, match, direct, fallbackName),
                     live = false,
                     source = fallbackName,
                 )
             }
             val found = streamOf(match.value, wider = false) ?: continue
-            // The owner's post format (2026-11-06): "Link | Name", the name after the pipe on
-            // the link's own line wins; without a pipe, the text before the link, first line.
-            val lineStart = text.lastIndexOf('\n', match.range.first - 1) + 1
-            val lineEnd = text.indexOf('\n', match.range.last + 1).let { if (it < 0) text.length else it }
-            val line = text.substring(lineStart, lineEnd)
-            val piped = line.substringAfter('|', "").trim()
-            val before = text.substring(0, match.range.first)
-                .lineSequence().firstOrNull()?.trim().orEmpty()
-            val name = piped.ifBlank { before }
             return StreamLink(
                 url = found.url,
-                name = name.ifBlank { fallbackName },
+                name = postedName(text, match, found.url, fallbackName),
                 live = found.live,
                 dash = found.dash,
                 source = fallbackName,
@@ -111,6 +101,59 @@ object StreamLinks {
         }
         return null
     }
+
+    /**
+     * The name a post gives the stream at [match]: the owner's post format (2026-11-06) is
+     * "Link | Name", so the name after the pipe on the link's own line wins; without a pipe,
+     * the text before the link, first line. A post that names nothing at all is named from
+     * the link itself ([linkOwnName]) before the channel's name is reached (owner, v1.0.15):
+     * the channel is the stream's source, not its name.
+     */
+    private fun postedName(text: String, match: MatchResult, url: String, fallbackName: String): String {
+        val lineStart = text.lastIndexOf('\n', match.range.first - 1) + 1
+        val lineEnd = text.indexOf('\n', match.range.last + 1).let { if (it < 0) text.length else it }
+        val piped = text.substring(lineStart, lineEnd).substringAfter('|', "").trim()
+        if (piped.isNotBlank()) return piped
+        val before = text.substring(0, match.range.first)
+            .lineSequence().firstOrNull()?.trim().orEmpty()
+        if (before.isNotBlank()) return before
+        return linkOwnName(url).ifBlank { fallbackName }
+    }
+
+    /**
+     * A name read off the link itself, for a post that names nothing: the file name the
+     * address ends in, or the file a query value names (the shape [streamOf] reads the kind
+     * from), or the address's host. A segment that names nothing (an index page's
+     * "index.m3u8", a player page's "play", Drive's "uc", a camera style "video.mp4", a one
+     * letter stem) is passed over for the host. Blank only for an address with neither,
+     * which no stream address is; the caller then falls back as it did before.
+     */
+    fun linkOwnName(url: String): String {
+        val segment = url.substringBefore('?').substringBefore('#').substringAfterLast('/').trim()
+        val decoded = segment.replace("%20", " ")
+        if (isNamefulSegment(decoded)) return decoded
+        val query = url.substringAfter('?', "")
+        if (query.isNotEmpty()) {
+            for (part in query.split('&')) {
+                val value = part.substringAfter('=', part).substringAfterLast('/').replace("%20", " ")
+                if (isNamefulSegment(value) && POST_SHAPES.any { value.lowercase().endsWith(".${it.ending}") }) return value
+            }
+        }
+        return url.substringAfter("://", "").substringBefore('/').substringBefore('?').substringBefore(':').trim()
+    }
+
+    /** Whether an address segment can stand as a stream's name: a real file's name, not a page's furniture. */
+    private fun isNamefulSegment(segment: String): Boolean {
+        if (segment.length < 2) return false
+        val stem = segment.substringBeforeLast('.', segment).trim().lowercase()
+        if (stem.length < 2 || stem in GENERIC_SEGMENTS) return false
+        return !MediaText.isGenericName(segment)
+    }
+
+    /** Address segments that are a player or index page's furniture, never a stream's name. */
+    private val GENERIC_SEGMENTS = setOf(
+        "index", "playlist", "live", "stream", "play", "watch", "video", "file", "download", "uc", "embed", "player",
+    )
 
     /**
      * The stream links in [posts] (newest first), at most [LIMIT] of them. Each carries the

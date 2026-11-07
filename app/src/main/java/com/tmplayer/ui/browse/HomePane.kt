@@ -2059,9 +2059,10 @@ private fun OpenLinkPill(onClick: () -> Unit) {
 }
 
 /**
- * One stream's card in the Live row: the name it was posted with, and its badge. A press
- * plays it; a long press, or a hold of OK on the remote, opens its menu ([holdable], the
- * tiles' own arrangement), whose one action takes the stream out of the row.
+ * One stream's card in the Live row: the stream's own name (the post's words, or a name
+ * from its link where the post gave none, v1.0.15), its source small under it, and its
+ * badge. A press plays it; a long press, or a hold of OK on the remote, opens its menu
+ * ([holdable], the tiles' own arrangement), whose one action takes the stream out of the row.
  *
  * On a phone the card is a wide one (owner, v1.0.14): a 16:9 cover on top, the post's own
  * photo where the post carried one (a plain stand-in where it did not), the badges over
@@ -2112,14 +2113,16 @@ private fun StreamCard(link: StreamLink, isNew: Boolean = false, onClick: () -> 
                     if (isNew) NewBadge()
                 }
             }
-            M3Text(
-                link.name,
-                style = M3MaterialTheme.typography.titleSmall,
-                color = Tone.text,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            )
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                M3Text(
+                    link.name,
+                    style = M3MaterialTheme.typography.titleSmall,
+                    color = Tone.text,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                StreamSourceLine(link)
+            }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (link.live) {
@@ -2140,8 +2143,28 @@ private fun StreamCard(link: StreamLink, isNew: Boolean = false, onClick: () -> 
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            StreamSourceLine(link)
         }
     }
+}
+
+/**
+ * A Live card's source under its name (owner, v1.0.15): the channel the stream was posted
+ * in, small, never the headline. The name above is the stream's own (see
+ * [com.tmplayer.data.StreamLinks]); where the source is the name (a pasted link's host
+ * under its file name says nothing new) or there is none, no line is drawn.
+ */
+@Composable
+private fun StreamSourceLine(link: StreamLink) {
+    if (link.source.isBlank() || link.source == link.name) return
+    M3Text(
+        link.source,
+        style = M3MaterialTheme.typography.bodySmall,
+        color = Tone.muted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }
 
 /** The LIVE pill on a stream card, on the compact card and over the wide one's cover. */

@@ -25,9 +25,35 @@ class StreamLinksTest {
     }
 
     @Test
-    fun aPostWithNoNameFallsBackToTheChannel() {
-        val link = StreamLinks.inPost("https://cdn.example.com/live/x.m3u8", "J MOVIES")
-        assertEquals("J MOVIES", link?.name)
+    fun aPostWithNoNameFallsBackToTheLinksFileName() {
+        // Owner, v1.0.15: the channel's name is the stream's source, never its headline.
+        // A post that names nothing is named from the link itself.
+        val link = StreamLinks.inPost("https://cdn.example.com/live/big-match.m3u8", "J MOVIES")
+        assertEquals("big-match.m3u8", link?.name)
+        assertEquals("J MOVIES", link?.source)
+    }
+
+    @Test
+    fun aPostWithNoNameAndNoFileNameFallsBackToTheHost() {
+        // A one letter stem, an index page and a player page name nothing: the host answers.
+        assertEquals("cdn.example.com", StreamLinks.inPost("https://cdn.example.com/live/x.m3u8", "J MOVIES")?.name)
+        assertEquals("cdn.example.com", StreamLinks.inPost("https://cdn.example.com/index.m3u8", "J MOVIES")?.name)
+        // The file a query value names is the file name, as the kind is read from it too.
+        assertEquals("grand-final.m3u8", StreamLinks.inPost("https://cdn.example.com/play?file=grand-final.m3u8&token=abc", "J MOVIES")?.name)
+        // A Drive share with no words: its direct address names nothing, so the host answers.
+        val drive = StreamLinks.inPost("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUv/view?usp=sharing", "J MOVIES")
+        assertEquals("drive.google.com", drive?.name)
+        // No name anywhere at all is the channel's name, as before.
+        assertEquals("", StreamLinks.linkOwnName(""))
+        assertEquals("", StreamLinks.linkOwnName("https://"))
+    }
+
+    @Test
+    fun aPostedNameStillBeatsTheLinksOwnName() {
+        val piped = StreamLinks.inPost("https://cdn.example.com/live/big-match.m3u8 | Final Night", "J MOVIES")
+        assertEquals("Final Night", piped?.name)
+        val before = StreamLinks.inPost("Final Night https://cdn.example.com/live/big-match.m3u8", "J MOVIES")
+        assertEquals("Final Night", before?.name)
     }
 
     @Test
