@@ -995,4 +995,14 @@ class HomeRowsTest {
         assertTrue("movies" in kinds)
         assertFalse(kinds.any { it.startsWith("year-") })
     }
+
+    @Test
+    fun `the pinned chat leads the row chats, listed once`() {
+        val chats = listOf(chat(1), chat(2), chat(3))
+        assertEquals(listOf(3L, 1L), HomeRows.rowChats(chats, setOf(1L, 3L), pinnedChat = 3L).map { it.id })
+        assertEquals(listOf(2L, 1L), HomeRows.rowChats(chats, setOf(1L), pinnedChat = 2L).map { it.id })
+        assertEquals(listOf(1L), HomeRows.rowChats(chats, setOf(1L)).map { it.id })
+        assertEquals(listOf(1L), HomeRows.rowChats(chats, setOf(1L), pinnedChat = 99L).map { it.id })
+        assertEquals(emptyList<Long>(), HomeRows.rowChats(chats, emptySet(), pinnedChat = 0L).map { it.id })
+    }
 }

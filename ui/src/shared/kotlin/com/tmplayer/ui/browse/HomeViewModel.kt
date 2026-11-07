@@ -1142,6 +1142,8 @@ fun rememberHomeRows(
     collections: List<com.tmplayer.data.VideoCollection> = emptyList(),
     /** Videos under 5 minutes hidden from the rows and shelves (the Playback switch): see [HomeRows.build]. */
     hideShortVideos: Boolean = false,
+    /** The one chat pinned to Home (item 8c, v1.0.15): its row leads the chat rows; 0 is none. */
+    pinnedChat: Long = 0L,
 ): List<HomeRow> {
     // The chats the viewer added (HX27): with a choice made, Recently added reads them one by one
     // ([HomeLayout.chosenChats]) rather than Telegram's newest across the whole account, which a
@@ -1210,19 +1212,30 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, seriesPool) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, seriesPool, pinnedChat) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
         val autoPick = autoFill && layout.needsRecent && added == null
         val chosen = layout.needsRecent && added != null
         val addedIds = added.orEmpty()
-        val key = listOf(chats, favourites, recent, autoFill, layout, added)
+        val key = listOf(chats, favourites, recent, autoFill, layout, added, pinnedChat)
         val picking = homeMemo.home.takeIf { homeMemo.same(homeMemo.key, key) }?.let { it to homeMemo.recentFrom } ?: withContext(homeBuild) {
-            val rowChats = if (layout.starredRows || (layout.needsRecent && !chosen)) HomeRows.favouriteChats(chats, favourites) else emptyList()
+            // The pinned chat keeps its row even with the starred rows off (item 8c, v1.0.15):
+            // pinning is the viewer's own single choice, not the starred list's setting.
+            val rowChats = if (layout.starredRows || (layout.needsRecent && !chosen)) {
+                HomeRows.rowChats(chats, favourites, pinnedChat)
+            } else {
+                HomeRows.rowChats(chats, emptySet(), pinnedChat)
+            }
             val chosenChats = if (chosen) HomeLayout.chosenChats(chats, addedIds) else emptyList()
             val picked = when {
-                autoPick -> HomeRows.homeChats(chats, favourites, recent)
+                // The pinned chat leads even the rows Home picks for itself (item 8c, v1.0.15):
+                // a chat the viewer pinned is a row, whether or not it starred or posted lately.
+                autoPick -> HomeRows.homeChats(chats, favourites, recent).let { picked ->
+                    val pinned = chats.firstOrNull { it.id == pinnedChat && pinnedChat != 0L }
+                    if (pinned == null || picked.any { it.id == pinnedChat }) picked else listOf(pinned) + picked
+                }
                 // The added chats first: they are what Recently added waits on, and the first of
                 // Home's chats are the ones read at once ([HomeViewModel.fill]).
                 chosen -> (chosenChats + rowChats).distinctBy { it.id }

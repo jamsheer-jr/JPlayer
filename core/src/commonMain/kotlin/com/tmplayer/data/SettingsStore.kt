@@ -89,6 +89,7 @@ private val HOME_CAROUSEL = booleanPreferencesKey("home_carousel")
 private val HOME_CONTINUE = booleanPreferencesKey("home_continue")
 private val HOME_RECENT = booleanPreferencesKey("home_recent")
 private val HOME_STARRED_ROWS = booleanPreferencesKey("home_starred_rows")
+private val HOME_PINNED_CHAT = longPreferencesKey("home_pinned_chat")
 private val HOME_CATALOG = booleanPreferencesKey("home_catalog")
 private val HOME_HIDDEN_CATALOG = stringPreferencesKey("home_hidden_catalog")
 private val HOME_CATALOG_ORDER = stringPreferencesKey("home_catalog_order")
@@ -1585,6 +1586,17 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHomeStarredRows(value: Boolean) {
         prefs.edit { it[HOME_STARRED_ROWS] = value }
+    }
+
+    /**
+     * The one chat pinned to Home (item 8c, v1.0.15): its own row leads the chat rows, chosen
+     * from the chat's own info sheet. 0 is no chat pinned. Not a favourite: starring is a list,
+     * this is the single chat the viewer wants first.
+     */
+    val homePinnedChat: Flow<Long> = read { it[HOME_PINNED_CHAT] ?: 0L }
+
+    suspend fun setHomePinnedChat(chatId: Long) {
+        prefs.edit { it[HOME_PINNED_CHAT] = chatId }
     }
 
     suspend fun setHomeCatalog(value: Boolean) {

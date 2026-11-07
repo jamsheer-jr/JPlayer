@@ -210,6 +210,18 @@ object HomeRows {
     fun favouriteChats(chats: List<ChatSummary>, favourites: Set<Long>): List<ChatSummary> =
         if (favourites.isEmpty()) emptyList() else chats.filter { it.id in favourites }
 
+    /**
+     * The chats that get a row of their own, with the one chat the viewer pinned to Home
+     * (item 8c, v1.0.15) first: the pinned chat leads, the starred ones follow in their order,
+     * and a chat that is both is listed once, as the pinned one. A pinned chat that has left
+     * the list (or was never in it) simply has no row, the way a starred one gone does not.
+     */
+    fun rowChats(chats: List<ChatSummary>, favourites: Set<Long>, pinnedChat: Long = 0L): List<ChatSummary> {
+        val starred = favouriteChats(chats, favourites)
+        val pinned = chats.firstOrNull { pinnedChat != 0L && it.id == pinnedChat } ?: return starred
+        return listOf(pinned) + starred.filterNot { it.id == pinnedChat }
+    }
+
     /** Chats Home picks for itself, besides the starred ones: a screen's worth of rows. */
     const val AUTO_CHATS = 6
 

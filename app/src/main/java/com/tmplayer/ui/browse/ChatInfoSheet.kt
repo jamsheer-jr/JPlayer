@@ -34,7 +34,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tmplayer.data.ChatInfo
+import com.tmplayer.data.SettingsStore
+import kotlinx.coroutines.launch
 import com.tmplayer.data.ChatKind
 import com.tmplayer.i18n.L
 import com.tmplayer.ui.components.ChoiceSheet
@@ -81,6 +86,7 @@ fun ChatInfoSheet(
             ) {
                 ChatInfoBody(info, title, photoFileId, miniThumbnail, touch = true)
                 JoinChatButton(info)
+                PinHomeButton(chatId)
                 ChatInfoFailed(load)
             }
         }
@@ -92,9 +98,31 @@ fun ChatInfoSheet(
             ) {
                 ChatInfoBody(info, title, photoFileId, miniThumbnail, touch = false)
                 JoinChatButton(info)
+                PinHomeButton(chatId)
                 ChatInfoFailed(load)
             }
         }
+    }
+}
+
+/**
+ * Pin to Home (item 8c, v1.0.15): this chat as its own row at the head of Home's chat rows,
+ * chosen here on the chat's own sheet. One chat at a time: pinning another moves the row.
+ */
+@Composable
+private fun PinHomeButton(chatId: Long) {
+    val s = LocalStrings.current
+    val context = LocalContext.current
+    val settings = remember(context) { SettingsStore(context) }
+    val pinned by settings.homePinnedChat.collectAsStateWithLifecycle(initialValue = 0L)
+    val scope = rememberCoroutineScope()
+    val isPinned = pinned == chatId
+    TmSecondaryButton(
+        onClick = { scope.launch { runCatching { settings.setHomePinnedChat(if (isPinned) 0L else chatId) } } },
+    ) {
+        Icon(TmIcons.Home, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(if (isPinned) s.homeRemoveFromHome else s.homePinToHome)
     }
 }
 

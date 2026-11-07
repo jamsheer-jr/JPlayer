@@ -182,6 +182,8 @@ object Backups {
         // The Home banner's way (auto, pinned, off) and the titles pinned to it, and the
         // catalog categories the viewer hid or reordered (HomeLayout): their own choices.
         "home_banner_mode" to Kind.TEXT,
+        // The one chat pinned to Home (item 8c, v1.0.15): a chat id, stored whole.
+        "home_pinned_chat" to Kind.LONG,
         "home_banner_pins" to Kind.TEXT,
         "home_catalog_order" to Kind.TEXT,
         "home_hidden_catalog" to Kind.TEXT,

@@ -1887,12 +1887,14 @@ private fun Root() {
         val activeProfile by remember { settings.activeProfile }.collectAsStateWithLifecycle(initialValue = null)
         val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
         val hideShortVideos by remember { settings.hideShortVideos }.collectAsStateWithLifecycle(initialValue = true)
+        val homePinnedChat by remember { settings.homePinnedChat }.collectAsStateWithLifecycle(initialValue = 0L)
         val homeRows = rememberHomeRows(
             homeViewModel, chats, favorites, continueWatching, watchLater, watchedVideos.values,
             recentMinStarred = 1,
             layout = homeLayout,
             collections = collections,
             hideShortVideos = hideShortVideos,
+            pinnedChat = homePinnedChat,
         )
         val tvChannelsOn by settings.tvChannels.collectAsStateWithLifecycle(initialValue = null)
         TvHomeChannels(
