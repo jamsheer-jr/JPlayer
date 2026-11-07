@@ -110,8 +110,10 @@ import kotlinx.coroutines.launch
  * Home moves when the pages land. The pictures run up under the status bar ([under]).
  *
  * The pages move on by themselves only while nobody is touching them, Home is [active] (on screen,
- * with no sheet or dialog over it), motion is on, and TalkBack is off. Only the page up and its
- * neighbours are composed, so only they fetch pictures.
+ * with no sheet or dialog over it), and TalkBack is off. They turn even when the system has its
+ * animations off (owner, v1.0.15): the turn is then a plain cut to the next page rather than a
+ * slide, so reduced motion still governs how a page changes, never whether it changes. Only the
+ * page up and its neighbours are composed, so only they fetch pictures.
  *
  * On a touch form a tap anywhere on a page's own surface opens that page's details (owner,
  * v1.0.14), the same [onDetails] the Details button calls: the tap sits on the page itself,
@@ -163,14 +165,17 @@ internal fun FeaturedCarousel(
 
         val still = rememberReducedMotion() || Motion.reduced
         val talkBack = rememberTouchExploration()
-        val auto = count > 1 && !still && !talkBack
+        // Reduced motion no longer stops the turning (owner, v1.0.15): his phone runs with the
+        // system's animations off, and the banner never moved there. The turn itself goes on;
+        // only its shape changes, a cut in place of the slide below.
+        val auto = count > 1 && !talkBack
         var held by remember { mutableStateOf(false) }
         val dragged by pager.interactionSource.collectIsDraggedAsState()
         val paused = held || dragged || !active
         val progress = remember { Animatable(0f) }
         var progressPage by remember { mutableIntStateOf(-1) }
         val settled = pager.settledPage
-        LaunchedEffect(settled, paused, auto, count) {
+        LaunchedEffect(settled, paused, auto, count, still) {
             // A new page starts its time from empty; a pause keeps it where it stopped.
             if (progressPage != settled) {
                 progress.snapTo(0f)
@@ -179,7 +184,11 @@ internal fun FeaturedCarousel(
             if (!auto || paused) return@LaunchedEffect
             val left = (1f - progress.value).coerceIn(0f, 1f)
             progress.animateTo(1f, tween((ADVANCE_MS * left).toInt(), easing = LinearEasing))
-            pager.animateScrollToPage((settled + 1) % count)
+            if (still) {
+                pager.scrollToPage((settled + 1) % count)
+            } else {
+                pager.animateScrollToPage((settled + 1) % count)
+            }
         }
         Box(
             Modifier
@@ -537,8 +546,8 @@ private val KeepSideways = object : NestedScrollConnection {
     override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = Velocity(available.x, 0f)
 }
 
-/** How long a page is up before the carousel moves on: five seconds (owner, v1.0.14). */
-private const val ADVANCE_MS = 5_000
+/** How long a page is up before the carousel moves on: three seconds (owner, v1.0.15). */
+private const val ADVANCE_MS = 3_000
 
 /** The most of the window under the status bar the carousel takes. */
 private const val VIEWPORT_SHARE = 0.7f
