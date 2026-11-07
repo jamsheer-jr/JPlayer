@@ -430,12 +430,14 @@ internal fun CopyChip(label: String, chosen: Boolean, onClick: () -> Unit, modif
 }
 
 /**
- * A show posted in more than one quality: "Quality" and a chip for each ("1080p", "720p"), the one
- * the episodes play marked. One choice for the whole show, since whoever picks the 720p of one
- * episode wants the 720p of the next; nothing at all for a show posted in one quality.
+ * A show posted in more than one quality: "Quality" and a chip for each ("1080p", "720p"), the
+ * viewer's pick marked. One choice for the whole show, since whoever picks the 720p of one
+ * episode wants the 720p of the next; nothing at all for a show posted in one quality. Tapping
+ * the marked chip again clears the pick (owner, v1.0.14): with nothing marked, every episode
+ * plays the copy picked for it as before, so all qualities stand.
  */
 @Composable
-fun QualityPicker(heights: List<Int>, selected: Int?, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun QualityPicker(heights: List<Int>, selected: Int?, onSelect: (Int?) -> Unit, modifier: Modifier = Modifier) {
     if (heights.size < 2) return
     val s = LocalStrings.current
     Row(
@@ -446,7 +448,7 @@ fun QualityPicker(heights: List<Int>, selected: Int?, onSelect: (Int) -> Unit, m
         Text(s.seriesQuality, style = MaterialTheme.typography.labelLarge, color = Tone.muted, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
         heights.forEach { height ->
             val label = qualityLabel(height)
-            CopyChip(label, chosen = height == selected, onClick = { onSelect(height) }, description = s.seriesQualityPick(label))
+            CopyChip(label, chosen = height == selected, onClick = { onSelect(if (height == selected) null else height) }, description = s.seriesQualityPick(label))
         }
     }
 }
@@ -838,13 +840,13 @@ fun SeriesPanel(
         mutableIntStateOf(next?.season ?: series.seasons.first().number)
     }
     val shown = series.seasons.firstOrNull { it.number == season } ?: series.seasons.first()
-    // The qualities the show was posted in, highest first, and the one its episodes play: the
-    // viewer's pick here, else that of the copy they watched last, else of the newest upload.
+    // The qualities the show was posted in, highest first, and the viewer's pick among them.
+    // Nothing picked (the standing state, and where tapping the picked chip again lands) leaves
+    // every episode on the copy picked for it as before, so all qualities stand.
     val heights = remember(series) {
         series.episodes.flatMap { it.copies }.mapNotNull(VideoCopies::heightOf).distinct().sortedDescending()
     }
     var pickedHeight by rememberSaveable(series.key) { mutableStateOf<Int?>(null) }
-    val height = pickedHeight ?: (progress.like ?: next?.item ?: series.cover).let(VideoCopies::heightOf)
     fun copyOf(episode: SeriesEpisode, fallback: MediaItem) =
         if (pickedHeight == null) fallback else copyAt(episode, pickedHeight, fallback)
     val playFocus = remember { FocusRequester() }
@@ -1398,7 +1400,7 @@ fun SeriesPanel(
                 Column(Modifier.fillMaxWidth().padding(pad), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     seasonPicker(shown.number) { season = it }
                     if (ranges.isNotEmpty()) EpisodeRanges(ranges = ranges, selected = rangeAt, onSelect = { rangeAt = it })
-                    QualityPicker(heights, selected = height?.takeIf { it in heights }, onSelect = { pickedHeight = it })
+                    QualityPicker(heights, selected = pickedHeight?.takeIf { it in heights }, onSelect = { pickedHeight = it })
                     Spacer(Modifier.height(2.dp))
                 }
             }
