@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +74,7 @@ import com.tmplayer.data.MediaItem
 import com.tmplayer.data.SeriesShelf
 import com.tmplayer.ui.components.EdgeBackdrop
 import com.tmplayer.ui.components.BackdropSource
+import com.tmplayer.ui.components.isTouch
 import com.tmplayer.ui.components.SkeletonBox
 import com.tmplayer.ui.components.rememberCover
 import com.tmplayer.ui.components.rememberShimmer
@@ -109,6 +111,13 @@ import kotlinx.coroutines.launch
  * The pages move on by themselves only while nobody is touching them, Home is [active] (on screen,
  * with no sheet or dialog over it), motion is on, and TalkBack is off. Only the page up and its
  * neighbours are composed, so only they fetch pictures.
+ *
+ * On a touch form a tap anywhere on a page's own surface opens that page's details (owner,
+ * v1.0.14), the same [onDetails] the Details button calls: the tap sits on the page itself,
+ * behind Play and Details, which stay put over the pager and keep their own taps, and a swipe
+ * still turns the page instead of tapping, as a click inside a pager behaves. The television
+ * never composes this carousel (its own is [TvFeaturedCarousel]), and on a non-touch form no
+ * surface tap is added at all, so no new focus stop appears there.
  */
 @Composable
 internal fun FeaturedCarousel(
@@ -204,6 +213,7 @@ internal fun FeaturedCarousel(
                     footRoom = if (wide) WIDE_CONTROLS_ROOM else CONTROLS_ROOM,
                     wide = wide,
                     overviewLines = overviewLines,
+                    onDetails = onDetails,
                 )
             }
             if (wide) {
@@ -262,7 +272,10 @@ private val WIDE_CONTROLS_ROOM: Dp = WIDE_FOOT + HERO_PILL_HEIGHT
 
 /**
  * One page: the picture under its fades and the name, clear of the controls ([footRoom]), centred
- * upright and at the start on its side ([wide]).
+ * upright and at the start on its side ([wide]). On a touch form the whole surface is a tap
+ * for [onDetails] (owner, v1.0.14): a plain click on the page's own box, behind the controls
+ * the carousel lays over the pager, with no indication so the page looks exactly as it did.
+ * Off a touch form the surface carries no click at all.
  */
 @Composable
 private fun FeaturedPage(
@@ -275,6 +288,7 @@ private fun FeaturedPage(
     footRoom: Dp,
     wide: Boolean,
     overviewLines: Int,
+    onDetails: (FeaturedPick) -> Unit,
 ) {
     val s = LocalStrings.current
     val item = pick.item
@@ -287,9 +301,23 @@ private fun FeaturedPage(
     val title = remember(pick) { series?.title?.ifBlank { null } ?: pick.loneEpisode?.title ?: SeriesShelf.tileTitle(item) }
     val facts = remember(pick, chat, s) { featuredFacts(pick, title, chat, s) }
 
+    // The whole surface tap, touch forms only (see the KDoc above): no indication, so
+    // nothing about how the page looks changes, and the pager's own drag still wins over
+    // a tap once a swipe is under way, the way any click inside a pager behaves.
+    val touch = isTouch()
+    val surface = if (touch) {
+        Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            role = Role.Button,
+        ) { onDetails(pick) }
+    } else {
+        Modifier
+    }
     Box(
         Modifier
             .fillMaxSize()
+            .then(surface)
             .semantics { contentDescription = listOf(title, facts).filter { it.isNotBlank() }.joinToString(". ") },
     ) {
         // Upright the picture spans the width and melts into the page at its foot; on its side
