@@ -185,6 +185,39 @@ internal fun PhoneBrowse(
             }
         }
     }
+    // A result row's play button (item 14): the default copy at once, as the title page's own
+    // Play would pick it. A show plays its up next episode, picked the way its page picks it;
+    // anything else plays the card's item, whose copies the player then chooses among.
+    val playGroup: (ResultGroup) -> Unit = { group ->
+        scope.launch {
+            if (!search.check(group.lead)) {
+                onMessage(s.searchNoLongerThere)
+                return@launch
+            }
+            search.remember()
+            val series = if (group.isShow) {
+                SeriesShelf.arrange(group.copies).firstNotNullOfOrNull { (it as? ShelfEntry.Show)?.series }
+            } else {
+                null
+            }
+            val progress = series?.let { watch.progress(it) }
+            val next = progress?.next
+            when {
+                progress != null && next != null -> onPlayMedia(watch.pick(next, progress), titleOf(group.lead.chatId))
+                else -> onPlayMedia(group.asItem(), titleOf(group.lead.chatId))
+            }
+        }
+    }
+    // Whether a show result's art wears the New Episode tag: an episode posted since the
+    // viewer last watched the show, from the same watch store Home's rows read.
+    val searchHasNewEpisodes: (ResultGroup) -> Boolean = { group ->
+        if (!group.isShow) {
+            false
+        } else {
+            SeriesShelf.arrange(group.copies).firstNotNullOfOrNull { (it as? ShelfEntry.Show)?.series }
+                ?.let { watch.newEpisodes(it) > 0 } ?: false
+        }
+    }
     val voice = rememberVoiceSearch(s.browseVoicePromptChat) { heard ->
         searchText = TextFieldValue(heard, TextRange(heard.length))
         search.submit(heard)
@@ -253,6 +286,9 @@ internal fun PhoneBrowse(
                 onLoadMore = search::loadMore,
                 onRetry = search::retry,
                 onRefresh = search::refresh,
+                onPlayGroup = playGroup,
+                onPlayItem = { item, title -> onPlayMedia(item, title) },
+                showHasNewEpisodes = searchHasNewEpisodes,
                 onRemoveRecent = { entry -> scope.launch { settings.removeRecentSearch(entry) } },
                 onClearRecent = {
                     val before = recent

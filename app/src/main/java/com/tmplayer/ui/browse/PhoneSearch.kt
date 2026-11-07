@@ -100,8 +100,12 @@ import com.tmplayer.data.SearchFilters
 import com.tmplayer.data.SearchQuality
 import com.tmplayer.data.SearchSort
 import com.tmplayer.ui.components.PhoneSheet
+import com.tmplayer.ui.components.PosterArt
+import com.tmplayer.ui.components.ProgressLine
 import com.tmplayer.ui.components.Spinner
 import com.tmplayer.ui.components.TouchPullRefresh
+import com.tmplayer.ui.components.rememberCover
+import com.tmplayer.ui.online.rememberMeta
 import com.tmplayer.ui.components.secondaryPress
 import com.tmplayer.ui.components.TmSecondaryButton
 import com.tmplayer.ui.i18n.LocalStrings
@@ -161,6 +165,12 @@ internal fun PhoneSearchScreen(
     onRetry: () -> Unit,
     /** A pull down on the list: the search runs again fresh, Telegram asked anew. */
     onRefresh: () -> Unit,
+    /** A result row's play button: the title's default copy, played at once. */
+    onPlayGroup: (ResultGroup) -> Unit,
+    /** A Continue watching row's play button: that video, played at once. */
+    onPlayItem: (MediaItem, String) -> Unit,
+    /** Whether a show result has an episode posted since the viewer last watched it. */
+    showHasNewEpisodes: (ResultGroup) -> Boolean = { false },
     onRemoveRecent: (String) -> Unit,
     /** Clears them all and hands back what was there, for the Undo. */
     onClearRecent: () -> List<String>,
@@ -259,6 +269,7 @@ internal fun PhoneSearchScreen(
                             }
                         },
                         onResume = onResume,
+                        onPlayItem = onPlayItem,
                     )
                 } else {
                     offer?.let { found ->
@@ -279,6 +290,8 @@ internal fun PhoneSearchScreen(
                         progress = progress,
                         onOpenChat = onOpenChat,
                         onOpenGroup = { keyboard?.hide(); onOpenGroup(it) },
+                        onPlayGroup = onPlayGroup,
+                        showHasNewEpisodes = showHasNewEpisodes,
                         onRetry = onRetry,
                         onClearFilters = { onFilters(SearchFilters()) },
                         onSearchWord = { word -> onText(TextFieldValue(word, TextRange(word.length))); onSubmit() },
@@ -448,6 +461,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.emptySearch(
     onRemove: (String) -> Unit,
     onClearAll: () -> Unit,
     onResume: (ResumeRecord) -> Unit,
+    onPlayItem: (MediaItem, String) -> Unit,
 ) {
     if (chats.isNotEmpty()) {
         item(key = "chats-h") { Heading(LocalStrings.current.searchChatsHeading) }
@@ -516,19 +530,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.emptySearch(
         item(key = "continue-h") { Heading(LocalStrings.current.homeRowContinue) }
         items(continueWatching, key = { "c-${it.chatId}_${it.messageId}" }) { record ->
             val item = continueArt(record)
-            Row(
-                Modifier.fillMaxWidth().clickable { onResume(record) }.padding(horizontal = 16.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ResultPoster(item, Modifier.width(48.dp), fraction = record.fraction())
-                Column(Modifier.weight(1f)) {
-                    Text(record.title, style = MaterialTheme.typography.titleSmall, color = Tone.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (record.chatTitle.isNotBlank()) {
-                        Text(record.chatTitle, style = MaterialTheme.typography.bodySmall, color = Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
+            // The same full width row shape as the typed results (item 14): the row resumes,
+            // its round button plays at once.
+            NetflixSearchRow(
+                item = item,
+                title = record.title,
+                facts = record.chatTitle,
+                fraction = record.fraction(),
+                fresh = false,
+                onPlay = { onPlayItem(item, record.chatTitle) },
+                modifier = Modifier.clickable { onResume(record) },
+            )
         }
     }
 }
@@ -546,6 +558,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
     progress: (MediaItem) -> Float?,
     onOpenChat: (ChatSummary) -> Unit,
     onOpenGroup: (ResultGroup) -> Unit,
+    onPlayGroup: (ResultGroup) -> Unit,
+    showHasNewEpisodes: (ResultGroup) -> Boolean,
     onRetry: () -> Unit,
     onClearFilters: () -> Unit,
     onSearchWord: (String) -> Unit,
@@ -625,21 +639,111 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
             }
         }
         else -> items(shown, key = { it.key }) { group ->
-            SearchResultCard(
-                group = group,
-                chats = briefs,
-                progress = progress,
+            // The Netflix row shape (owner, 2026-11-07, item 14): a landscape thumbnail at
+            // the start, the title and its facts beside it, and a round play button at the
+            // end edge. The row itself opens the title's page, as the card did; the button
+            // plays the default copy at once. The item key is the card's own, so the list
+            // keeps its places and its scroll.
+            NetflixSearchRow(
+                item = remember(group) { group.asItem() },
+                title = remember(group) { GlobalSearch.titleOf(group) },
+                facts = remember(group) { resultFacts(group) },
+                fraction = group.copies.firstNotNullOfOrNull { progress(it) },
+                fresh = remember(group) { showHasNewEpisodes(group) },
+                onPlay = { onPlayGroup(group) },
                 // Results fade in as they arrive and slide to their places when the order or a
                 // filter changes, rather than the list redrawing at once.
                 modifier = Modifier
                     .then(if (shown.size <= ANIMATED_RESULTS_MAX && !com.tmplayer.ui.theme.Motion.reduced) Modifier.animateItem() else Modifier)
-                    .padding(horizontal = 8.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { onOpenGroup(group) },
+                chatsLine = {
+                    val s = LocalStrings.current
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AvatarStack(group.chatIds, briefs, Modifier.weight(1f, fill = false))
+                        // Files, as the page counts its versions: the same file in two chats is one.
+                        val files = remember(group.copies) { group.fileCount }
+                        if (files > 1 && !group.isShow) CopiesChip(files)
+                        if (group.copies.any { it.onDevice }) {
+                            Icon(TmIcons.Download, contentDescription = s.searchOnDevice, tint = Tone.accent, modifier = Modifier.size(14.dp))
+                        }
+                        if (group.copies.all { !it.canBeSaved }) {
+                            Icon(TmIcons.Lock, contentDescription = null, tint = Tone.muted, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                },
             )
         }
     }
     if (state.loadingMore) item(key = "more") { Note(LocalStrings.current.gridLoadingMore, spinner = true) }
+}
+
+/**
+ * One title as a full width row (owner, 2026-11-07, item 14, the Netflix search shape): a
+ * landscape thumbnail at the start with its badges on the art, the title and its facts beside
+ * it, and a round outline play button pinned at the end edge. The caller's modifier carries
+ * the row's own tap, which opens the title's page; the button plays at once, and its own tap
+ * does not reach the row's. The badges the row's data carries are drawn and no others: a show
+ * with a new episode wears Home's own [NewBadge] tag across the foot of its art, the way the
+ * screenshot's rows wear theirs. A result group carries no Recently added or Top 10 flag, so
+ * no such tag is drawn here rather than one being invented.
+ */
+@Composable
+private fun NetflixSearchRow(
+    item: MediaItem,
+    title: String,
+    facts: String,
+    fraction: Float?,
+    fresh: Boolean,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Under the facts: a result's chats and copies line. Null for a Continue watching row. */
+    chatsLine: (@Composable () -> Unit)? = null,
+) {
+    val s = LocalStrings.current
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.width(SEARCH_THUMB_WIDTH).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Tone.surfaceHigh),
+        ) {
+            val meta = rememberMeta(item)
+            PosterArt(
+                miniThumbnail = item.miniThumbnail,
+                thumbnailFileId = item.thumbnailFileId,
+                cover = rememberCover(item),
+                posterUrl = meta?.wideUrl ?: meta?.posterUrl,
+                modifier = Modifier.fillMaxSize(),
+                compactCover = true,
+                showCoverTitle = false,
+            )
+            if (fresh) {
+                NewBadge(compact = true, modifier = Modifier.align(Alignment.BottomStart).padding(4.dp))
+            }
+            if (fraction != null && fraction > 0f) {
+                ProgressLine(fraction, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = Tone.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (facts.isNotBlank()) {
+                Text(facts, style = MaterialTheme.typography.bodySmall, color = Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            chatsLine?.invoke()
+        }
+        Box(
+            Modifier
+                .size(SEARCH_PLAY_SIZE)
+                .clip(CircleShape)
+                .border(1.5.dp, Tone.text.copy(alpha = 0.7f), CircleShape)
+                .clickable(role = Role.Button, onClick = onPlay),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(TmIcons.PlaySolid, contentDescription = s.commonPlay, tint = Tone.text, modifier = Modifier.size(20.dp))
+        }
+    }
 }
 
 /** The quick filters over the field: the kind of chat, and the rest behind Filters. */
@@ -741,6 +845,12 @@ private const val PULL_ACK_MS = 900L
 
 /** The longest the pull's spinner waits on a fresh run that says it is still going. */
 private const val PULL_HOLD_MS = 8_000L
+
+/** A search row's landscape thumbnail: wide enough to recognise, narrow enough to leave the title its room. */
+private val SEARCH_THUMB_WIDTH = 132.dp
+
+/** A search row's round play button, a full touch target at the row's end edge. */
+private val SEARCH_PLAY_SIZE = 44.dp
 
 /** Videos to carry on with on an empty search: three is a glance, more is History. */
 private const val CONTINUE_SHOWN = 3
