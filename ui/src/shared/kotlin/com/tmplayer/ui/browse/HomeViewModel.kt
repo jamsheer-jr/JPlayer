@@ -79,6 +79,14 @@ interface HomeSource {
     suspend fun chatMediaFrom(chatId: Long, cursors: MediaCursors): MediaPage =
         MediaPage(emptyList(), cursors, endReached = true)
 
+    /**
+     * [chatId]'s videos for the Series row alone, read deeper than [chatMedia]: the
+     * row's window plus, for each show the window establishes, what a search of the
+     * chat's whole history holds of it (see [com.tmplayer.data.SeriesDeepening] for
+     * the bounds). A source that cannot search says the window is all it has.
+     */
+    suspend fun seriesMedia(chatId: Long): List<MediaItem> = chatMedia(chatId)
+
     /** The newest videos across every chat. */
     suspend fun recentMedia(): List<MediaItem>
 
@@ -155,6 +163,43 @@ object TdHomeSource : HomeSource {
 
     override suspend fun chatMediaFrom(chatId: Long, cursors: MediaCursors): MediaPage =
         repository().mediaPage(chatId, cursors, pageSize = MORE_PAGE)
+
+    override suspend fun seriesMedia(chatId: Long): List<MediaItem> {
+        val repository = repository()
+        val (first, lane) = HomeReads.read(chatId) { cursors -> repository.mediaPage(chatId, cursors, pageSize = HomeReads.CHAT_PAGE) }
+        // No show in the window, or the window already reached the chat's start:
+        // nothing deeper to read (see SeriesDeepening for the root cause and bounds).
+        val shows = com.tmplayer.data.SeriesDeepening.showsIn(first)
+        if (shows.isEmpty() || lane.done) return first
+        val found = ArrayList<MediaItem>()
+        try {
+            for (show in shows) {
+                var cursors = MediaCursors()
+                var pages = 0
+                var done = false
+                while (pages < com.tmplayer.data.SeriesDeepening.SEARCH_PAGES && !done) {
+                    val page = repository.mediaPage(
+                        chatId,
+                        cursors,
+                        query = com.tmplayer.data.SeriesDeepening.queryOf(show),
+                        pageSize = com.tmplayer.data.SeriesDeepening.SEARCH_PAGE,
+                    )
+                    found += page.items.filter { com.tmplayer.data.SeriesDeepening.isEpisodeOf(it, show.key) }
+                    cursors = page.cursors
+                    done = page.endReached || page.items.isEmpty()
+                    pages++
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            // A failed search leaves the shelf at the window's counts, as a failed
+            // row fetch leaves its tiles: nothing is lost, only not deepened.
+            Td.noteFailure(failure.message)
+            return first
+        }
+        return com.tmplayer.data.SeriesDeepening.merge(first, found)
+    }
 
     override suspend fun recentMedia(): List<MediaItem> = repository().recentMedia()
 
@@ -317,6 +362,16 @@ class HomeViewModel(
     /** Each starred chat's videos, once fetched. A chat missing here has not answered yet. */
     val loaded: StateFlow<Map<Long, List<MediaItem>>> = _loaded.asStateFlow()
 
+    private val _series = MutableStateFlow<Map<Long, List<MediaItem>>>(emptyMap())
+
+    /**
+     * Each series chat's deeper read ([HomeSource.seriesMedia]), for the Series row
+     * alone: kept apart from [loaded], so a chat's own row keeps its window while its
+     * shows stand with their full episode sets. A chat missing here has not answered
+     * yet, and its shows stand on the window meanwhile.
+     */
+    val series: StateFlow<Map<Long, List<MediaItem>>> = _series.asStateFlow()
+
     private val _partial = MutableStateFlow<Set<Long>>(emptySet())
 
     /** The starred chats whose fetch stopped short of their oldest video: they have more than Home holds. */
@@ -469,6 +524,8 @@ class HomeViewModel(
         val rows = chats.filter { it in _loaded.value && (!filled || it in order) }
         if (rows.isEmpty()) return
         rows.forEach { chatId -> fetchRow(chatId, fresh = true, minGapMs = LIVE_GAP_MS) }
+        // A post in a series chat deepens its shows again too, on the same gap.
+        chats.filter { it in seriesKept }.forEach { chatId -> fetchSeries(chatId, fresh = true, minGapMs = LIVE_GAP_MS) }
         if (_recent.value != null) fetchRecent(fresh = true, minGapMs = LIVE_GAP_MS)
     }
 
@@ -521,8 +578,9 @@ class HomeViewModel(
             val keep = ids.toHashSet() + seriesKept
             val gone = if (whole) _loaded.value.keys.filterNot { it in keep } else emptyList()
             if (gone.isNotEmpty()) {
-                gone.forEach { fetches.forget("chat:$it"); reads.remove(it); stale -= it }
+                gone.forEach { fetches.forget("chat:$it"); fetches.forget("series:$it"); reads.remove(it); stale -= it }
                 _loaded.update { it - gone.toSet() }
+                _series.update { it - gone.toSet() }
                 _partial.update { it - gone.toSet() }
             }
             // Kept for while the chat list is not there: the next start draws these rows at once.
@@ -535,14 +593,41 @@ class HomeViewModel(
      * Asks for the videos of chats Home did not pick, for the Series row alone (owner,
      * 2026-11-06): the row is fed by every visible chat, the way the search across chats
      * feeds Recently added, and a series in a chat Home never picked was invisible to it.
-     * Each chat gets the one bounded read its own row would get ([request]), the answers
-     * are kept across fills (see [seriesKept]), and at most [SERIES_CHATS] chats are
-     * asked, so a very long chat list stays a bounded amount of work.
+     * Each chat gets the one bounded read its own row would get ([request]) and, since
+     * v1.0.15, its deeper series read ([fetchSeries]), the answers are kept across fills
+     * (see [seriesKept]), and at most [SERIES_CHATS] chats are asked, so a very long
+     * chat list stays a bounded amount of work.
      */
     fun requestSeriesChats(ids: List<Long>) {
         val wanted = ids.distinct().take(SERIES_CHATS)
         seriesKept = wanted.toSet()
         wanted.forEach(::request)
+        // And each chat's deeper read for the Series row alone (owner, v1.0.15): the
+        // window a row gets cannot carry a show's full episode set (see
+        // SeriesDeepening), so the shows are read again by title, to their own budget.
+        wanted.forEach(::fetchSeries)
+    }
+
+    /** Asks for [chatId]'s deeper series read, once, and again when a refresh says fresh. */
+    private fun fetchSeries(chatId: Long, fresh: Boolean = false, minGapMs: Long = 0) {
+        fetches.ask("series:$chatId", fresh = fresh, minGapMs = minGapMs, before = if (fresh) ::untilIdle else null) {
+            fetchSeriesChat(chatId)
+        }
+    }
+
+    private suspend fun fetchSeriesChat(chatId: Long): HomeFetches.Outcome {
+        val items = try {
+            kotlinx.coroutines.withTimeoutOrNull(ROW_TIMEOUT_MS) { source.seriesMedia(chatId) }
+                ?: throw java.io.IOException("Series read timed out")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            Td.noteFailure(failure.message)
+            return HomeFetches.Outcome.of(failure)
+        }
+        val kept = carryReads(withinLimits(items), _series.value[chatId].orEmpty() + _loaded.value[chatId].orEmpty())
+        _series.update { if (it[chatId] == kept) it else it + (chatId to kept) }
+        return HomeFetches.Outcome.Done
     }
 
     /**
@@ -587,6 +672,12 @@ class HomeViewModel(
             // as they come ([chatsChanged]), so searching them on a timer as well is double work.
             if (background && chatId in following) return@forEach
             fetchRow(chatId, fresh = true)
+        }
+        // The deeper series reads of the chats being refreshed, on the same first few:
+        // a refresh that only re-read the windows would leave the shelves undercounted.
+        chats.take(REFRESH_CHATS).filter { it in seriesKept }.forEach { chatId ->
+            if (background && chatId in following) return@forEach
+            fetchSeries(chatId, fresh = true)
         }
         fetchRecent(fresh = true)
         fetches.retryFailed()
@@ -1063,6 +1154,13 @@ fun rememberHomeRows(
     // cards: they are the viewer's own record ([com.tmplayer.data.AddedChats]).
     val loaded = remember(loadedAll, added) { added?.let { ids -> loadedAll.filterKeys { it in ids } } ?: loadedAll }
     val recent = remember(recentAll, added) { recentAll?.let { all -> com.tmplayer.data.AddedChats.filter(all, added) { it.chatId } } }
+    // The deeper series reads, flattened for the Series row alone ([HomeRows.build]'s
+    // seriesPool), gated by the added chats as [loaded] is.
+    val seriesAll by model.series.collectAsState()
+    val seriesPool = remember(seriesAll, added) {
+        val kept = added?.let { ids -> seriesAll.filterKeys { it in ids } } ?: seriesAll
+        kept.values.flatten().distinctBy { it.id }
+    }
     val partial by model.partial.collectAsState()
     val fresh by model.newEpisodes.collectAsState()
     val stalled by model.stalled.collectAsState()
@@ -1112,7 +1210,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, seriesPool) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1158,7 +1256,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, seriesPool)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         // The first build on a cold start (owner, v1.0.14): the full build below waits on
@@ -1185,6 +1283,7 @@ fun rememberHomeRows(
                     phoneOrder = phoneOrder,
                     nowMs = System.currentTimeMillis(),
                     hideShortVideos = hideShortVideos,
+                    seriesPool = seriesPool,
                 )
             }
             if (early.isNotEmpty()) {
@@ -1208,6 +1307,7 @@ fun rememberHomeRows(
                 phoneOrder = phoneOrder,
                 nowMs = System.currentTimeMillis(),
                 hideShortVideos = hideShortVideos,
+                seriesPool = seriesPool,
             )
         }
         homeMemo.built = inputs

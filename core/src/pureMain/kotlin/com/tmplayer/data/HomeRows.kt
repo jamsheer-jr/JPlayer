@@ -308,6 +308,15 @@ object HomeRows {
          * screens pass the switch in.
          */
         hideShortVideos: Boolean = false,
+        /**
+         * Extra videos for the Series row alone, past what [loaded] and [recent] hold:
+         * the bounded deeper read of the chats that feed the series shelves (see
+         * [SeriesDeepening]). They feed only the Series row and its language rows,
+         * never a chat row or another shelf, so a chat read deeper for its shows does
+         * not change what its own row shows, and a show tile can carry the seasons
+         * and episodes the channels really hold rather than the window's share.
+         */
+        seriesPool: List<MediaItem> = emptyList(),
     ): List<HomeRow> {
         // A phone's catalog shelves, held back until Recently added stands (owner, v1.0.13):
         // the series shelves and the foot shelves are gathered here and laid down together,
@@ -322,6 +331,7 @@ object HomeRows {
         // search across chats, screened once here so every row and shelf below agrees.
         val loaded = if (hideShortVideos) loaded.mapValues { (_, items) -> ShortVideos.kept(items) } else loaded
         val recent = if (hideShortVideos) recent?.let(ShortVideos::kept) else recent
+        val seriesPool = if (hideShortVideos) ShortVideos.kept(seriesPool) else seriesPool
 
         val distinct = continueWatching.distinctBy { keyOf(it.chatId, it.messageId) }
         val everyResume = foldCopies(distinct)
@@ -400,9 +410,12 @@ object HomeRows {
         // other shelves until Recently added stands (owner, v1.0.13). The shelves at the
         // foot keep their narrower pool, their gates and their place.
         if (layout.catalogRows) {
-            val seriesPool = (loaded.values.flatten() + recent.orEmpty()).distinctBy { it.id }
+            // The deeper series pool ([seriesPool] the parameter, screened above) joins
+            // the window pools here and nowhere else: a show stands with every episode
+            // its chats hold, while its chat's own row keeps its window.
+            val seriesItems = (loaded.values.flatten() + recent.orEmpty() + seriesPool).distinctBy { it.id }
             // Anime stands in its own shelf at the foot, not among the shows (owner, v1.0.13).
-            val shows = seriesShows(seriesPool, shownCopies, inContinue).filterNot { isAnime(it, titleMeta) }
+            val shows = seriesShows(seriesItems, shownCopies, inContinue).filterNot { isAnime(it, titleMeta) }
             if (shows.isNotEmpty()) {
                 val seriesRows = listOf(HomeRow.Catalog("series", "", shows.take(LIMIT), all = shows)) +
                     seriesLanguageRows(shows, titleMeta)
