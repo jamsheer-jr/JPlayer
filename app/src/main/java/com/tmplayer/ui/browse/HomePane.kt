@@ -1868,6 +1868,34 @@ private fun BuiltInHomeSections(
     end: Dp,
     onPlayStream: (StreamLink) -> Unit,
 ) {
+    if (!isTouch()) {
+        Column {
+            Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
+                SharePlayerPill()
+            }
+            LiveStreamsRow(start, end, onPlayStream)
+        }
+    } else {
+        LiveStreamsRow(start, end, onPlayStream)
+    }
+}
+
+/**
+ * The Live row itself: the streams posted in the built-in films channel, loaded the one
+ * way (the invite resolved, the account joined once per run where it is not a member,
+ * the recent posts read fresh), the viewer's removals and seen marks applied, and the
+ * cards as [StreamCard] draws them, with the hold menu (Save to Downloads for a file
+ * link, Remove from Live). Home heads its built-in sections with it, and the Chats list
+ * embeds it under the pinned channel entry on a phone (owner, v1.0.14), so the two are
+ * the same row by construction, never a second reading of the posts. Nothing is drawn
+ * while there is nothing to show.
+ */
+@Composable
+internal fun LiveStreamsRow(
+    start: Dp,
+    end: Dp,
+    onPlayStream: (StreamLink) -> Unit,
+) {
     var streams by remember { mutableStateOf<List<StreamLink>>(emptyList()) }
     // The streams the viewer took out of this row (v1.0.11, owner): kept in Settings by the
     // post each one came from ([HiddenStreams]), so every later load leaves them out the same
@@ -1905,16 +1933,9 @@ private fun BuiltInHomeSections(
     }
 
     val shown = HiddenStreams.visible(streams, hidden)
-    val touch = isTouch()
-    if (touch && shown.isEmpty()) return
     val s = LocalStrings.current
-    Column {
-        if (!touch) {
-            Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
-                SharePlayerPill()
-            }
-        }
-        if (shown.isNotEmpty()) {
+    if (shown.isNotEmpty()) {
+        Column {
             RowHeading(s.homeLiveTitle, start = start, end = end, seeAll = null)
             LazyRow(
                 contentPadding = PaddingValues(start = start, end = end),

@@ -903,6 +903,11 @@ internal fun BrowseScreen(
                                 showPin = tab.isChats && chatFilter == ChatFilter.All && query.isBlank(),
                                 paging = chatPaging,
                                 onMoreChats = onMoreChats,
+                                onPlayStream = { link ->
+                                    runCatching {
+                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
+                                    }
+                                },
                             )
                         }
                     }
@@ -2481,6 +2486,8 @@ private fun ChatSection(
     onMoreChats: () -> Unit = {},
     /** The main Chats list only: the owner's channel pinned over it (owner, 2026-11-06). */
     showPin: Boolean = false,
+    /** A Live stream pressed under the pin, on a phone: plays in the player, as Home's row does. */
+    onPlayStream: (com.tmplayer.data.StreamLink) -> Unit = {},
 ) {
     val s = LocalStrings.current
     val rowsAreFullBleed = isTouch()
@@ -2668,6 +2675,12 @@ private fun ChatSection(
                 if (showPin) {
                     item(key = "j-movies-pin", contentType = "j-movies-pin") {
                         JMoviesPin(onJMoviesPin, Modifier.padding(horizontal = insets.start, vertical = 8.dp))
+                    }
+                    // The channel's Live streams themselves under the pin (owner, v1.0.14):
+                    // Home's own Live row, the same loading, cards and rules, not a second
+                    // reading of the posts. Nothing stands here while there are no streams.
+                    item(key = "j-movies-live", contentType = "j-movies-live") {
+                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream)
                     }
                 }
 
