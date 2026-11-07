@@ -387,6 +387,34 @@ class VideoCopiesTest {
         assertNull(VideoCopies.nextTierCopy(listOf(sd, hd), "no-such-copy"))
     }
 
+    // ---- the choosers' grouping -----------------------------------------------------------------
+
+    @Test
+    fun `tiers group by height, tallest first, the biggest of a height first`() {
+        val hdSmall = video(2, 61, "Night.Train.2019.1080p.BluRay.mkv", size = 800L shl 20)
+        val tiers = VideoCopies.tiersOf(listOf(sd, hdSmall, uhd, hd)) { it }
+        assertEquals(listOf(2160, 1080, 720), tiers.map { it.first })
+        assertEquals(listOf(hd.id, hdSmall.id), tiers[1].second.map { it.id })
+    }
+
+    @Test
+    fun `a copy stating no quality forms the last group, keyed by no height`() {
+        // Sent as a file, its name carrying no marker: nothing about it states a picture size.
+        val unstated = video(1, 98, "Jailer 2 (2026) Tamil HQ PreDVD - x264 - HQ Clean - AAC.mkv", size = 461L shl 20)
+        val tiers = VideoCopies.tiersOf(listOf(unstated, sd, hd)) { it }
+        assertEquals(listOf(1080, 720, null), tiers.map { it.first })
+        assertEquals(listOf(unstated.id), tiers[2].second.map { it.id })
+        assertEquals(emptyList<Pair<Int?, List<MediaItem>>>(), VideoCopies.tiersOf(emptyList<MediaItem>()) { it })
+    }
+
+    @Test
+    fun `tiers group rows by the copy each row stands for, keeping the rows themselves`() {
+        val rows = listOf(sd to "the 720p post", hd to "the 1080p post")
+        val tiers = VideoCopies.tiersOf(rows) { it.first }
+        assertEquals(listOf(1080, 720), tiers.map { it.first })
+        assertEquals("the 1080p post", tiers[0].second.single().second)
+    }
+
     // ---- the built-in channel's copies ----------------------------------------------------------
 
     @Test

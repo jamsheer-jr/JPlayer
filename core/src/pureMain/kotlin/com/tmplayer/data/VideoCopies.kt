@@ -271,6 +271,25 @@ object VideoCopies {
     }
 
     /**
+     * [rows] in the order copies are always offered (best picture first, the biggest of it
+     * next), grouped under the quality of the copy each row stands for: one group per picture
+     * height ([heightOf]), tallest first, each group holding its rows biggest first. The rows
+     * whose copy states no quality (sent as a file, its name carrying no marker) form the last
+     * group, keyed by a null height: no quality is read into them from their size or anything
+     * else. The one grouping both copies choosers draw (the detail page's Versions and the
+     * player's Copies), so the two lists never disagree about the order or the groups.
+     */
+    fun <T> tiersOf(rows: List<T>, copyOf: (T) -> MediaItem): List<Pair<Int?, List<T>>> {
+        val sorted = rows.sortedWith(
+            compareByDescending<T> { heightOf(copyOf(it)) ?: 0 }
+                .thenByDescending { copyOf(it).sizeBytes },
+        )
+        return sorted.groupBy { heightOf(copyOf(it)) }.entries
+            .sortedBy { it.key == null }
+            .map { it.key to it.value }
+    }
+
+    /**
      * Which of [copies] to play without asking, in this order:
      * 1. the one the viewer chose for this video before ([chosen], an [MediaItem.id]);
      * 2. one already on this device, a download before a cached copy, so nothing is fetched;

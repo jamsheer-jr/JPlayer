@@ -36,10 +36,12 @@ import androidx.fragment.app.FragmentActivity
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tmplayer.data.Bookmark
+import com.tmplayer.data.MediaFacts
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.SettingsStore
 import com.tmplayer.data.VideoCopies
-import com.tmplayer.ui.browse.copyDetail
+import com.tmplayer.data.copyQuality
+import com.tmplayer.ui.browse.copyFit
 import com.tmplayer.ui.browse.copyHeading
 import com.tmplayer.ui.browse.copySound
 import com.tmplayer.ui.browse.isCamCopy
@@ -974,14 +976,18 @@ internal fun SleepSheet(
 }
 
 /**
- * The copies of the video playing, as the pickers' panel lists a choice of one: each by its
- * quality and codec, with its size, length, date and the chat it came from under that, then
- * the sound its name states (its languages and audio) and the file's own name, the one
- * playing ticked and focused. Choosing another plays it from the same moment.
+ * The copies of the video playing, grouped under their quality as the detail page's Versions
+ * groups them (owner, v1.0.14): a heading for each quality there is (1080p, 720p, and last
+ * "MB" for the copies stating no quality, the ones sent as files whose names carry no
+ * marker), and under each heading its copies in the Versions rows' shape: the size first,
+ * then what the copy is (its source, codec and the sound its name states: its languages and
+ * audio), its length, date and the chat it came from, and the file's own name. The one
+ * playing is ticked and focused. Choosing another plays it from the same moment.
  *
  * While the Playback switch "Hide cam and PreDVD copies" is on, cam family copies are left
  * out and counted on a line at the foot, as the other lists count theirs. The copy playing
- * is never left out: the sheet always shows what is playing, ticked as it is today.
+ * is never left out: the sheet always shows what is playing, ticked as it is today, under
+ * its own quality's heading even when no other copy sits there.
  */
 @Composable
 internal fun CopiesSheet(
@@ -998,60 +1004,80 @@ internal fun CopiesSheet(
     val s = LocalStrings.current
     val touch = isTouch()
     val focus = remember { FocusRequester() }
-    // Best picture first, the biggest of it next: the order the detail page's chooser lists
-    // them in, so the two lists never disagree. The copy playing stays listed and ticked
-    // wherever it lands (VideoCopies.oneOfEachFile keeps it in the list upstream).
-    val ordered = remember(copies) {
-        copies.sortedWith(
-            compareByDescending<MediaItem> { VideoCopies.heightOf(it) ?: 0 }
-                .thenByDescending { it.sizeBytes },
-        )
-    }
     val context = LocalContext.current
     val settings = remember(context) { SettingsStore(context) }
     val hideCam by settings.hideCamCopies.collectAsState(initialValue = true)
     // The copy playing always stays, even when it is itself a cam copy.
-    val visible = remember(ordered, hideCam, playing) {
-        if (hideCam) ordered.filter { copy -> copy.id == playing || !isCamCopy(copy) } else ordered
+    val visible = remember(copies, hideCam, playing) {
+        if (hideCam) copies.filter { copy -> copy.id == playing || !isCamCopy(copy) } else copies
     }
-    val camHidden = ordered.size - visible.size
+    val camHidden = copies.size - visible.size
+    // Sorted and grouped the one way copies are always offered ([VideoCopies.tiersOf]), the
+    // grouping the detail page's Versions shares, so the two lists never disagree: best
+    // picture first, the biggest of it next, the copies stating no quality last. The copy
+    // playing stays listed wherever it lands (VideoCopies.oneOfEachFile keeps it in the list
+    // upstream), so its heading stands even when it is the only copy under it.
+    val tiers = remember(visible) { VideoCopies.tiersOf(visible) { it } }
+    val datesDiffer = remember(visible) { visible.map { it.date / 86_400 }.distinct().size > 1 }
     ChoiceSheet(title = s.playerCopies, note = s.playerCopiesNote, onDismiss = onClose, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
         ChoiceList {
-            visible.forEach { copy ->
-                val here = copy.id == playing
-                // The upload is ticked only while no Telegram copy stands in for it.
-                val ticked = here && playingQuality == 0
-                ChoiceLine(
-                    title = if (here && qualities.isNotEmpty()) "${copyHeading(copy)}  ·  ${s.detailUploadQuality}" else copyHeading(copy),
-                    // Under the size line, the sound the name states (its languages and
-                    // format, as the detail page's chooser says), then the file's own name,
-                    // each on its own line under the first.
-                    detail = listOfNotNull(
-                        copyDetail(copy, s, chatOf(copy), among = copies).ifEmpty { null },
-                        copySound(copy),
-                        copy.fileName.ifBlank { null },
-                    ).joinToString("\n"),
-                    selected = ticked,
-                    modifier = if (ticked) Modifier.focusRequester(focus) else Modifier,
-                ) {
-                    when {
-                        ticked -> onClose()
-                        here -> onQuality(0)
-                        else -> onPick(copy)
+            tiers.forEach { (height, group) ->
+                // A stated quality heads its group, as on the Versions page; the copies
+                // stating none are headed "MB", after their rows' own lead: no quality is
+                // read into a copy from its size.
+                com.tmplayer.ui.components.ChoiceSection(height?.let { group.first().copyQuality() } ?: "MB")
+                group.forEach { copy ->
+                    val here = copy.id == playing
+                    // The upload is ticked only while no Telegram copy stands in for it.
+                    val ticked = here && playingQuality == 0
+                    val facts = MediaFacts.of(copy)
+                    // The size leads the row, as a Versions row leads with it; the quality
+                    // is the group's heading, said once.
+                    val size = copy.sizeBytes.takeIf { it > 0 }?.let { com.tmplayer.data.SplitPieces.sizeFact(copy, s.formatter.size(it)) } ?: copyHeading(copy)
+                    ChoiceLine(
+                        title = if (here && qualities.isNotEmpty()) "$size  ·  ${s.detailUploadQuality}" else size,
+                        // Under the size, what the copy is (its source, codec and the sound
+                        // its name states: its languages and format), then its length, date
+                        // and the chat it came from, then the file's own name, each on its
+                        // own line under the first.
+                        detail = listOfNotNull(
+                            listOfNotNull(facts.source, facts.videoCodec, facts.dynamicRange, copySound(copy)).joinToString("  ·  ").ifEmpty { null },
+                            listOfNotNull(
+                                copyFit(copy, s, visible),
+                                copy.durationSec.takeIf { it > 0 }?.let { s.formatter.duration(it.toLong()) },
+                                copy.date.takeIf { datesDiffer && it > 0 }?.let { s.detailCopyPosted(s.formatter.date(it * 1000L)) },
+                                chatOf(copy).takeIf { it.isNotBlank() }?.let { s.detailCopyFrom(it) },
+                                when (copy.locality) {
+                                    MediaItem.Locality.Downloaded -> s.gridBadgeDownloaded
+                                    MediaItem.Locality.Cached -> s.detailCopyOnDevice
+                                    MediaItem.Locality.Remote -> null
+                                },
+                                s.detailCopyNoSaving.takeIf { !copy.canBeSaved },
+                            ).joinToString("  ·  ").ifEmpty { null },
+                            copy.fileName.ifBlank { null },
+                        ).joinToString("\n").ifEmpty { null },
+                        selected = ticked,
+                        modifier = if (ticked) Modifier.focusRequester(focus) else Modifier,
+                    ) {
+                        when {
+                            ticked -> onClose()
+                            here -> onQuality(0)
+                            else -> onPick(copy)
+                        }
                     }
-                }
-                if (here) {
-                    qualities.forEach { q ->
-                        val on = q.height == playingQuality
-                        ChoiceLine(
-                            title = s.detailTelegramQuality(com.tmplayer.data.TelegramQualities.label(q.height)),
-                            detail = listOfNotNull(
-                                s.detailTelegramQualityDetail,
-                                q.sizeBytes.takeIf { it > 0 }?.let { s.formatter.size(it) },
-                            ).joinToString("  ·  "),
-                            selected = on,
-                            modifier = if (on) Modifier.focusRequester(focus) else Modifier,
-                        ) { if (on) onClose() else onQuality(q.height) }
+                    if (here) {
+                        qualities.forEach { q ->
+                            val on = q.height == playingQuality
+                            ChoiceLine(
+                                title = s.detailTelegramQuality(com.tmplayer.data.TelegramQualities.label(q.height)),
+                                detail = listOfNotNull(
+                                    s.detailTelegramQualityDetail,
+                                    q.sizeBytes.takeIf { it > 0 }?.let { s.formatter.size(it) },
+                                ).joinToString("  ·  "),
+                                selected = on,
+                                modifier = if (on) Modifier.focusRequester(focus) else Modifier,
+                            ) { if (on) onClose() else onQuality(q.height) }
+                        }
                     }
                 }
             }

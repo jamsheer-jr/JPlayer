@@ -407,20 +407,15 @@ private fun CopyChooser(
     onChoose: (MediaItem) -> Unit,
 ) {
     val s = LocalStrings.current
-    val rows = remember(files, item.id) {
-        files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }
-            .sortedWith(
-                compareByDescending<Pair<MediaItem, List<MediaItem>>> { VideoCopies.heightOf(it.first) ?: 0 }
-                    .thenByDescending { it.first.sizeBytes },
-            )
+    // Sorted and grouped the one way copies are always offered ([VideoCopies.tiersOf]), the
+    // grouping the player's Copies sheet shares, so the two lists never disagree: quality
+    // first, as each group's one heading; the copies whose name states none come last.
+    val tiers = remember(files, item.id) {
+        VideoCopies.tiersOf(files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }) { it.first }
     }
+    val rows = remember(tiers) { tiers.flatMap { it.second } }
     val datesDiffer = remember(rows) { rows.map { it.first.date / 86_400 }.distinct().size > 1 }
     val chatOf: (MediaItem) -> String? = { copyChat(it, item, chatTitle) }
-    // Quality first, as the group's one heading; the copies whose name states none come last.
-    val groups = remember(rows) {
-        rows.groupBy { (copy, _) -> VideoCopies.heightOf(copy)?.let { copy.copyQuality() } }.entries
-            .sortedBy { it.key == null }
-    }
     // A choice made by a finger is shown before the list goes: the tint and the mark move to the
     // copy picked, and the sheet closes a moment later, so the hand sees what it chose.
     val touch = isTouch()
@@ -458,9 +453,9 @@ private fun CopyChooser(
             color = Tone.muted,
             modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
         )
-        groups.forEach { (quality, group) ->
+        tiers.forEach { (height, group) ->
             Text(
-                quality ?: s.detailCopyOther,
+                height?.let { group.first().first.copyQuality() } ?: s.detailCopyOther,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = Tone.accent,
