@@ -246,6 +246,7 @@ class TrackPickerFragment : Fragment() {
                 if (trackType == C.TRACK_TYPE_AUDIO && options.isNotEmpty()) addAll(timingLines(host, onInPlace))
                 // No subtitles in the file is exactly when looking online is worth it.
                 if (trackType == C.TRACK_TYPE_TEXT) {
+                    addAll(openLines())
                     onlineLine(onOnline)?.let(::add)
                     msoneLine(onMsone)?.let(::add)
                     translateLine(onTranslate)?.let(::add)
@@ -265,6 +266,7 @@ class TrackPickerFragment : Fragment() {
                 )
             }
             if (trackType == C.TRACK_TYPE_TEXT) {
+                addAll(openLines())
                 onlineLine(onOnline)?.let(::add)
                 msoneLine(onMsone)?.let(::add)
                 translateLine(onTranslate)?.let(::add)
@@ -581,8 +583,9 @@ class TrackPickerFragment : Fragment() {
                 // The tracks themselves first (owner, 2026-11-06): choosing one is the job
                 // the panel is opened for, and it was the last thing in it. The ways to add
                 // a track and the timing and look controls stand under the list, compact
-                // as they were, and nothing they offered is gone.
-                val opening = openLines() + functions
+                // as they were, and nothing they offered is gone. The Open rows lead the
+                // functions because [trackLines] builds them in first (item 5, v1.0.15).
+                val opening = functions
                 LineRows(tracks, firstFocus, focusKey)
                 // A divider under the track list (owner, 2026-11-06): the tracks are one
                 // section, everything the panel adds under them is another.
@@ -603,11 +606,16 @@ class TrackPickerFragment : Fragment() {
     }
 
     /**
-     * The file and link rows of the touch subtitle panel, which stand under the track list:
-     * a subtitle file, or the same by link, the host's own ways on (null where a build or a
-     * screen offers neither, as on a television). Choosing one closes the picker first, as
-     * the online page's own file and link lines do. Subtitles only: the audio panel has
-     * nothing to open.
+     * The file and link rows of the subtitle panel: a subtitle file, or the same by link, the
+     * host's own ways on (null where a build or a screen offers neither, as on a television,
+     * whose host offers neither). Choosing one closes the picker first, as the online page's
+     * own file and link lines do. Subtitles only: the audio panel has nothing to open.
+     *
+     * [trackLines] builds these in ahead of the online lines, so the one list every surface
+     * draws follows the MX shape (item 5, v1.0.15): the tracks first, then Open, then Online
+     * subtitles, then the synchronization steppers, then the panel's own entries (Translate
+     * rides with Online, and the look lines close the list). Playback speed is not a track
+     * panel entry at all: it stays in the player's More panel, where it already lives.
      */
     private fun openLines(): List<Line> {
         if (trackType != C.TRACK_TYPE_TEXT) return emptyList()
