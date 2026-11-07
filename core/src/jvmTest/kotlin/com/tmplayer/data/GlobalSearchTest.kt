@@ -371,4 +371,30 @@ class GlobalSearchTest {
         assertFalse(GlobalSearch.wantsMore(groups = 12, pagesAsked = 1, done = false))
         assertFalse(GlobalSearch.wantsMore(groups = 3, pagesAsked = 1, done = true))
     }
+
+    // ---- the chat page's own filters (item 8a) -------------------------------------------------
+
+    @Test
+    fun `a year is read wherever it was typed in a chat search`() {
+        assertEquals(2010, GlobalSearch.yearToken("Inception 2010", maxYear = 2026))
+        assertEquals(2010, GlobalSearch.yearToken("2010 Inception", maxYear = 2026))
+        assertEquals(null, GlobalSearch.yearToken("Inception", maxYear = 2026))
+        assertEquals(null, GlobalSearch.yearToken("Inception 1080", maxYear = 2026))
+        assertEquals(null, GlobalSearch.yearToken("Inception 2099", maxYear = 2026))
+    }
+
+    @Test
+    fun `a chat search keeps only the quality and the year it named`() {
+        val full = video(1, 11, "Inception 2010 1080p.mkv")
+        val hd = video(1, 12, "Inception 2010 720p.mkv")
+        val older = video(1, 13, "Inception 1984 1080p.mkv")
+        val byQuality = q("Inception 1080p")
+        assertTrue(GlobalSearch.passesChatFilters(full, byQuality, GlobalSearch.yearToken("Inception 1080p", maxYear = 2026)))
+        assertFalse(GlobalSearch.passesChatFilters(hd, byQuality, null))
+        val byYear = q("Inception 2010")
+        assertTrue(GlobalSearch.passesChatFilters(full, byYear, GlobalSearch.yearToken("Inception 2010", maxYear = 2026)))
+        assertFalse(GlobalSearch.passesChatFilters(older, byYear, 2010))
+        val byNeither = q("Inception")
+        assertTrue(GlobalSearch.passesChatFilters(hd, byNeither, null))
+    }
 }

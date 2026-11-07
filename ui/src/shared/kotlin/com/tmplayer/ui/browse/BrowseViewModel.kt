@@ -1484,7 +1484,19 @@ class MediaListViewModel(
     private fun keep(items: List<MediaItem>): List<MediaItem> {
         // A search names the video the viewer is after, so the size limits stand aside for it: an
         // episode a little smaller than its neighbours is exactly the one a viewer goes looking for.
-        if (query.isNotBlank()) return Fuzzy.rank(items, query) { it.searchText }
+        if (query.isNotBlank()) {
+            // The chat page's own filters (item 8a, v1.0.15): a quality or a year in the words
+            // ("Inception 1080p", "Inception 2010") screens what Telegram sent back, the same
+            // reading the search across chats gives them, before the ranking orders the rest.
+            val parsed = com.tmplayer.data.GlobalSearch.parse(query)
+            val screened = if (parsed.quality != com.tmplayer.data.SearchQuality.Any || com.tmplayer.data.GlobalSearch.yearToken(query) != null) {
+                val year = com.tmplayer.data.GlobalSearch.yearToken(query)
+                items.filter { com.tmplayer.data.GlobalSearch.passesChatFilters(it, parsed, year) }
+            } else {
+                items
+            }
+            return Fuzzy.rank(screened, query) { it.searchText }
+        }
         val split = SizeFilter.split(items, minSizeBytes, maxSizeBytes) { it.sizeBytes }
         hiddenBySize += split.hidden
         return withoutShort(withoutCam(split.kept))

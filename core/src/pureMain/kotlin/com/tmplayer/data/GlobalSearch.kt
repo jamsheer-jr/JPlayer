@@ -636,6 +636,29 @@ object GlobalSearch {
     }
 
     /**
+     * A year named anywhere in [raw]'s words ("Inception 2010"), or null when none is. [parse]
+     * keeps a year only when it stands alone, because there it may be a title; a chat page's own
+     * filter (item 8a, v1.0.15) wants the year wherever it was typed.
+     */
+    fun yearToken(raw: String, maxYear: Int = currentYear() + 1): Int? =
+        clean(raw).split(' ').firstNotNullOfOrNull { word ->
+            word.toIntOrNull()?.takeIf { it in 1900..maxYear }
+        }
+
+    /**
+     * Whether [item] passes a chat page search's quality and year (item 8a, v1.0.15). The words
+     * themselves are answered by Telegram's search and [Fuzzy]'s ranking, as they already were
+     * on the chat page; what the page could not do before was keep only the 1080p copies of a
+     * title, or only one year's. A year matches the year the file's name carries, or a year
+     * written anywhere in the text the tile shows.
+     */
+    fun passesChatFilters(item: MediaItem, query: SearchQuery, year: Int?): Boolean {
+        if (query.quality != SearchQuality.Any && !matchesQuality(item, query.quality)) return false
+        if (year != null && SeriesShelf.episodeOf(item).year != year && !item.searchText.contains(year.toString())) return false
+        return true
+    }
+
+    /**
      * The videos the app already knows of that answer [query], as cards, before Telegram has said
      * anything and whatever it says: what chat listings loaded, Continue watching, downloads.
      * Found without a connection, and merged with Telegram's pages by message id, so a file
