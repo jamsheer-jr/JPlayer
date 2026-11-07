@@ -145,6 +145,7 @@ object Backups {
         "gesture_brightness" to Kind.BOOL,
         "gesture_seek" to Kind.BOOL,
         "gesture_volume" to Kind.BOOL,
+        "hide_cam_copies" to Kind.BOOL,
         "hide_rip_tags" to Kind.BOOL,
         "high_contrast" to Kind.BOOL,
         "history_tab" to Kind.TEXT,

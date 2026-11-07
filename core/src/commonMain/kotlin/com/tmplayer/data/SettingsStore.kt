@@ -39,6 +39,7 @@ private val DOWNLOAD_FIRST = booleanPreferencesKey("download_before_playing")
 private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
 private val DETAIL_FIRST = booleanPreferencesKey("detail_first")
 private val HIDE_RIP_TAGS = booleanPreferencesKey("hide_rip_tags")
+private val HIDE_CAM_COPIES = booleanPreferencesKey("hide_cam_copies")
 private val COMPACT_NAV = booleanPreferencesKey("compact_nav")
 private val DOWNMIX_STEREO = booleanPreferencesKey("downmix_stereo")
 private val VOLUME_BOOST = booleanPreferencesKey("volume_boost")
@@ -624,6 +625,18 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHideRipTags(value: Boolean) {
         prefs.edit { it[HIDE_RIP_TAGS] = value }
+    }
+
+    /**
+     * Whether cam family copies (PreDVD, HDTS, TS, CAM: see [MediaFacts.CAM_SOURCES]) are
+     * hidden from copies lists, channel lists and search. On by default, so a fresh install
+     * hides them unless the viewer turns the switch off in Settings; HDRip is not a cam
+     * source and is never hidden by this.
+     */
+    val hideCamCopies: Flow<Boolean> = read { it[HIDE_CAM_COPIES] ?: true }
+
+    suspend fun setHideCamCopies(value: Boolean) {
+        prefs.edit { it[HIDE_CAM_COPIES] = value }
     }
 
     /**
