@@ -1006,7 +1006,7 @@ internal fun CopiesSheet(
     val focus = remember { FocusRequester() }
     val context = LocalContext.current
     val settings = remember(context) { SettingsStore(context) }
-    val hideCam by settings.hideCamCopies.collectAsState(initialValue = true)
+    val hideCam by settings.hideCamCopies.collectAsState(initial = true)
     // The copy playing always stays, even when it is itself a cam copy.
     val visible = remember(copies, hideCam, playing) {
         if (hideCam) copies.filter { copy -> copy.id == playing || !isCamCopy(copy) } else copies

@@ -40,9 +40,7 @@ object AutoBackupRunner {
                     bookmarks = BookmarkStore(context),
                 )
                 val bytes = service.export().toByteArray()
-                DownloadTree.put(context, tree, service.fileName(), bytes.size.toLong()) {
-                    ByteArrayInputStream(bytes)
-                }
+                DownloadTree.put(context, tree, service.fileName(), bytes.size.toLong(), { ByteArrayInputStream(bytes) })
                 true
             }.onFailure { Logger.w(TAG, "Auto backup not written", it) }.getOrDefault(false)
         }
