@@ -36,7 +36,7 @@ data class MediaFacts(
     val audio: String? = null,
     /** What the name says about the tracks inside, beyond the first audio. */
     val tracks: List<Track> = emptyList(),
-    /** "WEB-DL", "WEBRip", "Blu-ray", "HDTV", "DVD". */
+    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "HDTS", "TS", "CAM", "DVD". */
     val source: String? = null,
     /** "MKV", "MP4": the extension, upper case. */
     val container: String? = null,
@@ -197,14 +197,33 @@ data class MediaFacts(
         /** "5.1", "7.1", "2.0", alone or straight after a codec, never a piece of "H.264". */
         private val CHANNELS = Regex("""(?<![0-9])(?<![0-9]\.)([1-8])\.([01])(?![0-9])""")
 
+        /**
+         * First match wins. BDRip and BRRip read as what the file says, before the wider
+         * Blu-ray label. The cam family (PreDVD, HDTS, TS, CAM) sits before DVD, so the
+         * DVD inside PreDVD is never read on its own, and HDTS sits before TS, so its
+         * TS is never read on its own. None of them overlaps HDRip or HDTV: their patterns
+         * need rip or tv after hd, which no cam spelling carries.
+         */
         private val SOURCES = listOf(
             "WEB-DL" to word("""web[ ._-]?dl"""),
             "WEBRip" to word("""web[ ._-]?rip"""),
-            "Blu-ray" to word("""blu[ ._-]?ray|bd[ ._-]?rip|br[ ._-]?rip|bdremux|remux"""),
+            "BDRip" to word("""bd[ ._-]?rip"""),
+            "BRRip" to word("""br[ ._-]?rip"""),
+            "Blu-ray" to word("""blu[ ._-]?ray|bdremux|remux"""),
             "HDTV" to word("hdtv"),
             "HDRip" to word("""hd[ ._-]?rip"""),
+            "PreDVD" to word("""pre[ ._-]?dvd|predvd"""),
+            "HDTS" to word("""hd[ ._-]?ts"""),
+            "TS" to word("""telesync|ts"""),
+            "CAM" to word("""cam[ ._-]?rip|hd[ ._-]?cam|cam"""),
             "DVD" to word("""dvd[ ._-]?rip|dvd"""),
         )
+
+        /** The cam family sources: copies filmed or captured before a retail disc exists. */
+        val CAM_SOURCES: Set<String> = setOf("PreDVD", "HDTS", "TS", "CAM")
+
+        /** Whether [source] is one of the cam family labels in [CAM_SOURCES]. */
+        fun isCamSource(source: String?): Boolean = source != null && source in CAM_SOURCES
 
         private val TRACKS = listOf(
             Track.DualAudio to word("""dual[ ._-]?audio"""),

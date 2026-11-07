@@ -1,6 +1,7 @@
 package com.tmplayer.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -118,6 +119,83 @@ class MediaFactsTest {
         assertTrue(MediaFacts.read("Classic.1975.Rmastrd.BluRay.mkv").remastered)
         assertTrue(MediaFacts.read("Classic.1975.Remasterd.BluRay.mkv").remastered)
         assertTrue(!MediaFacts.read("Film.2026.BluRay.mkv").remastered)
+    }
+
+    @Test
+    fun `the owner's HQ PreDVD name reads PreDVD`() {
+        val facts = MediaFacts.read("Jailer 2 (2026) Tamil HQ PreDVD - 1080p - x264 - HQ Clean.mkv")
+        assertEquals("PreDVD", facts.source)
+        assertEquals("1080p", facts.resolution)
+        assertEquals("H.264", facts.videoCodec)
+        assertTrue(MediaFacts.isCamSource(facts.source))
+    }
+
+    @Test
+    fun `BDRip and BRRip read as their own sources, not Blu-ray`() {
+        assertEquals("BDRip", MediaFacts.read("Film.2026.1080p.BDRip.x264.mkv").source)
+        assertEquals("BDRip", MediaFacts.read("Film 2026 1080p BD-Rip x265.mkv").source)
+        assertEquals("BRRip", MediaFacts.read("Film.2026.720p.BRRip.x264.mkv").source)
+        assertEquals("BRRip", MediaFacts.read("Film 2026 720p BR Rip x265.mkv").source)
+    }
+
+    @Test
+    fun `plain Blu-ray and REMUX names still read Blu-ray`() {
+        assertEquals("Blu-ray", MediaFacts.read("Film.2026.1080p.BluRay.x264.mkv").source)
+        assertEquals("Blu-ray", MediaFacts.read("Film.2026.2160p.Blu-ray.REMUX.HEVC.mkv").source)
+        assertEquals("Blu-ray", MediaFacts.read("Film.2026.1080p.BDRemux.mkv").source)
+        assertEquals("Blu-ray", MediaFacts.read("Film 2026 1080p Remux.mkv").source)
+        assertFalse(MediaFacts.isCamSource("Blu-ray"))
+    }
+
+    @Test
+    fun `the cam family reads its own labels`() {
+        assertEquals("PreDVD", MediaFacts.read("Film.2026.PreDVD.x264.mkv").source)
+        assertEquals("PreDVD", MediaFacts.read("Film 2026 Pre DVD x264.mkv").source)
+        assertEquals("HDTS", MediaFacts.read("Film.2026.HDTS.x264.mkv").source)
+        assertEquals("HDTS", MediaFacts.read("Film 2026 HD-TS x264.mkv").source)
+        assertEquals("TS", MediaFacts.read("Film.2026.TS.x264.mkv").source)
+        assertEquals("TS", MediaFacts.read("Film 2026 Telesync x264.mkv").source)
+        assertEquals("CAM", MediaFacts.read("Film.2026.CAM.x264.mkv").source)
+        assertEquals("CAM", MediaFacts.read("Film.2026.CamRip.x264.mkv").source)
+        assertEquals("CAM", MediaFacts.read("Film.2026.HDCAM.x264.mkv").source)
+        for (label in listOf("PreDVD", "HDTS", "TS", "CAM")) {
+            assertTrue(label, MediaFacts.isCamSource(label))
+        }
+        assertEquals(setOf("PreDVD", "HDTS", "TS", "CAM"), MediaFacts.CAM_SOURCES)
+    }
+
+    @Test
+    fun `HDRip and WEB-DL names are unchanged and HDRip is not a cam source`() {
+        assertEquals("HDRip", MediaFacts.read("Film.2026.720p.HDRip.x264.mkv").source)
+        assertEquals("WEB-DL", MediaFacts.read("Film.2026.1080p.WEB-DL.x265.mkv").source)
+        assertEquals("WEBRip", MediaFacts.read("Film.2026.1080p.WEBRip.x265.mkv").source)
+        assertEquals("HDTV", MediaFacts.read("Show.S01E01.HDTV.x264.mkv").source)
+        assertEquals("DVD", MediaFacts.read("Film.2005.DVDRip.XviD.mkv").source)
+        assertFalse(MediaFacts.isCamSource("HDRip"))
+        assertFalse(MediaFacts.isCamSource("WEB-DL"))
+        assertFalse(MediaFacts.isCamSource(null))
+        assertFalse(MediaFacts.isCamSource("Blu-ray"))
+    }
+
+    @Test
+    fun `a cam like word inside a longer word does not fire`() {
+        assertNull(MediaFacts.read("Cambridge Nights 2026 1080p.mkv").source)
+        assertNull(MediaFacts.read("Campfire Tales 2026 1080p.mkv").source)
+        assertNull(MediaFacts.read("The Tsunami Story 2026 1080p.mkv").source)
+    }
+
+    @Test
+    fun `every codec spelling the owner named reads`() {
+        assertEquals("HEVC", MediaFacts.read("Film.2026.x265.mkv").videoCodec)
+        assertEquals("HEVC", MediaFacts.read("Film.2026.h265.mkv").videoCodec)
+        assertEquals("HEVC", MediaFacts.read("Film.2026.H.265.mkv").videoCodec)
+        assertEquals("HEVC", MediaFacts.read("Film.2026.HEVC.mkv").videoCodec)
+        assertEquals("H.264", MediaFacts.read("Film.2026.x264.mkv").videoCodec)
+        assertEquals("H.264", MediaFacts.read("Film.2026.h264.mkv").videoCodec)
+        assertEquals("H.264", MediaFacts.read("Film.2026.H.264.mkv").videoCodec)
+        assertEquals("H.264", MediaFacts.read("Film.2026.AVC.mkv").videoCodec)
+        assertEquals("AV1", MediaFacts.read("Film.2026.AV1.mkv").videoCodec)
+        assertEquals("E-AC3 5.1", MediaFacts.read("Film.2026.WEB-DL.DDP5.1.x265.mkv").audio)
     }
 
     @Test

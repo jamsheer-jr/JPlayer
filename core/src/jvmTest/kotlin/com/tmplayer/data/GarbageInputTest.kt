@@ -271,6 +271,7 @@ class GarbageInputTest {
             survive("PostStart.parse", text) { PostStart.parse(text) }
             survive("Decimal.parse", text) { Decimal.parse(text) }
             survive("MediaName.parse", text) { MediaName.parse(text); MediaName.parse(text, text) }
+            survive("MediaFacts.read", text) { MediaFacts.read(text); MediaFacts.read(text, -1, Int.MAX_VALUE); MediaFacts.isCamSource(text) }
             survive("MediaText.overviewOf", text) {
                 MediaText.overviewOf(text, text, text)
                 MediaText.overviewOf(text, null, "")
