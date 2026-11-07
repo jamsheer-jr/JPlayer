@@ -389,22 +389,43 @@ object DrivePage {
  * the system's download manager, which saves into the public folder, shows its own
  * progress in the shade, and needs no permission from the app. Telegram downloads are a
  * different road and stay in the app's folder, as they always have.
+ *
+ * Background and resume are the system's own here, and they are narrower than the
+ * Telegram road's. The system manager keeps fetching with this app closed, paused by a
+ * lost connection and carried on when it returns, which this app neither drives nor
+ * reports: its progress and its failures live in the system's own Downloads listing, not
+ * on this app's Downloads screen, and no size is known for a link, so no room check can
+ * be made before it starts. A system download that has failed for good, a full disk
+ * included, cannot be resumed through the manager's API: pressing Download on the link
+ * again starts a new download from the beginning. That restart is this road's only
+ * retry, and it is a restart, not a resume.
  */
 object LinkDownloader {
 
-    /** Starts [link]'s download; false where the system refused it. */
-    fun download(context: Context, link: StreamLink): Boolean = runCatching {
-        val manager = context.getSystemService(DownloadManager::class.java) ?: return false
-        val request = DownloadManager.Request(Uri.parse(link.url))
-            .setTitle(fileNameOf(link))
-            .setDescription(link.source)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileNameOf(link))
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
-        manager.enqueue(request)
-        true
-    }.getOrDefault(false)
+    /**
+     * Starts [link]'s download; false where the system refused it.
+     *
+     * A refusal is said out loud here, because both callers ignore the result: a press
+     * that silently did nothing reads exactly like a download that started.
+     */
+    fun download(context: Context, link: StreamLink): Boolean {
+        val started = runCatching {
+            val manager = context.getSystemService(DownloadManager::class.java) ?: return false
+            val request = DownloadManager.Request(Uri.parse(link.url))
+                .setTitle(fileNameOf(link))
+                .setDescription(link.source)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileNameOf(link))
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+            manager.enqueue(request)
+            true
+        }.getOrDefault(false)
+        if (!started) {
+            com.tmplayer.ui.components.showMessage(context, com.tmplayer.i18n.L.downloadsLinkDownloadRefused)
+        }
+        return started
+    }
 
     /** The saved file's name: the link's own name where it carries an ending, else the address's last part. */
     fun fileNameOf(link: StreamLink): String {
