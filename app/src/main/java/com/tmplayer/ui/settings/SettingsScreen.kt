@@ -2005,6 +2005,25 @@ fun SettingsScreen(
                     }
                 }
 
+                // Scan a sign in code (item 6, v1.0.15): this phone confirms the QR code a
+                // television is showing for its own sign in, from inside J Player, so Telegram
+                // never has to be opened. A phone only: a television has no camera to offer,
+                // and its own sign in pane is the one being scanned.
+                if (isTouch()) {
+                    item {
+                        ActionRow(
+                            title = s.settingsAccountScan,
+                            subtitle = s.settingsAccountScanDetail,
+                            icon = TmIcons.Tv,
+                            onClick = {
+                                context.startActivity(
+                                    android.content.Intent(context, com.tmplayer.ui.auth.QrScanActivity::class.java),
+                                )
+                            },
+                        )
+                    }
+                }
+
                 // Last, under the cards rather than in one: the one press here that ends the
                 // session, asked first (Prompt.SignOut).
                 settingsNote {

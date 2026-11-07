@@ -1050,6 +1050,24 @@ object Td {
      */
     suspend fun refreshQrCode() = restartSignIn(SignInMethod.Qr)
 
+    /**
+     * Confirms another device's QR sign in from this signed in account (item 6, v1.0.15): the
+     * phone scanned the television's code, and Telegram signs the television in without its own
+     * app being opened. [link] is the code's text, already read by [QrLoginLinks]. Returns null
+     * on success, an error otherwise. An account 2-step password, when set, is still asked for
+     * on the other device afterwards: that is Telegram's rule, and nothing here stands in its
+     * way.
+     */
+    suspend fun confirmQrCode(link: String): String? {
+        val td = current ?: return L.errorsNotConnected
+        val result = withTimeoutOrNull(SUBMIT_TIMEOUT_MS) { td.confirmQrCodeAuthentication(link) }
+            ?: return L.errorsNoAnswer
+        return when (result) {
+            is TdlResult.Success -> null
+            is TdlResult.Failure -> Failures.humanise(result.message)
+        }
+    }
+
     suspend fun restartSignIn(next: SignInMethod = SignInMethod.Undecided) {
         method = next
         methodAfterRestart = next

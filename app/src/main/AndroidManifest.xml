@@ -11,10 +11,18 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <!-- The QR sign in scanner (item 6, v1.0.15) is a phone extra: a television has no camera
+         and is the device being signed in, so the feature is never required. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <!-- Taps, ticks and holds felt in the hand: played on the vibrator itself, since some phones
          (Xiaomi's HyperOS) drop a view's haptic feedback without a word. Granted at install. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Asked for at first use, on the scanner screen itself: it reads a sign in code off a
+         television (item 6, v1.0.15) and is used for nothing else. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -107,6 +115,14 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="com.tmplayer.cast.CastOptionsProvider" />
+
+        <!-- The phone's QR sign in scanner (item 6, v1.0.15): opened only from Settings,
+             Accounts, and never exported. -->
+        <activity
+            android:name=".ui.auth.QrScanActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|locale|layoutDirection"
+            android:exported="false"
+            android:theme="@style/Theme.TMPlayer.Player" />
 
         <activity
             android:name=".MainActivity"

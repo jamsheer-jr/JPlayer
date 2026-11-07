@@ -212,6 +212,7 @@ class GarbageInputTest {
             }
             survive("Backups.decode", text) { Backups.decode(text) }
             survive("PartyLinks.parse", text) { PartyLinks.parse(text) }
+            survive("QrLoginLinks.parse", text) { QrLoginLinks.parse(text) }
             survive("StreamLinks.inPost", text) { StreamLinks.inPost(text, text) }
             survive("StreamLinks.pasted", text) { StreamLinks.pasted(text) }
             survive("StreamLinks.pastedAny", text) { StreamLinks.pastedAny(text) }
