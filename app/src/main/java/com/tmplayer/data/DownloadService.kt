@@ -512,6 +512,22 @@ class DownloadService : Service() {
         // it wanted. Once per id, so a video whose number keeps moving cannot become a loop.
         if (resourceAndRequeue(request)) return@coroutineScope
 
+        // The stall watch (owner, v1.0.14): the one way a fetch can stop that nothing else
+        // here recovers from. An error is written down, a takeover is asked again, a lost
+        // connection is held by the network watcher and put back. A connection that stays
+        // up and simply stops sending (a half-open socket after a change TDLib did not
+        // notice) does none of those: the synchronous call below waits for ever, the row
+        // sits at one figure, and the queue behind it never moves. So the ticker, which
+        // already counts the bytes every second, also watches them: no new byte for
+        // STALL_MS on a connection the watcher calls usable cancels TDLib's request (the
+        // landed part is kept) and the attempt loop asks again from there. Bounded by
+        // MAX_STALL_RESTARTS: a line that stalls that often is a line problem, and the
+        // row then fails honestly instead of asking for ever.
+        val stallBytes = java.util.concurrent.atomic.AtomicLong(landedAlready)
+        val stallAt = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+        val stallFired = java.util.concurrent.atomic.AtomicBoolean(false)
+        val stallRestarts = java.util.concurrent.atomic.AtomicInteger(0)
+
         // Watches the same file TDLib is filling, only so the notification and the row have
         // something to move. The download itself is the call below. A child of this coroutine, so
         // pausing or cancelling the fetch takes the ticker with it rather than leaving it running
@@ -522,6 +538,20 @@ class DownloadService : Service() {
                 val done = Td.localDownloadedBytes(request.fileId)
                 OfflineDownloads.sample(request.fileId, done)
                 refresh()
+                if (done > stallBytes.get()) {
+                    stallBytes.set(done)
+                    stallAt.set(System.currentTimeMillis())
+                } else if (
+                    !stallFired.get() &&
+                    stallRestarts.get() < MAX_STALL_RESTARTS &&
+                    holdReason == null &&
+                    !TdByteWindow.isStreaming(request.fileId) &&
+                    System.currentTimeMillis() - stallAt.get() > STALL_MS
+                ) {
+                    stallFired.set(true)
+                    Log.w(TAG, "No progress on ${request.title} for ${STALL_MS}ms; asking TDLib again")
+                    Td.cancelDownloadInBackground(request.fileId)
+                }
             }
         }
 
@@ -551,6 +581,20 @@ class DownloadService : Service() {
             // and cancelling leave through this function rather than being written down as errors.
             (result.exceptionOrNull() as? CancellationException)?.let { throw it }
             error = result.exceptionOrNull()?.message ?: result.getOrNull()?.errorMessage
+            // The stall watch fired: this call was cancelled from beside it, not by the
+            // viewer (their pause or cancel cancels this coroutine itself and never gets
+            // here). Ask again from the bytes that landed, as a takeover below does.
+            if (stallFired.get()) {
+                if (Td.localFileAvailability(request.fileId) == LocalFileAvailability.Complete) {
+                    error = null
+                    break
+                }
+                if (stallRestarts.incrementAndGet() > MAX_STALL_RESTARTS) break
+                stallFired.set(false)
+                stallAt.set(System.currentTimeMillis())
+                delay(TAKEOVER_BACKOFF_MS)
+                continue
+            }
             if (error == null || !error.contains(TAKEN_OVER, ignoreCase = true)) break
             if (Td.localFileAvailability(request.fileId) == LocalFileAvailability.Complete) {
                 error = null
@@ -1272,6 +1316,16 @@ class DownloadService : Service() {
         /** Enough to sit through a viewer seeking around the video they are also keeping. */
         private const val MAX_TAKEOVERS = 60
         private const val TAKEOVER_BACKOFF_MS = 2_000L
+
+        /**
+         * No new byte for this long, on a connection the watcher calls usable, reads as a
+         * stall (owner, v1.0.14): long enough that a slow line, which still lands a chunk
+         * now and then, never trips it.
+         */
+        private const val STALL_MS = 90_000L
+
+        /** Stall restarts one fetch is given before its row fails honestly. */
+        private const val MAX_STALL_RESTARTS = 3
 
         /** The file id the notification's buttons carry, since no real file has it. */
         private const val EVERYTHING = 0
