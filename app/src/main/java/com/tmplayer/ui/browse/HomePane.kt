@@ -1072,7 +1072,9 @@ internal fun HomePane(
             icon = TmIcons.OpenExternal,
             focusConfirm = true,
             onConfirm = {
-                val link = com.tmplayer.data.StreamLinks.pasted(linkText)
+                // pastedAny: a link whose kind no ending names still opens (owner,
+                // v1.0.14); the player asks the address itself what it is.
+                val link = com.tmplayer.data.StreamLinks.pastedAny(linkText)
                 val raw = Regex("""https?://\S+""").find(linkText)?.value
                 if (link != null) {
                     linkInvalid = false

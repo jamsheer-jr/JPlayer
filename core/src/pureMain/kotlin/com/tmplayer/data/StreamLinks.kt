@@ -18,6 +18,13 @@ data class StreamLink(
     val source: String = "",
     val chatId: Long = 0,
     val messageId: Long = 0,
+    /**
+     * The address's kind could not be read off it (owner, v1.0.14): no ending the reading
+     * knows, so the player asks the address itself what it is (its content type and its
+     * first bytes) before choosing a reader. Only a link the viewer pasted on purpose is
+     * ever marked so; a channel post's links are read strictly, as they always were.
+     */
+    val sniff: Boolean = false,
 )
 
 /**
@@ -158,19 +165,56 @@ object StreamLinks {
      * stream link. Sentence punctuation stuck to the address in prose is not part of it, and
      * the extension must end the address or be followed only by a query string: a page whose
      * name merely contains .mp4 is not a video file.
+     *
+     * The extension may also ride inside the query string (owner, v1.0.14): a player page's
+     * address like `play?file=show.m3u8&token=...`, where a parameter's value ends with the
+     * ending. The address the player opens is still the whole one; only the kind is read
+     * off the value.
      */
     private fun streamOf(token: String, wider: Boolean): Found? {
         val cleaned = token.trimEnd(')', '.', ',', ';', ']', '>', '"', '\'')
         val lower = cleaned.lowercase()
+        val shapes = if (wider) PASTED_SHAPES else POST_SHAPES
         var best: Pair<Int, Shape>? = null
-        for (shape in if (wider) PASTED_SHAPES else POST_SHAPES) {
+        for (shape in shapes) {
             val at = lower.indexOf(".${shape.ending}")
             if (at >= 0 && (best == null || at < best.first)) best = at to shape
         }
-        val (at, shape) = best ?: return null
-        val end = at + shape.ending.length + 1
-        val rest = cleaned.substring(end)
-        if (rest.isNotEmpty() && !rest.startsWith("?")) return null
-        return Found(cleaned, shape.live, shape.dash)
+        if (best != null) {
+            val (at, shape) = best
+            val end = at + shape.ending.length + 1
+            val rest = cleaned.substring(end)
+            if (rest.isEmpty() || rest.startsWith("?")) return Found(cleaned, shape.live, shape.dash)
+        }
+        val query = cleaned.substringAfter('?', "")
+        if (query.isNotEmpty()) {
+            for (part in query.split('&')) {
+                val value = part.substringAfter('=', part).lowercase()
+                for (shape in shapes) {
+                    if (value.endsWith(".${shape.ending}")) return Found(cleaned, shape.live, shape.dash)
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * The link a viewer pastes, kind unknown where its ending says nothing (owner,
+     * v1.0.14): [pasted] first, and where that refuses, the first address in [text] as it
+     * stands, marked [StreamLink.sniff] so the player asks the address itself what it is
+     * and fails plainly where it is a web page or a protected manifest. An extension-less
+     * CDN address and one whose kind only its content type knows both get their chance
+     * this way; a page read for a link inside it (PageLinkResolver) keeps the strict
+     * [pasted], since a page's first address is rarely the video.
+     */
+    fun pastedAny(text: String): StreamLink? {
+        pasted(text)?.let { return it }
+        for (match in CANDIDATE.findAll(text)) {
+            val cleaned = match.value.trimEnd(')', '.', ',', ';', ']', '>', '"', '\'')
+            val name = cleaned.substringBefore('?').substringAfterLast('/').ifBlank { cleaned }
+            val source = cleaned.substringAfter("://").substringBefore('/').substringBefore('?')
+            return StreamLink(url = cleaned, name = name, live = false, source = source, sniff = true)
+        }
+        return null
     }
 }

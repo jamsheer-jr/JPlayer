@@ -1898,8 +1898,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // The honesty check on the manifest itself (owner, 2026-11-07): a DRM
             // manifest, or a web page wearing a stream's name, fails the open here with
             // the sentence that names it, on the same error sheet every other failure
-            // uses, instead of the player's generic format answer a moment later.
-            streamBlockMessage()?.let { message ->
+            // uses, instead of the player's generic format answer a moment later. The
+            // same reading names the kind of an address whose ending says nothing
+            // (owner, v1.0.14), so it reaches the right reader.
+            streamKindBlock()?.let { message ->
                 showError(message, retryable = false)
                 return@launch
             }
@@ -1916,28 +1918,41 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
-     * Why this stream must not open, read off its manifest before the player is handed
-     * the address (owner, 2026-11-07): the one choke point every stream route passes
-     * through, since the Open link flow and the Live row both end in [openStream]. Only
-     * a manifest address (an .mpd or .m3u8, or one the intent already flags as DASH or
-     * live) is fetched, once and capped, through [PageLinkResolver.fetchManifest]; a
-     * plain file link skips the fetch entirely. A DRM manifest and a web page each earn
-     * their own sentence; a real manifest, an unreadable answer and a failed fetch all
+     * Why this stream must not open, read off the address itself before the player is
+     * handed it (owner, 2026-11-07): the one choke point every stream route passes
+     * through, since the Open link flow and the Live row both end in [openStream]. A
+     * manifest address (an .mpd or .m3u8, or one the intent already flags as DASH or
+     * live) is fetched, once and capped, through [PageLinkResolver.fetchManifest]; so
+     * is an address whose kind no ending names (owner, v1.0.14), whose answer's content
+     * type or first bytes then set [streamLive] or [streamDash] here, before the player
+     * is built, so an extension-less HLS or DASH address reaches its own reader instead
+     * of the progressive one. A plain file link (a known video ending) skips the fetch
+     * entirely. A DRM manifest and a web page each earn their own sentence; a real
+     * manifest, a plain file's answer, an unreadable answer and a failed fetch all
      * return null, so the stream opens exactly as it did before the check existed and
      * no playable stream is ever blocked by a reading that failed.
      */
-    private suspend fun streamBlockMessage(): String? {
+    private suspend fun streamKindBlock(): String? {
         val url = streamUrl.orEmpty()
         if (url.isBlank()) return null
         val path = url.substringBefore('?').substringBefore('#').lowercase()
         val manifest = streamLive || streamDash || path.endsWith(".mpd") || path.endsWith(".m3u8")
-        if (!manifest) return null
+        val knownFile = STREAM_FILE_ENDINGS.any { path.endsWith(it) }
+        if (!manifest && knownFile) return null
         val answer = runCatching { PageLinkResolver.fetchManifest(url) }.getOrNull() ?: return null
-        return when (StreamManifest.classify(answer.contentType, answer.body)) {
-            is ManifestKind.Drm -> L.playerStreamDrm
-            ManifestKind.WebPage -> L.playerStreamWebPage
-            else -> null
+        when (StreamManifest.classify(answer.contentType, answer.body)) {
+            is ManifestKind.Drm -> return L.playerStreamDrm
+            ManifestKind.WebPage -> return L.playerStreamWebPage
+            else -> Unit
         }
+        if (!streamLive && !streamDash) {
+            when (StreamManifest.format(answer.contentType, answer.body)) {
+                StreamManifest.Format.Hls -> streamLive = true
+                StreamManifest.Format.Dash -> streamDash = true
+                null -> Unit
+            }
+        }
+        return null
     }
 
     /**
@@ -9596,6 +9611,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     companion object {
+        /** The endings of a plain video file's address: such a stream skips the kind fetch. */
+        private val STREAM_FILE_ENDINGS = listOf(".mp4", ".mkv", ".webm", ".mov", ".avi", ".ts", ".m4v")
+
         /** The broadcast the picture in picture window's play and pause button sends. */
         private const val ACTION_PIP_TOGGLE = "com.jplayer.app.PIP_TOGGLE"
 

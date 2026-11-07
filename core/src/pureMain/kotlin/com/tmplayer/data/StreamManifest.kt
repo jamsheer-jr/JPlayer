@@ -74,6 +74,25 @@ object StreamManifest {
     private fun isManifestType(type: String): Boolean =
         "dash+xml" in type || "mpegurl" in type
 
+    /** Which manifest an answer is, for pointing the player at the right reader. */
+    enum class Format { Hls, Dash }
+
+    /**
+     * The format of one fetched answer (owner, v1.0.14), from its content type or its own
+     * opening, for an address whose ending said nothing about its kind: an extension-less
+     * CDN address, most often. Null where the answer declares neither, in which case the
+     * address is a plain file for the progressive reader, exactly as before.
+     */
+    fun format(contentType: String?, body: String?): Format? {
+        val type = contentType.orEmpty().lowercase()
+        if ("mpegurl" in type) return Format.Hls
+        if ("dash+xml" in type) return Format.Dash
+        val head = body.orEmpty().take(MAX_SCAN).trimStart { it == '\uFEFF' || it.isWhitespace() }
+        if (head.startsWith("#EXTM3U")) return Format.Hls
+        if (head.startsWith("<MPD") || (head.startsWith("<?xml") && "<MPD" in head)) return Format.Dash
+        return null
+    }
+
     /** Whether the body's own opening is a DASH manifest's or an HLS playlist's. */
     private fun looksLikeManifest(head: String): Boolean {
         if (head.startsWith("#EXTM3U")) return true

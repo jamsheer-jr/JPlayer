@@ -127,6 +127,32 @@ class StreamLinksTest {
         // DASH from a post included.
         assertEquals(true, StreamLinks.inPost("Show https://cdn.example.com/v/movie.mpd", "J MOVIES")?.dash)
     }
+
+    @Test
+    fun theKindMayRideInsideTheQueryString() {
+        // A player page's address (owner, v1.0.14): the ending ends a parameter's value,
+        // with more parameters after it. The whole address is what opens.
+        val live = StreamLinks.pasted("https://cdn.example.com/play?file=show.m3u8&token=abc")
+        assertEquals("https://cdn.example.com/play?file=show.m3u8&token=abc", live?.url)
+        assertEquals(true, live?.live)
+        val dash = StreamLinks.inPost("Show https://cdn.example.com/play?src=movie.mpd&x=1", "J MOVIES")
+        assertEquals(true, dash?.dash)
+        // A value that merely contains an ending, with more after it, is not the kind.
+        assertNull(StreamLinks.pasted("https://cdn.example.com/play?file=show.m3u8.bak&token=abc"))
+    }
+
+    @Test
+    fun aPastedAddressOfUnknownKindIsMarkedForSniffing() {
+        val link = StreamLinks.pastedAny("https://cdn.example.com/watch/abc123")
+        assertEquals("https://cdn.example.com/watch/abc123", link?.url)
+        assertEquals(true, link?.sniff)
+        assertEquals(false, link?.live)
+        assertEquals(false, link?.dash)
+        // The strict reading still refuses it, and a known kind is never a sniff.
+        assertNull(StreamLinks.pasted("https://cdn.example.com/watch/abc123"))
+        assertEquals(false, StreamLinks.pastedAny("https://cdn.example.com/v/a.mkv")?.sniff)
+        assertNull(StreamLinks.pastedAny("no address here"))
+    }
 }
 
 class ChannelNewsTest {

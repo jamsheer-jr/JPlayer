@@ -137,4 +137,18 @@ class StreamManifestTest {
         assertEquals(ManifestKind.Manifest, StreamManifest.classify("application/dash+xml", ""))
         assertEquals(ManifestKind.Manifest, StreamManifest.classify("application/vnd.apple.mpegurl", "cut off before the first line fin"))
     }
+
+    @Test
+    fun theFormatIsReadFromTheTypeOrTheOpening() {
+        // Owner, v1.0.14: an address whose ending says nothing still reaches its reader.
+        assertEquals(StreamManifest.Format.Hls, StreamManifest.format("application/vnd.apple.mpegurl", ""))
+        assertEquals(StreamManifest.Format.Hls, StreamManifest.format("application/x-mpegURL", null))
+        assertEquals(StreamManifest.Format.Dash, StreamManifest.format("application/dash+xml", ""))
+        assertEquals(StreamManifest.Format.Hls, StreamManifest.format("application/octet-stream", "#EXTM3U\n#EXT-X-VERSION:3"))
+        assertEquals(StreamManifest.Format.Dash, StreamManifest.format(null, "<?xml version=\"1.0\"?><MPD type=\"static\"></MPD>"))
+        assertEquals(StreamManifest.Format.Dash, StreamManifest.format(null, "<MPD type=\"dynamic\"></MPD>"))
+        assertEquals(null, StreamManifest.format("video/mp4", ""))
+        assertEquals(null, StreamManifest.format(null, "just some prose"))
+        assertEquals(null, StreamManifest.format(null, null))
+    }
 }
