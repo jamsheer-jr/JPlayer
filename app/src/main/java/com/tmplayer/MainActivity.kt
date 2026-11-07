@@ -1164,6 +1164,17 @@ private fun Root() {
     // The Chats page's chip (a folder or one of Telegram's filters) last open, for the bar's Chats.
     var lastChatsKey by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(pickedTab) { if (pickedTab?.onChatsPage == true) lastChatsKey = pickedTabKey }
+    // Arriving on the Chats page refreshes the list when it has had time to go stale (owner,
+    // v1.0.14): what a channel posted while the viewer was on another page, in a chat or in
+    // Settings is there on the way back, without an app restart. The launch itself is let
+    // alone: the view model's own first load is already running at the first composition, and
+    // refreshIfStale would only start it over, so the first pass only marks that it happened.
+    val chatsPageUp = screen is Screen.Chats && pickedTab?.onChatsPage == true
+    var chatsPageComposed by remember { mutableStateOf(false) }
+    LaunchedEffect(chatsPageUp) {
+        if (chatsPageUp && chatsPageComposed) chatsViewModel.refreshIfStale()
+        chatsPageComposed = true
+    }
     // Home's own background work (a post in one of its chats, a retry, the posters looked up
     // ahead) waits while Home is not on screen (HX8).
     val homeOnScreen = shellInFront && screen is Screen.Chats && (pickedTab == null || pickedTab.isHome)
