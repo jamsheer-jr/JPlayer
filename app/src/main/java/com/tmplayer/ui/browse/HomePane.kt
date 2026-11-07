@@ -756,8 +756,11 @@ internal fun HomePane(
                             active = active,
                             onPlay = onPlayNow,
                             onDetails = { pick ->
+                                // Straight to the title's page (owner, v1.0.15): a banner tap
+                                // and its info button skip the hold menu that a card's hold
+                                // opens, as the television's banner already did by [onDetails].
                                 val series = pick.series
-                                if (series != null) opened.open(series) else onHoldMedia(pick.item, chatTitle(pick.item.chatId))
+                                if (series != null) opened.open(series) else onDetails(pick.item, chatTitle(pick.item.chatId))
                             },
                         )
                         // The app's mark and name in the picture's top corner, under the status
