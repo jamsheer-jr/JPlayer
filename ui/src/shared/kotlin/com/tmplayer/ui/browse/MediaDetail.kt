@@ -31,6 +31,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -211,6 +213,8 @@ fun MediaDetailPanel(
     actionsAtFoot: Boolean = false,
 ) {
     val s = LocalStrings.current
+    // A cast member pressed: their titles in the chats (owner, v1.0.14).
+    var person by remember { mutableStateOf<com.tmplayer.online.MetaPerson?>(null) }
     // The screen's one collector when it has one, rather than a second of its own.
     val corrections by com.tmplayer.ui.components.rememberCorrections()
     val parsed = remember(item, corrections) { com.tmplayer.data.SeriesShelf.episodeOf(item, corrections) }
@@ -384,7 +388,7 @@ fun MediaDetailPanel(
         DetailFacts(item, facts, s, overview ?: metaOverview, meta.takeIf { overview == null && metaOverview != null })
 
         if (meta != null && extras != null) {
-            MetaCastRow(extras.cast)
+            MetaCastRow(extras.cast, onOpenPerson = { person = it })
             MoreLikeThisRow(meta, extras, onOpenItem)
             if (metaOverview == null && (extras.cast.isNotEmpty() || extras.genres.isNotEmpty())) MetaCredit(meta)
         }
@@ -407,6 +411,13 @@ fun MediaDetailPanel(
                 }
             }
         }
+    }
+    person?.let { chosen ->
+        com.tmplayer.ui.online.PersonTitlesDialog(
+            chosen,
+            onDismiss = { person = null },
+            onOpenItem = { opened -> person = null; onOpenItem?.invoke(opened) },
+        )
     }
 }
 

@@ -769,6 +769,8 @@ fun SeriesPanel(
     val tv = !isTouch()
     // The marks card, open while the Watched button's choices are up. Kept in one holder: see HX1 below.
     val marking = remember(series.key) { mutableStateOf(false) }
+    // A cast member pressed: their titles in the chats (owner, v1.0.14).
+    var person by remember { mutableStateOf<com.tmplayer.online.MetaPerson?>(null) }
     val progress = watch.progress(series)
     val next = progress.next
     var season by rememberSaveable(series.key) {
@@ -1357,7 +1359,7 @@ fun SeriesPanel(
             // The cast and "More like this" after the episodes: composed only once scrolled to.
             if (meta != null && extras != null) {
                 if (extras.cast.isNotEmpty()) {
-                    item(key = "meta-cast") { MetaCastRow(extras.cast, Modifier.padding(pad).padding(top = 16.dp)) }
+                    item(key = "meta-cast") { MetaCastRow(extras.cast, Modifier.padding(pad).padding(top = 16.dp), onOpenPerson = { person = it }) }
                 }
                 if (extras.similar.isNotEmpty() && onOpenItem != null) {
                     item(key = "meta-more") { MoreLikeThisRow(meta, extras, onOpenItem, Modifier.padding(pad).padding(top = 16.dp)) }
@@ -1377,6 +1379,13 @@ fun SeriesPanel(
     }
     if (showActions != null && marking.value) {
         ShowMenu(series, watch, showActions, onDismiss = { marking.value = false }, season = shown, marksOnly = true)
+    }
+    person?.let { chosen ->
+        com.tmplayer.ui.online.PersonTitlesDialog(
+            chosen,
+            onDismiss = { person = null },
+            onOpenItem = { opened -> person = null; onOpenItem?.invoke(opened) },
+        )
     }
 }
 

@@ -42,6 +42,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -769,11 +771,13 @@ private fun BelowTheFold(
     val extras = page.extras
     val onOpenItem = page.onOpenItem
     val facts = remember(item) { MediaFacts.of(item) }
+    // A cast member pressed: their titles in the chats (owner, v1.0.14).
+    var person by remember { mutableStateOf<com.tmplayer.online.MetaPerson?>(null) }
     // The cast first, a short row; then the seasons and episodes, which can run long, so they
     // never push the cast out of sight; then "More like this". While the extras are on their way
     // the cast's place shows soft faces.
     when {
-        meta != null && extras != null -> MetaCastRow(extras.cast)
+        meta != null && extras != null -> MetaCastRow(extras.cast, onOpenPerson = { person = it })
         holds.cast && !page.extrasState.settled -> com.tmplayer.ui.online.MetaCastPlaceholder()
     }
     SeasonsSection(item, meta, extras, onOpenItem, episodesModifier)
@@ -784,6 +788,13 @@ private fun BelowTheFold(
         MetaPeopleLine(extras)
         DetailFacts(item, facts, s, overview = null, showSynopsis = false)
         meta?.let { MetaCredit(it) }
+    }
+    person?.let { chosen ->
+        com.tmplayer.ui.online.PersonTitlesDialog(
+            chosen,
+            onDismiss = { person = null },
+            onOpenItem = { opened -> person = null; onOpenItem?.invoke(opened) },
+        )
     }
 }
 

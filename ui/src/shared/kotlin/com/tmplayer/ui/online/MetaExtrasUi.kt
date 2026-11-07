@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -424,7 +427,17 @@ private fun Modifier.onceOnScreen(seen: Boolean, onSeen: () -> Unit): Modifier =
 
 /** A heading, then the cast as a row of faces with their names and parts. Nothing without a cast. */
 @Composable
-fun MetaCastRow(cast: List<MetaPerson>, modifier: Modifier = Modifier, contentPadding: PaddingValues = PaddingValues(0.dp)) {
+fun MetaCastRow(
+    cast: List<MetaPerson>,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * A face pressed (owner, v1.0.14): where the page can open the person's titles it
+     * hands the person here and draws [PersonTitlesDialog]; null keeps the older press,
+     * which only enlarges the face.
+     */
+    onOpenPerson: ((MetaPerson) -> Unit)? = null,
+) {
     if (cast.isEmpty()) return
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -441,7 +454,7 @@ fun MetaCastRow(cast: List<MetaPerson>, modifier: Modifier = Modifier, contentPa
                 bottom = if (tv) 6.dp else 0.dp,
             ),
         ) {
-            items(cast) { person -> PersonCard(person, loadPhoto = seen) }
+            items(cast) { person -> PersonCard(person, loadPhoto = seen, onOpenPerson = onOpenPerson) }
         }
     }
 }
@@ -478,7 +491,7 @@ fun MetaCastPlaceholder(modifier: Modifier = Modifier) {
 private const val CAST_PLACEHOLDERS = 5
 
 @Composable
-private fun PersonCard(person: MetaPerson, loadPhoto: Boolean) {
+private fun PersonCard(person: MetaPerson, loadPhoto: Boolean, onOpenPerson: ((MetaPerson) -> Unit)? = null) {
     val tv = !isTouch()
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusVisibleAsState()
@@ -489,10 +502,11 @@ private fun PersonCard(person: MetaPerson, loadPhoto: Boolean) {
         Modifier
             .width(face + 16.dp)
             // A face is small in a row; a press shows it large, with the name and the part.
+            // Where the page opens the person's titles, that is the press instead.
             .clickable(
                 interactionSource = interactions,
                 indication = if (tv) null else androidx.compose.foundation.LocalIndication.current,
-                onClick = { enlarged = true },
+                onClick = { if (onOpenPerson != null) onOpenPerson(person) else enlarged = true },
             )
             .semantics(mergeDescendants = true) {},
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -593,6 +607,144 @@ private fun PersonEnlarged(person: MetaPerson, onClose: () -> Unit) {
             }
         }
         if (tv) LaunchedEffect(Unit) { runCatching { close.requestFocus() } }
+    }
+}
+
+/** One title of a person's, as [PersonTitlesDialog] lists it: its match, and a copy to open. */
+private data class PersonTitle(val info: com.tmplayer.online.MetaInfo, val item: MediaItem)
+
+/**
+ * The titles [name] stands in among the videos the app has loaded: every loaded item's
+ * match is asked for the people its kept extras name (the cast, then whoever directed or
+ * created it), the same stored extras a search by a person's name reads (owner, v1.0.10),
+ * cache-only, so a title whose extras were never fetched holds nobody to match and
+ * nothing is asked for here. One entry per matched title, however many chats hold a
+ * copy of it; films and shows stand together.
+ */
+private fun personTitles(name: String): List<PersonTitle> {
+    val online = com.tmplayer.online.OnlineMetadata.current ?: return emptyList()
+    val wanted = name.trim().lowercase()
+    if (wanted.isEmpty()) return emptyList()
+    val byMatch = LinkedHashMap<String, PersonTitle>()
+    for (item in com.tmplayer.online.KnownMedia.all()) {
+        val query = item.metaQuery?.showOnly() ?: continue
+        val info = (runCatching { online.peek(query) }.getOrNull() as? com.tmplayer.online.MetaResult.Found)?.info ?: continue
+        val extras = runCatching { online.storedExtras(info) }.getOrNull() ?: continue
+        val people = extras.cast.map { it.name } + extras.directors + extras.creators
+        if (people.none { it.trim().lowercase() == wanted }) continue
+        byMatch.putIfAbsent(info.provider.name + ":" + info.id, PersonTitle(info, item))
+    }
+    return byMatch.values.toList()
+}
+
+/**
+ * A cast member's titles in the viewer's chats (owner, v1.0.14), opened by a press on
+ * their face in the cast row: the face large with the name and the part over the titles
+ * [personTitles] finds, each row opening its title by the page's own opener. Back, a
+ * press outside the card, or the close button leaves; on a television the close button
+ * takes the remote first, as the enlarged face's does, and Down walks to the rows.
+ */
+@Composable
+fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (MediaItem) -> Unit) {
+    val tv = !isTouch()
+    val close = remember { androidx.compose.ui.focus.FocusRequester() }
+    val titles by produceState<List<PersonTitle>?>(null, person.name) {
+        value = withContext(Dispatchers.Default) { personTitles(person.name) }
+    }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.88f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                Modifier.widthIn(max = 520.dp).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    Modifier.size(96.dp).clip(CircleShape).background(Tone.surfaceHigh),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(initials(person.name), style = MaterialTheme.typography.headlineMedium, color = Tone.muted)
+                    MetaPicture(person.photoUrl, Modifier.fillMaxSize(), maxWidth = FACE_PIXELS)
+                }
+                Text(person.name, style = MaterialTheme.typography.headlineSmall, color = Color.White, textAlign = TextAlign.Center)
+                if (person.role.isNotBlank()) {
+                    Text(person.role, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+                }
+                titles?.let { found ->
+                    LazyColumn(
+                        Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(found) { title -> PersonTitleRow(title) { onOpenItem(title.item) } }
+                    }
+                }
+            }
+            val interactions = remember { MutableInteractionSource() }
+            val focused by interactions.collectIsFocusVisibleAsState()
+            com.tmplayer.ui.components.IconTip(
+                LocalStrings.current.commonClose,
+                Modifier.align(Alignment.TopEnd).padding(if (tv) 32.dp else 16.dp),
+                side = com.tmplayer.ui.components.TipSide.Below,
+            ) {
+                Box(
+                    Modifier
+                        .size(if (tv) 48.dp else 40.dp)
+                        .clip(CircleShape)
+                        .background(if (focused) Tone.focusFill else Color.White.copy(alpha = 0.15f))
+                        .focusRequester(close)
+                        .clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        TmIcons.Close,
+                        contentDescription = LocalStrings.current.commonClose,
+                        tint = if (focused) Tone.onFocusFill else Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        }
+        if (tv) LaunchedEffect(Unit) { runCatching { close.requestFocus() } }
+    }
+}
+
+/** One row of [PersonTitlesDialog]: the poster, the title and its year, a press to open it. */
+@Composable
+private fun PersonTitleRow(title: PersonTitle, onOpen: () -> Unit) {
+    val tv = !isTouch()
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusVisibleAsState()
+    val ink = if (focused) Tone.onFocusFill else Tone.text
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Corner.Medium))
+            .background(if (focused) Tone.focusFill else Tone.surfaceHigh)
+            .clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onOpen)
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.size(44.dp, 66.dp).clip(RoundedCornerShape(Corner.Small)).background(Tone.surface),
+            contentAlignment = Alignment.Center,
+        ) {
+            MetaPicture(title.info.posterUrl, Modifier.fillMaxSize(), maxWidth = 240)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title.info.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 2)
+            title.info.year?.let { year ->
+                Text(year.toString(), style = MaterialTheme.typography.bodySmall, color = if (focused) Tone.onFocusFill else Tone.muted)
+            }
+        }
     }
 }
 
