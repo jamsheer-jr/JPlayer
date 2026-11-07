@@ -1898,6 +1898,11 @@ private fun BuiltInHomeSections(
  * embeds it under the pinned channel entry on a phone (owner, v1.0.14), so the two are
  * the same row by construction, never a second reading of the posts. Nothing is drawn
  * while there is nothing to show.
+ *
+ * The posts are read again whenever [LiveRefresh] asks (owner, v1.0.15): arriving at
+ * Chats or Home, coming back to the app, a pull or the Home button pressed again. They
+ * were read once at the first composition before, so a post added to the channel, or
+ * deleted from it, waited for the row to be built anew before the row showed it.
  */
 @Composable
 internal fun LiveStreamsRow(
@@ -1918,12 +1923,18 @@ internal fun LiveStreamsRow(
     // until their first opening, by the post each came from ([SeenStreams]).
     val seen by remember(settings) { settings.seenStreams }.collectAsState(initial = emptySet())
     var menuFor by remember { mutableStateOf<StreamLink?>(null) }
+    // When the posts were last read, and whether a hand refresh landed while a read was
+    // running and is still owed one (owner, v1.0.15: see [LiveRefresh]).
+    var lastReadAt by remember { mutableStateOf(0L) }
+    var owedRead by remember { mutableStateOf(false) }
+    val readLock = remember { kotlinx.coroutines.sync.Mutex() }
+    val readScope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        val session = Td.awaitConnectedSessionOrNull() ?: return@LaunchedEffect
+    suspend fun readPosts() {
+        val session = Td.awaitConnectedSessionOrNull() ?: return
         val actions = TelegramLinkActions(session.client)
         val channel = BuiltInChannels.J_MOVIES
-        val preview = actions.previewInvite(channel.invite).getOrNull() ?: return@LaunchedEffect
+        val preview = actions.previewInvite(channel.invite).getOrNull() ?: return
         var chatId = preview.chatId
         // The owner's direction (2026-11-06): the app joins his channel for the viewer,
         // once per run, only where their account is not a member, silently, and never in
@@ -1933,12 +1944,48 @@ internal fun LiveStreamsRow(
             val joined = runCatching { actions.joinInvite(channel.invite) }.getOrNull()?.getOrNull() ?: 0L
             if (joined != 0L) chatId = joined
         }
-        if (chatId == 0L) return@LaunchedEffect
+        if (chatId == 0L) return
         // The resolved id is kept process wide: duplicate folding leads with this channel's
         // own post of a file wherever copies fold (owner, 2026-11-06).
         BuiltInChannels.jMoviesChatId = chatId
         val posts = runCatching { actions.recentPosts(chatId) }.getOrDefault(emptyList())
         streams = StreamLinks.inPosts(posts, chatId, preview.title.ifBlank { channel.name })
+        lastReadAt = System.currentTimeMillis()
+    }
+
+    // One read at a time: a read already running is reading the newest posts anyway, and a
+    // hand refresh that lands during one is owed a second read when it finishes, since the
+    // post it was made for may have landed after that read began.
+    fun readOnce() {
+        if (!readLock.tryLock()) return
+        readScope.launch {
+            try {
+                readPosts()
+            } finally {
+                readLock.unlock()
+                if (owedRead) {
+                    owedRead = false
+                    readOnce()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { readOnce() }
+    // The asks (LiveRefresh): arriving at the page or back at the app, and the viewer's own
+    // refreshes. An arrival waits a moment first (TDLib pulls in what it missed on coming
+    // to the front, and the read should land after that, not before it) and is skipped
+    // while the last read is still fresh, so a walk between Home and Chats is not a series
+    // of reads. A forced ask, a hand's refresh, always reads.
+    LaunchedEffect(Unit) {
+        LiveRefresh.asked.collect { forced ->
+            if (forced) {
+                if (readLock.isLocked) owedRead = true else readOnce()
+            } else {
+                kotlinx.coroutines.delay(LIVE_ARRIVAL_SETTLE_MS)
+                if (!readLock.isLocked && System.currentTimeMillis() - lastReadAt >= LIVE_ARRIVAL_GAP_MS) readOnce()
+            }
+        }
     }
 
     val shown = HiddenStreams.visible(streams, hidden)
@@ -2459,6 +2506,12 @@ private fun staleRepeat(event: androidx.compose.ui.input.key.KeyEvent): Boolean 
 
 /** How old a repeat may be and still move the focus: about two frames on a slow stick. */
 private const val STALE_REPEAT_MS = 80L
+
+/** How long an arrival ask for the Live row's posts waits, so TDLib's catch up lands first (see [LiveRefresh]). */
+private const val LIVE_ARRIVAL_SETTLE_MS = 1_500L
+
+/** The youngest a Live row read may be for an arrival ask to read again: arrivals are spaced, hands are not. */
+private const val LIVE_ARRIVAL_GAP_MS = 20_000L
 
 /**
  * Home's vertical list under the TV top bar: a focused item already standing between the bar's foot

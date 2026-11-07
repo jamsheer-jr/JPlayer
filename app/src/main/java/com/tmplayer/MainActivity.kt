@@ -101,6 +101,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.tmplayer.ui.theme.Tv
 import com.tmplayer.ui.auth.LoginScreen
 import com.tmplayer.ui.browse.BrowseScreen
+import com.tmplayer.ui.browse.LiveRefresh
 import com.tmplayer.ui.browse.TouchChrome
 import com.tmplayer.ui.browse.onChatsPage
 import com.tmplayer.ui.browse.ProfilePage
@@ -920,7 +921,12 @@ private fun Root() {
     val cacheRecord by settings.cachedVideos.collectAsStateWithLifecycle(initialValue = null)
     val shellInFront = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     LaunchedEffect(shellInFront, cacheRecord) {
-        if (shellInFront) homeViewModel.refreshLocalAvailability()
+        if (shellInFront) {
+            homeViewModel.refreshLocalAvailability()
+            // Back in front (from Telegram, where a stream was just posted, as often as
+            // not): the Live row reads its posts again (owner, v1.0.15, see LiveRefresh).
+            LiveRefresh.ask()
+        }
     }
     // Home keeps itself up to date while the app is in front: on coming back, when its rows are
     // a minute old, and every few minutes after, in place (the tiles stay up and keep the focus).
@@ -1172,7 +1178,13 @@ private fun Root() {
     val chatsPageUp = screen is Screen.Chats && pickedTab?.onChatsPage == true
     var chatsPageComposed by remember { mutableStateOf(false) }
     LaunchedEffect(chatsPageUp) {
-        if (chatsPageUp && chatsPageComposed) chatsViewModel.refreshIfStale()
+        if (chatsPageUp && chatsPageComposed) {
+            chatsViewModel.refreshIfStale()
+            // The Live row's posts are read again on the same arrival (owner, v1.0.15):
+            // its own read, not the chat list's, and not held by the list's staleness
+            // gate, which is about the cost of a whole list sync, not one channel read.
+            LiveRefresh.ask()
+        }
         chatsPageComposed = true
     }
     // Home's own background work (a post in one of its chats, a retry, the posters looked up
@@ -2014,6 +2026,9 @@ private fun Root() {
                     continueWatching = continueWatching,
                     onRetry = chatsViewModel::retry,
                     onRefresh = {
+                        // A hand refresh reads the Live row's posts too (owner, v1.0.15):
+                        // refreshing and still not seeing a posted stream was the complaint.
+                        LiveRefresh.ask(forced = true)
                         // Telegram answers a request made during a flood wait by extending it, so
                         // the button holds off and says how long rather than digging deeper.
                         val waiting = chatsViewModel.refreshUnlessRateLimited()
@@ -2117,7 +2132,11 @@ private fun Root() {
                     homeRefreshing = homeViewModel.refreshing.collectAsStateWithLifecycle().value,
                     // Home's own rows alone (HX44): the chat list no longer needs a manual sync
                     // piggybacked on this, since TDLib's own updates already keep it live.
-                    onRefreshHome = { homeViewModel.refreshInPlace() },
+                    // A hand refresh of Home reads the Live row's posts again too (v1.0.15).
+                    onRefreshHome = {
+                        homeViewModel.refreshInPlace()
+                        LiveRefresh.ask(forced = true)
+                    },
                     onSetMediaWatched = { item, chatTitle, watched -> setWatched(item, chatTitle, watched) },
                     onMessage = toast,
                     onSearched = { settings.addRecentSearch(it) },
