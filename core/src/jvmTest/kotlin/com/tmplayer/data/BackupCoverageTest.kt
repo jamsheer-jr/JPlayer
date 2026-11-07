@@ -66,6 +66,11 @@ class BackupCoverageTest {
         // USB drive, by its mount point), which means nothing on another one. A restore keeps
         // using the default, internal folder until asked again, rather than carry a stale path.
         "download_root", "download_root_pending",
+        // The weekly auto backup's folder and clock (owner, v1.0.14): the folder is a place on
+        // this device under a grant this device holds, the same as download_root above, and the
+        // stamp is its bookkeeping. On a restored device the auto backup is simply off until a
+        // folder is picked there.
+        "auto_backup_folder", "auto_backup_last",
     )
 
     private val source = listOf(

@@ -2100,6 +2100,8 @@ fun SettingsScreen(
                         onClick = backup.restore,
                     )
                 }
+                // The weekly save by itself, once a folder is picked (owner, v1.0.14).
+                item { AutoBackupRow() }
 
                 // ---- help ----------------------------------------------------------------------------
 

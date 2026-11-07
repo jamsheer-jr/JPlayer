@@ -268,6 +268,7 @@ fun settingsSearchEntries(s: Strings): List<SettingsSearchEntry> = buildList {
     add("about.auto_install", SettingsPage.About, s.settingsAutoInstall)
     add("about.backup", SettingsPage.About, s.backupBackUp)
     add("about.restore", SettingsPage.About, s.backupRestore)
+    add("about.auto_backup", SettingsPage.About, s.settingsAutoBackup)
     add("about.proxy", SettingsPage.About, s.proxyTitle)
     add("about.logs", SettingsPage.About, s.logsSave)
     add("about.name_report", SettingsPage.About, s.logsNameReport)

@@ -163,6 +163,12 @@ private val LANGUAGE_ANNOUNCED = stringPreferencesKey("language_announced")
 
 /** The version whose "What's new" has been dealt with. See [WhatsNew]. */
 private val LAST_SEEN_VERSION = stringPreferencesKey("last_seen_version")
+
+/** The folder the weekly auto backup writes to, as its content:// tree string; blank for off. See [AutoBackup]. */
+private val AUTO_BACKUP_FOLDER = stringPreferencesKey("auto_backup_folder")
+
+/** When the last auto backup was written, epoch milliseconds; 0 for never. See [AutoBackup]. */
+private val AUTO_BACKUP_LAST = longPreferencesKey("auto_backup_last")
 private val DYNAMIC_COLOUR = booleanPreferencesKey("dynamic_colour")
 
 /** The interface size (CP59), a [UiScale] by name. About the screen, so it outlives a sign out. */
@@ -2495,6 +2501,20 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setLastSeenVersion(version: String) {
         prefs.edit { it[LAST_SEEN_VERSION] = version }
+    }
+
+    /** The folder the weekly auto backup writes to, as its tree string. "" while it is off. */
+    val autoBackupFolder: Flow<String> = read { it[AUTO_BACKUP_FOLDER] ?: "" }
+
+    suspend fun setAutoBackupFolder(value: String) {
+        prefs.edit { it[AUTO_BACKUP_FOLDER] = value }
+    }
+
+    /** When the last auto backup was written, epoch milliseconds. 0 for never. */
+    val autoBackupLast: Flow<Long> = read { it[AUTO_BACKUP_LAST] ?: 0L }
+
+    suspend fun setAutoBackupLast(at: Long) {
+        prefs.edit { it[AUTO_BACKUP_LAST] = at }
     }
 
     /**

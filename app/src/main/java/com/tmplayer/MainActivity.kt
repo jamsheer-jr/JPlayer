@@ -746,6 +746,11 @@ private fun Root() {
         withFrameNanos { }
         updates.run()
     }
+    // The weekly auto backup (owner, v1.0.14): silent, and only when a folder was picked
+    // in Settings and a week has gone by. See AutoBackupRunner.
+    LaunchedEffect(Unit) {
+        runCatching { com.tmplayer.data.AutoBackupRunner.runIfDue(context) }
+    }
     // Whatever stage the update is at, the item stays and reopens the popup. A skipped version
     // that Settings re-offered stays out of the drawer and the rail.
     val offeredUpdate = updateState.release?.version
