@@ -71,6 +71,11 @@ class AddChatsTvKeysTest {
     fun `the remote starts on the first row when nothing is ticked`() {
         val model = AddChatsViewModel(counts = null, write = {})
         val activity = open(model, chats = CHATS)
+        // The first row takes the focus after the list lands, so the remote is read only
+        // after a real time settle: the looper idle in open() was not enough on CI, and
+        // the held Down tests below wait the same way before they read the remote.
+        Thread.sleep(700)
+        idle()
         assertEquals(listOf("Saved Messages"), focusedTitle(activity))
         model.stop()
     }
@@ -163,6 +168,11 @@ class AddChatsTvKeysTest {
         val activity = open(model, chats = CHATS)
         // Twenty repeats of a held Down: the first few walk, the rest move half a screen each.
         hold(activity, KeyEvent.KEYCODE_DPAD_DOWN, repeats = 20)
+        // The settle after the last jump runs on the real clock, so the remote is read only
+        // after it: without the wait the read can land while the jump is still in flight
+        // and nothing is focused yet. The next test waits the same way.
+        Thread.sleep(700)
+        idle()
         val deep = focusedTitle(activity).single()
         val place = deep.removePrefix("Chat number ").toIntOrNull() ?: 0
         // Walking row by row would reach about 20; half-screen jumps reach about 80.
