@@ -276,6 +276,41 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
+    fun `cam copies are excluded from the shown groups and counted, and included when the switch is off`() = runTest(dispatcher) {
+        val camSource = VideoSearchSource { query, cursor, filters ->
+            if (query != "harbour") {
+                AllChatsPage(emptyList(), done)
+            } else {
+                AllChatsPage(
+                    listOf(
+                        video(61, "Harbour.Lights.2019.1080p.WEB-DL.mkv"),
+                        video(62, "Harbour.Lights.2019.PreDVD.mkv"),
+                        video(63, "Harbour.Shadows.2020.CAM.mkv"),
+                    ),
+                    done,
+                )
+            }
+        }
+        val model = GlobalSearchViewModel(camSource, known = { emptyList() }, work = dispatcher, settleMs = 0)
+        model.type("harbour")
+        advanceUntilIdle()
+        // The Lights card keeps only its WEB-DL copy, so its lead and its copy count follow;
+        // the all cam Shadows card is gone altogether, and both hidden copies are counted.
+        assertEquals(listOf(61L), model.state.value.shown.map { it.lead.messageId })
+        assertEquals(listOf(61L), model.state.value.shown.single().copies.map { it.messageId })
+        assertEquals(2, model.state.value.camHidden)
+        // The switch only screens the answer already listed: off, and both copies are back
+        // without Telegram being asked again.
+        model.setHideCamCopies(false)
+        assertEquals(0, model.state.value.camHidden)
+        assertEquals(2, model.state.value.shown.size)
+        assertEquals(
+            listOf(61L, 62L),
+            model.state.value.shown.first { it.lead.messageId == 61L }.copies.map { it.messageId },
+        )
+    }
+
+    @Test
     fun `a deleted video's card goes when it is opened`() = runTest(dispatcher) {
         val gone = object : VideoSearchSource {
             override suspend fun page(query: String, cursor: AllChatsCursor, filters: SearchFilters) = source.page(query, cursor, filters)

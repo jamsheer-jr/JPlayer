@@ -72,6 +72,37 @@ class ChatGridKeptTest {
     }
 
     @Test
+    fun `cam copies are kept out of a kept listing and counted, and shown when the hiding is off`() {
+        PageQueries.cache.put(
+            QueryKey.ChatMedia(chatId),
+            ChatGrid(
+                items = listOf(
+                    video(300, 500L).copy(title = "Film.2019.1080p.WEB-DL.mkv", fileName = "Film.2019.1080p.WEB-DL.mkv"),
+                    video(299, 500L).copy(title = "Film.2019.PreDVD.mkv", fileName = "Film.2019.PreDVD.mkv"),
+                    video(298, 500L).copy(title = "Film.2019.HDTS.mkv", fileName = "Film.2019.HDTS.mkv"),
+                    video(297, 500L).copy(title = "Film.2019.HDRip.mkv", fileName = "Film.2019.HDRip.mkv"),
+                ),
+                cursors = MediaCursors(video = 1, document = 1, animation = 1),
+                endReached = true,
+                scrollIndex = 0,
+            ),
+        )
+        val model = MediaListViewModel(chatId, minSizeBytes = 0, maxSizeBytes = Long.MAX_VALUE)
+        val shown = model.state.value
+        assertTrue("drawn at once, not Loading: $shown", shown is UiState.Content)
+        val items = (shown as UiState.Content).value.items
+        // The WEB-DL and the HDRip stay (HDRip is never a cam copy); the PreDVD and the
+        // HDTS go, and the count says so.
+        assertEquals(listOf(300L, 297L), items.map { it.messageId })
+        assertEquals(2, model.camHidden.value)
+        val wide = MediaListViewModel(chatId, minSizeBytes = 0, maxSizeBytes = Long.MAX_VALUE, hideCamCopies = false)
+        val wideShown = wide.state.value
+        assertTrue(wideShown is UiState.Content)
+        assertEquals(4, (wideShown as UiState.Content).value.items.size)
+        assertEquals(0, wide.camHidden.value)
+    }
+
+    @Test
     fun `videos hidden by the size limits are told once per opening of the chat`() {
         val model = MediaListViewModel(chatId, minSizeBytes = 100, maxSizeBytes = Long.MAX_VALUE)
         assertEquals("the settled listing's count, for one message", 100, model.hiddenNotice.value)
