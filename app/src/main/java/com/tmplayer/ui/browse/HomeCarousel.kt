@@ -90,8 +90,9 @@ import com.tmplayer.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.launch
 
 /**
- * The phone's featured carousel at the top of Home: the newest five different films, shows and
- * videos in the starred chats ([HomeFeatured]), one full-bleed page each, swiped through. Only the
+ * The phone's featured carousel at the top of Home: the newest different films and shows in
+ * the starred chats ([HomeFeatured]: ten pages, six of them films and four shows), one
+ * full-bleed page each, swiped through. Only the
  * picture and the name move with a swipe: Play and Details stay put at the foot, acting on the page
  * up, and the pages move on by themselves every [ADVANCE_MS]. Over the buttons the name (its
  * logo where TMDB has one), a line of facts and two lines of the overview ([FeaturedInfo]); under
@@ -536,8 +537,8 @@ private val KeepSideways = object : NestedScrollConnection {
     override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = Velocity(available.x, 0f)
 }
 
-/** How long a page is up before the carousel moves on. */
-private const val ADVANCE_MS = 6_000
+/** How long a page is up before the carousel moves on: five seconds (owner, v1.0.14). */
+private const val ADVANCE_MS = 5_000
 
 /** The most of the window under the status bar the carousel takes. */
 private const val VIEWPORT_SHARE = 0.7f

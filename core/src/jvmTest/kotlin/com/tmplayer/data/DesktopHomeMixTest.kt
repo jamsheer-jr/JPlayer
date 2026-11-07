@@ -31,7 +31,12 @@ class DesktopHomeMixTest {
         val new = (1..6).map { video("New Film ${'A' + it} ${2000 + it}.mkv", date = 100 - it) }
         val going = (1..4).map { video("Going Film ${'A' + it} ${1990 + it}.mkv", date = 10 - it) }
         val mixed = HomeFeatured.mix(fresh(*new.toTypedArray()), going, complete = { true })
-        assertEquals(listOf(new[0], going[0], new[1], going[1], new[2]).map { it.id }, mixed.map { it.item.id })
+        // Ten places since v1.0.14: the turns first, then the new ones, then the rest of the
+        // part way through, each side filling what the other cannot.
+        assertEquals(
+            listOf(new[0], going[0], new[1], going[1], new[2], new[3], new[4], new[5], going[2], going[3]).map { it.id },
+            mixed.map { it.item.id },
+        )
     }
 
     @Test

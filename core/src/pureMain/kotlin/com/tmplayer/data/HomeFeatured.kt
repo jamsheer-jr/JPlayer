@@ -53,7 +53,8 @@ data class FeaturedPick(val entry: ShelfEntry) {
  * What the featured carousel at the top of Home shows, on the phone, the television and the
  * desktop alike: the newest [LIMIT] different films and shows in the starred chats, taken from the
  * "Recently added in starred chats" row ([HomeRow.Recent]), so the carousel asks Telegram for
- * nothing of its own (the rules below: user, 2026-10-27).
+ * nothing of its own (the rules below: user, 2026-10-27). The [LIMIT] pages are a mix, six films
+ * and four shows where the library holds both ([bannerSet]; owner, v1.0.14).
  *
  * - Different means different: copies of one film (a 720p and a 1080p, in one chat or two) are one
  *   page, as [SeriesShelf.sameVideoKey] keys them, and a show is one page however many of its
@@ -73,8 +74,14 @@ data class FeaturedPick(val entry: ShelfEntry) {
  */
 object HomeFeatured {
 
-    /** Pages in the carousel at most. */
-    const val LIMIT = 5
+    /** Pages in the carousel at most: ten since v1.0.14 (owner), five before. */
+    const val LIMIT = 10
+
+    /** Film pages in a full carousel of [LIMIT] (owner, v1.0.14: six films, four shows). */
+    const val MOVIES = 6
+
+    /** Show pages in a full carousel of [LIMIT]. */
+    const val SHOWS = 4
 
     /**
      * Pages looked at for the carousel at most, so a few without an online match or a picture
@@ -112,6 +119,56 @@ object HomeFeatured {
             .map(::FeaturedPick)
             .filter { pick -> fresh(pick, seen, online) }
             .take(limit)
+    }
+
+    /**
+     * The carousel's pages from a fill's [complete] pages (newest first): at most [limit],
+     * aiming at [MOVIES] films and [SHOWS] shows over the whole set (owner, v1.0.14). Pages
+     * [pinned] names lead, in their order here, and count toward their own kind's share; the
+     * rest fill by the shares, and a kind short of its share gives its places to the other, so
+     * a library holding only films still fills the banner. The pages after the pinned ones
+     * keep this list's order, newest first.
+     */
+    fun bannerSet(
+        complete: List<FeaturedPick>,
+        pinned: (FeaturedPick) -> Boolean = { false },
+        limit: Int = LIMIT,
+        movies: Int = MOVIES,
+        shows: Int = SHOWS,
+    ): List<FeaturedPick> {
+        if (limit <= 0 || complete.isEmpty()) return emptyList()
+        val lead = complete.filter(pinned).take(limit)
+        val leadKeys = lead.mapTo(HashSet()) { it.key }
+        var filmPlaces = (movies - lead.count { !it.isShow }).coerceAtLeast(0)
+        var showPlaces = (shows - lead.count { it.isShow }).coerceAtLeast(0)
+        val rest = complete.filter { it.key !in leadKeys }
+        val chosen = ArrayList<FeaturedPick>()
+        for (pick in rest) {
+            if (lead.size + chosen.size >= limit) break
+            if (pick.isShow) {
+                if (showPlaces > 0) {
+                    chosen += pick
+                    showPlaces--
+                }
+            } else if (filmPlaces > 0) {
+                chosen += pick
+                filmPlaces--
+            }
+        }
+        if (lead.size + chosen.size < limit) {
+            val chosenKeys = chosen.mapTo(HashSet()) { it.key }
+            for (pick in rest) {
+                if (lead.size + chosen.size >= limit) break
+                if (pick.key !in chosenKeys) {
+                    chosen += pick
+                    chosenKeys += pick.key
+                }
+            }
+        }
+        // The fill pass may have taken a newer page after an older one of the other kind;
+        // the pages turn in this list's order once the pinned ones have led.
+        val order = complete.withIndex().associate { (index, pick) -> pick.key to index }
+        return lead + chosen.sortedBy { order[it.key] ?: Int.MAX_VALUE }
     }
 
     /**

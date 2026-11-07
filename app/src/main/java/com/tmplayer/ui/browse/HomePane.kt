@@ -264,8 +264,9 @@ internal fun HomePane(
     // complete page, a moment after the row is in at most ([HomeFeatured.FILL_WAIT_MS]).
     val recent = rows.firstNotNullOfOrNull { it as? HomeRow.Recent }
     // The banner's way (owner, 2026-11-06): auto is the newest titles as always; pinned
-    // shows the viewer's own titles, found across Home's rows by their copies keys;
-    // off hides the banner. The chats it draws from are the same chats Home reads.
+    // leads with the viewer's own titles, found across Home's rows by their copies keys,
+    // and the newest titles fill the rest; off hides the banner. The chats it draws from
+    // are the same chats Home reads.
     val bannerContext = LocalContext.current
     val bannerSettings = remember(bannerContext) { SettingsStore(bannerContext) }
     val bannerMode by remember(bannerSettings) { bannerSettings.homeBannerMode }.collectAsState(initial = "auto")
@@ -275,30 +276,35 @@ internal fun HomePane(
     // one SettingsStore this page already keeps, so a change in either place is the
     // change in both.
     val homeLayout by remember(bannerSettings) { bannerSettings.homeLayout }.collectAsState(initial = com.tmplayer.data.HomeLayout())
-    val bannerRecent = when {
-        bannerMode == "off" -> null
-        bannerMode == "pinned" && bannerPins.isNotEmpty() -> {
-            val pins = bannerPins.toSet()
-            val entries = rows.flatMap { row ->
-                when (row) {
-                    is HomeRow.Catalog -> row.all
-                    is HomeRow.Chat -> row.entries
-                    is HomeRow.Recent -> row.entries
-                    else -> emptyList()
-                }
-            }.filter { entry ->
-                val lead = when (entry) {
-                    is ShelfEntry.File -> entry.item
-                    is ShelfEntry.Show -> entry.series.cover
-                }
-                com.tmplayer.data.VideoCopies.keyOf(lead) in pins
+    val bannerRecent = if (bannerMode == "off") null else recent
+    // The viewer's pinned titles, found across Home's rows by their copies keys: in pinned
+    // mode they lead the banner, and the newest titles fill its remaining places toward the
+    // full set in the mix (owner, v1.0.14). No pins found, and the banner is the auto one.
+    val bannerPinEntries = if (bannerMode == "pinned" && bannerPins.isNotEmpty()) {
+        val pins = bannerPins.toSet()
+        rows.flatMap { row ->
+            when (row) {
+                is HomeRow.Catalog -> row.all
+                is HomeRow.Chat -> row.entries
+                is HomeRow.Recent -> row.entries
+                else -> emptyList()
             }
-            if (entries.isEmpty()) recent else HomeRow.Recent(entries, loaded = true, starredOnly = false)
+        }.filter { entry ->
+            val lead = when (entry) {
+                is ShelfEntry.File -> entry.item
+                is ShelfEntry.Show -> entry.series.cover
+            }
+            com.tmplayer.data.VideoCopies.keyOf(lead) in pins
         }
-        else -> recent
+    } else {
+        emptyList()
     }
     // Off in Settings, nothing is picked or turned over for it either.
-    val featured = rememberFeatured(bannerRecent.takeIf { carouselOn })
+    val featured = rememberFeatured(
+        bannerRecent.takeIf { carouselOn },
+        pinEntries = bannerPinEntries,
+        pinKeys = if (bannerMode == "pinned") bannerPins.toSet() else emptySet(),
+    )
     val carousel = carouselOn && recent != null && featured?.isEmpty() != true
     // With no carousel the rows are the whole first screen; with one, its first picture tells
     // HomeFirstPaint (through the carousel), so the loader lifts over a finished Home.
@@ -2304,13 +2310,26 @@ private val TV_DOWN_STEP = 200.dp
  * the carousel. Only complete pages ([com.tmplayer.ui.online.completeFeatured]), decided once
  * per fill so no page comes or goes while it is looked at; a refresh keeps the pages up until
  * the new ones are decided. With online lookups off there are no complete pages, so none at once.
+ * The decided pages are [HomeFeatured.bannerSet]'s: the pinned titles ([pinEntries], named by
+ * [pinKeys]) lead, and the rest fill toward the full set in its six films and four shows mix.
  */
 @Composable
-private fun rememberFeatured(recent: HomeRow.Recent?): List<com.tmplayer.data.FeaturedPick>? {
+private fun rememberFeatured(
+    recent: HomeRow.Recent?,
+    pinEntries: List<ShelfEntry> = emptyList(),
+    pinKeys: Set<String> = emptySet(),
+): List<com.tmplayer.data.FeaturedPick>? {
     val online = com.tmplayer.online.OnlineMetadata.current
     val enabled = online?.settings?.collectAsState()?.value?.enabled == true
-    val candidates = remember(recent) {
-        recent?.takeIf { it.loaded }?.let { com.tmplayer.data.HomeFeatured.pick(it.entries, com.tmplayer.data.HomeFeatured.CANDIDATES) }
+    val candidates = remember(recent, pinEntries) {
+        val auto = recent?.takeIf { it.loaded }?.let { com.tmplayer.data.HomeFeatured.pick(it.entries, com.tmplayer.data.HomeFeatured.CANDIDATES) }
+        // The pinned titles are candidates in their own right, ahead of the newest: the
+        // newest-first candidate cut must not crowd a pinned title out of its own banner.
+        val pins = pinEntries.takeIf { it.isNotEmpty() }?.let { com.tmplayer.data.HomeFeatured.pick(it, com.tmplayer.data.HomeFeatured.LIMIT) }
+        when {
+            auto == null && pins == null -> null
+            else -> (pins.orEmpty() + auto.orEmpty()).distinctBy { it.key }
+        }
     }
     var decided by remember { mutableStateOf<List<com.tmplayer.data.FeaturedPick>?>(null) }
     LaunchedEffect(candidates, online, enabled) {
@@ -2332,7 +2351,10 @@ private fun rememberFeatured(recent: HomeRow.Recent?): List<com.tmplayer.data.Fe
         } catch (e: Exception) {
             emptySet()
         }
-        decided = picks.filter { it.key in keys }.take(com.tmplayer.data.HomeFeatured.LIMIT)
+        decided = com.tmplayer.data.HomeFeatured.bannerSet(
+            picks.filter { it.key in keys },
+            pinned = { pick -> pinKeys.isNotEmpty() && com.tmplayer.data.VideoCopies.keyOf(pick.item) in pinKeys },
+        )
     }
     return if (!enabled) emptyList() else decided
 }

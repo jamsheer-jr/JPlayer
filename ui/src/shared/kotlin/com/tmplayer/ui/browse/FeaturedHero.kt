@@ -53,14 +53,16 @@ import com.tmplayer.ui.theme.rememberReducedMotion
 
 /**
  * "Film  ·  2026  ·  Drama, Thriller  ·  2h 02m", or "Series  ·  2024  ·  Crime  ·  3 seasons":
- * the kind, the year (the provider's, else the name's), up to two genres and a film's length or a
- * show's seasons where the provider's [extras] know them. A film with no answer still has its
- * length from Telegram.
+ * the kind, the year (the provider's, else the name's), where the title streams (the first of
+ * the provider's India platforms in [extras], where it names any: owner, v1.0.14), up to two
+ * genres and a film's length or a show's seasons where the provider's [extras] know them. A
+ * film with no answer still has its length from Telegram.
  */
 fun featuredFactsLine(pick: FeaturedPick, meta: MetaInfo?, extras: MetaExtras?, s: Messages): String {
     val series = pick.series
     val item = pick.item
     val year = meta?.year ?: SeriesShelf.episodeOf(item).year
+    val provider = extras?.providers?.firstOrNull()?.ifBlank { null }
     val genres = extras?.genres?.take(2)?.joinToString(", ")?.ifBlank { null }
     val length = if (series != null) {
         (extras?.seasons ?: series.seasons.count { it.number > 0 }.takeIf { it > 1 })?.let { s.metadataSeasons(it) }
@@ -70,6 +72,7 @@ fun featuredFactsLine(pick: FeaturedPick, meta: MetaInfo?, extras: MetaExtras?, 
     return listOfNotNull(
         if (pick.isShow) s.homeFeaturedSeries else s.homeFeaturedFilm,
         year?.toString(),
+        provider,
         genres,
         length,
     ).joinToString(FACTS_SEPARATOR)

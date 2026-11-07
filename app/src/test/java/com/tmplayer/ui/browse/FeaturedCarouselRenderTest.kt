@@ -186,9 +186,10 @@ class FeaturedCarouselRenderTest {
     fun `television`() = render("tv", tv = true)
 
     @Test
-    fun `five different pages from the starred chats`() {
+    fun `the pages from the starred chats, the show one of them`() {
         val picks = picks()
-        assertEquals(HomeFeatured.LIMIT, picks.size)
+        // Six eligible titles in the fixture, under the carousel's limit of ten.
+        assertEquals(6, picks.size)
         // The show is one page, newest first.
         assertEquals(1, picks.count { it.series != null })
     }

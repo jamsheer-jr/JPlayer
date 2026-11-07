@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** [HomeFeatured]: the phone's featured carousel, the newest five different things in the starred chats. */
+/** [HomeFeatured]: the phone's featured carousel, the newest ten different things in the starred chats. */
 class HomeFeaturedTest {
 
     private var nextId = 1L
@@ -28,11 +28,11 @@ class HomeFeaturedTest {
     private fun titles(picks: List<FeaturedPick>) = picks.map { it.series?.title ?: it.item.fileName }
 
     @Test
-    fun `newest first and at most five`() {
-        val entries = (1..8).map { n -> file(video("Film Number ${'A' + n} ${2000 + n}.mkv", date = n)) }
+    fun `newest first and at most ten`() {
+        val entries = (1..12).map { n -> file(video("Film Number ${'A' + n} ${2000 + n}.mkv", date = n)) }
         val picks = HomeFeatured.pick(entries)
         assertEquals(HomeFeatured.LIMIT, picks.size)
-        assertEquals(listOf(8, 7, 6, 5, 4), picks.map { it.date })
+        assertEquals(listOf(12, 11, 10, 9, 8, 7, 6, 5, 4, 3), picks.map { it.date })
     }
 
     @Test
@@ -165,7 +165,7 @@ class HomeFeaturedTest {
             },
             scope = this,
         )
-        assertEquals(listOf(0, 3, 4, 5, 6), keys.map { key -> picks.indexOfFirst { it.key == key } })
+        assertEquals(listOf(0, 3, 4, 5, 6, 7), keys.map { key -> picks.indexOfFirst { it.key == key } })
         // Nothing already known is asked again.
         assertTrue(picks[0].key !in asked && picks[1].key !in asked)
     }
@@ -195,5 +195,54 @@ class HomeFeaturedTest {
         assertTrue(keys.isEmpty())
         assertTrue(picks.filter { it.key in keys }.isEmpty())
         assertTrue(HomeFeatured.completeKeys(emptyList(), known = { true }, ask = { true }, scope = this).isEmpty())
+    }
+
+    private fun showPick(name: String, date: Int): FeaturedPick {
+        val shelf = SeriesShelf.arrange(
+            listOf(
+                video("$name.S01E02.1080p.mkv", date = date, durationSec = 2_600),
+                video("$name.S01E01.1080p.mkv", date = date - 1, durationSec = 2_600),
+            ),
+        )
+        return FeaturedPick(shelf.single())
+    }
+
+    private fun filmPick(name: String, date: Int) = FeaturedPick(file(video("$name.2020.1080p.mkv", date = date)))
+
+    @Test
+    fun `the banner set is six films and four shows where both are held`() {
+        val films = (0..7).map { n -> filmPick("Banner Film ${'A' + n}", date = 30 - n) }
+        val shows = (0..5).map { n -> showPick("Banner.Show.${'A' + n}", date = 20 - n) }
+        val set = HomeFeatured.bannerSet(films + shows)
+        assertEquals(HomeFeatured.LIMIT, set.size)
+        assertEquals(HomeFeatured.MOVIES, set.count { !it.isShow })
+        assertEquals(HomeFeatured.SHOWS, set.count { it.isShow })
+        // The newest of each kind, in the order they stood.
+        assertEquals(films.take(6) + shows.take(4), set)
+    }
+
+    @Test
+    fun `a kind short of its share gives its places to the other`() {
+        val films = (0..8).map { n -> filmPick("Only Film ${'A' + n}", date = 30 - n) }
+        val shows = listOf(showPick("Only.Show.A", date = 20))
+        val set = HomeFeatured.bannerSet(films + shows)
+        assertEquals(HomeFeatured.LIMIT, set.size)
+        assertEquals(9, set.count { !it.isShow })
+        assertEquals(1, set.count { it.isShow })
+        assertTrue(HomeFeatured.bannerSet(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `pinned pages lead the banner set and count toward their kind`() {
+        val films = (0..5).map { n -> filmPick("Pinned Film ${'A' + n}", date = 30 - n) }
+        val shows = (0..3).map { n -> showPick("Pinned.Show.${'A' + n}", date = 20 - n) }
+        val complete = films + shows
+        val pinnedFilm = films[2]
+        val pinnedShow = shows[1]
+        val set = HomeFeatured.bannerSet(complete, pinned = { it == pinnedFilm || it == pinnedShow })
+        assertEquals(HomeFeatured.LIMIT, set.size)
+        assertEquals(listOf(pinnedFilm, pinnedShow), set.take(2))
+        assertEquals(HomeFeatured.MOVIES, set.count { !it.isShow })
+        assertEquals(HomeFeatured.SHOWS, set.count { it.isShow })
     }
 }
