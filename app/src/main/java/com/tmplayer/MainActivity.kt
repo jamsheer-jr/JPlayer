@@ -545,8 +545,15 @@ class MainActivity : ComponentActivity() {
             // the chat and post ids every account shares, and the window's link flow opens it
             // once signed in, the same way as a post link.
             val party = handed?.let(com.tmplayer.data.PartyLinks::parse)
+            val collection = if (party == null) handed?.let(com.tmplayer.data.CollectionLinks::parse) else null
             if (party != null) {
                 com.tmplayer.ui.browse.LinkRequests.askParty(party)
+                intent.data = null
+                intent.action = Intent.ACTION_MAIN
+            } else if (collection != null) {
+                // A collection link (item 8d, v1.0.15): this app's own address like the party
+                // link's, joined with the viewer's own collections once signed in.
+                com.tmplayer.ui.browse.LinkRequests.askCollection(collection)
                 intent.data = null
                 intent.action = Intent.ACTION_MAIN
             } else {

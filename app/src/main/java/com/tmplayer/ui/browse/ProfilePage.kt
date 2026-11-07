@@ -337,6 +337,19 @@ internal fun ProfilePage(
                 label = collection.name,
                 badge = s.browseVideosCount(collection.keys.size),
                 onClick = onHome,
+                // The collection as a link (item 8d, v1.0.15), through the share sheet: the
+                // link names its titles by their posts, and whoever opens it joins it with
+                // their own collections, seeing only the chats their account can see.
+                trailing = {
+                    androidx.compose.material3.IconButton(onClick = {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, com.tmplayer.data.CollectionLinks.build(collection))
+                        runCatching { context.startActivity(android.content.Intent.createChooser(send, s.commonShare)) }
+                    }) {
+                        M3Icon(TmIcons.Share, contentDescription = s.linkShareCollection, tint = Tone.muted, modifier = Modifier.size(20.dp))
+                    }
+                },
             )
         }
         item(key = "new-collection") {
@@ -1116,6 +1129,8 @@ private fun ProfileEntryRow(
     badge: String?,
     ink: Color = Tone.text,
     onClick: () -> Unit,
+    /** One extra action at the row's end, before the chevron; null for a plain row. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         Modifier
@@ -1137,6 +1152,7 @@ private fun ProfileEntryRow(
         if (badge != null) {
             M3Text(badge, style = M3MaterialTheme.typography.bodyMedium, color = Tone.muted, maxLines = 1)
         }
+        if (trailing != null) trailing()
         M3Icon(TmIcons.ChevronRight, contentDescription = null, tint = Tone.muted, modifier = Modifier.size(20.dp))
     }
 }

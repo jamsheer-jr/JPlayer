@@ -29,6 +29,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.tmplayer.data.BookmarkJump
+import com.tmplayer.data.Collections
+import com.tmplayer.data.SettingsStore
 import com.tmplayer.data.ChatSummary
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.PostOpen
@@ -83,6 +85,28 @@ internal fun TelegramLinkHost(onPlay: (MediaItem, String) -> Unit, onOpenChat: (
     LaunchedEffect(party) {
         if (party == null) return@LaunchedEffect
         LinkRequests.takeParty()?.let(flow::openParty)
+    }
+    // A collection link (item 8d, v1.0.15): joined with the viewer's own collections, the way a
+    // backup restore joins them (a name already there takes the link's titles in with its own),
+    // and said in a toast. Titles in chats this account cannot see simply never resolve, the
+    // Watch party rule: the link is a reference, not a copy.
+    val collectionAsk by LinkRequests.collection.collectAsState()
+    LaunchedEffect(collectionAsk) {
+        val incoming = collectionAsk ?: return@LaunchedEffect
+        LinkRequests.takeCollection() ?: return@LaunchedEffect
+        val store = SettingsStore(context)
+        runCatching {
+            val existing = store.collectionsNow().toMutableList()
+            val index = existing.indexOfFirst { it.name.equals(incoming.name, ignoreCase = true) }
+            if (index >= 0) {
+                val current = existing[index]
+                existing[index] = current.copy(keys = (current.keys + incoming.keys).distinct().take(Collections.MAX_KEYS))
+            } else if (existing.size < Collections.MAX_COLLECTIONS) {
+                existing += incoming
+            }
+            store.setCollections(existing)
+        }
+        toast(L.linkCollectionAdded(incoming.name))
     }
     val step by flow.step.collectAsState()
     LinkStepSheet(step ?: return, flow)

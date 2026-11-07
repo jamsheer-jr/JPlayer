@@ -51,6 +51,17 @@ object LinkRequests {
     /** Takes the party request, once: the flow that acts on it clears it. */
     fun takeParty(): PartyLink? = _party.value.also { _party.value = null }
 
+    private val _collection = MutableStateFlow<com.tmplayer.data.VideoCollection?>(null)
+    val collection: StateFlow<com.tmplayer.data.VideoCollection?> = _collection.asStateFlow()
+
+    /** A collection link another app handed over (item 8d, v1.0.15), to join with the viewer's own. */
+    fun askCollection(collection: com.tmplayer.data.VideoCollection) {
+        _collection.value = collection
+    }
+
+    /** Takes the collection request, once: the flow that acts on it clears it. */
+    fun takeCollection(): com.tmplayer.data.VideoCollection? = _collection.value.also { _collection.value = null }
+
     /** A video found off the chat's grid (a comment, a round video) to play through the window's own path. */
     data class PlayAsk(val item: com.tmplayer.data.MediaItem, val chatTitle: String)
 

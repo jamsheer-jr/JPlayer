@@ -172,6 +172,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="jplayer" android:host="party" />
+                <!-- A collection link (item 8d, v1.0.15): the same scheme, its own host. -->
+                <data android:scheme="jplayer" android:host="collection" />
             </intent-filter>
         </activity>
 

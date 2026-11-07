@@ -1220,6 +1220,7 @@
   },
   "link": {
     "already_member": "You are already in this chat.",
+    "collection_added": "Added the collection {name}",
     "invite_invalid": "This invite link has expired or is not valid.",
     "invite_paid": "Joining this chat takes a paid subscription. Join it in Telegram.",
     "join_detail": "Shows it here before you open it in Telegram",
@@ -1240,7 +1241,8 @@
     "preview_join": "Preview and join",
     "preview_join_detail": "See the chat before you join it",
     "private_not_member": "This post is in a private chat you have not joined. Ask for its invite link.",
-    "request_note": "Its admins approve each new member."
+    "request_note": "Its admins approve each new member.",
+    "share_collection": "Share collection"
   },
   "lock": {
     "allowed_chats": "Allowed chats",
