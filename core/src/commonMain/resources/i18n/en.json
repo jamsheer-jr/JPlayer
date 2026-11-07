@@ -231,6 +231,7 @@
     "stats_chats": "Most watched chats: {chats}",
     "stats_downloaded": "Downloaded to this device: {size}",
     "stats_genres": "Most watched genres: {genres}",
+    "stats_share_card": "Share this month's card",
     "stats_summary": "{hours} hours watched · {watched} finished · {going} on the go",
     "stats_title": "My stats",
     "still_more_to_search": "No videos yet in the newest part of this chat.",

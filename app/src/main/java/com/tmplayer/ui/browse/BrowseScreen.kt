@@ -1617,27 +1617,31 @@ internal fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeR
             runCatching { com.tmplayer.data.DataUsage.read(statsContext)?.totalBytes }.getOrNull()
         }
     }
-    var stats by remember { mutableStateOf<com.tmplayer.data.WatchStats?>(null) }
-    LaunchedEffect(watched, continuing) {
-        stats = withContext(Dispatchers.Default) {
-            val online = com.tmplayer.online.OnlineMetadata.current
-            val genresByKey = HashMap<String, List<String>>()
-            com.tmplayer.data.WatchStats.of(watched, continuing) { item ->
-                if (online == null || !online.settings.value.enabled) {
+    val shareScope = rememberCoroutineScope()
+    // One summing pass, shared by the card below and the share card (item 8f, v1.0.15):
+    // genres from the metadata cache the app already holds, never the network.
+    fun computeStats(records: List<WatchedRecord>, going: List<ResumeRecord>): com.tmplayer.data.WatchStats {
+        val online = com.tmplayer.online.OnlineMetadata.current
+        val genresByKey = HashMap<String, List<String>>()
+        return com.tmplayer.data.WatchStats.of(records, going) { item ->
+            if (online == null || !online.settings.value.enabled) {
+                emptyList()
+            } else {
+                val query = item.metaQuery?.showOnly()
+                if (query == null) {
                     emptyList()
                 } else {
-                    val query = item.metaQuery?.showOnly()
-                    if (query == null) {
-                        emptyList()
-                    } else {
-                        genresByKey.getOrPut(query.cacheKey(online.tmdbLanguage())) {
-                            val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info
-                            info?.let { online.storedExtras(it) }?.genres.orEmpty()
-                        }
+                    genresByKey.getOrPut(query.cacheKey(online.tmdbLanguage())) {
+                        val info = (online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info
+                        info?.let { online.storedExtras(it) }?.genres.orEmpty()
                     }
                 }
             }
         }
+    }
+    var stats by remember { mutableStateOf<com.tmplayer.data.WatchStats?>(null) }
+    LaunchedEffect(watched, continuing) {
+        stats = withContext(Dispatchers.Default) { computeStats(watched, continuing) }
     }
     val shown = stats ?: return
     if (shown.isEmpty) return
@@ -1648,7 +1652,27 @@ internal fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeR
             .background(Tone.surfaceHigh)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        M3Text(s.browseStatsTitle, style = MaterialTheme.typography.titleMedium, color = Tone.text)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            M3Text(s.browseStatsTitle, style = MaterialTheme.typography.titleMedium, color = Tone.text, modifier = Modifier.weight(1f))
+            // The month's card as a shareable picture (item 8f, v1.0.15), touch only: this
+            // card takes no focus, so the remote still lands below it as it always has.
+            if (isTouch()) {
+                IconButton(onClick = {
+                    shareScope.launch {
+                        val start = monthStartMs()
+                        val monthStats = withContext(Dispatchers.Default) {
+                            computeStats(
+                                watched.filter { it.watchedAt >= start },
+                                continuing.filter { it.updatedAt >= start },
+                            )
+                        }
+                        shareStatsCard(statsContext, monthStats, start)
+                    }
+                }) {
+                    M3Icon(TmIcons.Share, contentDescription = s.browseStatsShareCard, tint = Tone.muted, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
         M3Text(
             s.browseStatsSummary(shown.watchedMs / 3_600_000L, shown.finishedCount, shown.goingCount),
