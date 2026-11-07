@@ -419,10 +419,22 @@ object GlobalSearch {
      * since short episodes are common.
      */
     fun isExtra(item: MediaItem): Boolean {
-        if (EXTRA_WORDS.containsMatchIn(Fuzzy.normalize(item.nameForParsing))) return true
+        val hit = EXTRA_WORDS.find(Fuzzy.normalize(item.nameForParsing))
+        if (hit != null && !promoOfAnEpisode(hit.value, item)) return true
         val name = SeriesShelf.episodeOf(item)
         if (name.episode != null) return false
         return item.durationSec in 1 until SHORT_SECONDS && SeriesShelf.sameVideoKey(item) != null && name.year != null
+    }
+
+    /**
+     * The word "promo" in a name that numbers its episode outright ("S01E26 ... promo"): the
+     * word rides in the episode's own title, so the file is that episode, not an extra. The
+     * same call the name reader makes ([MediaName]); the other extra words keep their say.
+     */
+    private fun promoOfAnEpisode(word: String, item: MediaItem): Boolean {
+        if (!word.equals("promo", ignoreCase = true)) return false
+        val name = SeriesShelf.episodeOf(item)
+        return name.season != null && name.episode != null
     }
 
     /** [groups] in [sort]'s order: see [rank] for the best match. */

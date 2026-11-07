@@ -231,6 +231,13 @@ object MediaName {
         }
         val bracket = CAST_BRACKET.find(normalised)?.range?.first?.takeIf { it > 0 }
         val cut = listOfNotNull(markers, part?.at, extra?.range?.first, bracket).minOrNull() ?: normalised.length
+        // An outright episode number beats the word "promo": in a name like
+        // "Show.S01E26.Its Own Title.promo.1080p" the word rides in the episode's own title,
+        // and the file is that episode, not an extra beside the series (owner, 2026-11-08).
+        // A name with no episode number keeps the label, and the other extra words keep
+        // theirs either way.
+        val kind = (extra ?: leadingExtra)?.let { extraOf(it.value) }
+            ?.takeUnless { it == ExtraKind.Promo && episode?.season != null && episode?.number != null }
 
         return Read(
             ParsedName(
@@ -240,7 +247,7 @@ object MediaName {
                 episode = episode?.number,
                 lastEpisode = episode?.last,
                 part = part?.number,
-                extra = (extra ?: leadingExtra)?.let { extraOf(it.value) },
+                extra = kind,
                 airDate = date?.text,
             ),
             whole = clean(normalised),

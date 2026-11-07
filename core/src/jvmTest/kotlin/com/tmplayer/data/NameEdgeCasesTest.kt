@@ -66,6 +66,22 @@ class NameEdgeCasesTest {
     }
 
     @Test
+    fun `an outright episode number beats the word promo`() {
+        // The owner's own file (2026-11-08): a full episode whose own title carries the word.
+        // Telegram's search in its chat finds it, but the series listed E25 then E27 while the
+        // word marked the file an extra and grouping left it out.
+        val parsed = parse("Badai.Bungalow.S01E26.Ring.Master.promo.1080p.HS.WEB-DL.AAC2.0.H.264-RUBEK.mkv")
+        assertNull(parsed.extra)
+        assertEquals("Badai Bungalow", parsed.title)
+        assertEquals(1, parsed.season)
+        assertEquals(26, parsed.episode)
+        // No episode number: the word still marks a true extra.
+        assertEquals(ExtraKind.Promo, parse("Badai Bungalow Promo.mkv").extra)
+        // The other extra words keep their say over an episode number.
+        assertEquals(ExtraKind.Trailer, parse("Badai Bungalow S01E26 Trailer.mkv").extra)
+    }
+
+    @Test
     fun `languages after the title are read, a language that is the title is not`() {
         assertEquals(listOf("ta", "hi"), MediaName.languages("Coast Run 2014 Tamil Hindi 720p.mkv"))
         assertEquals(listOf("ml"), MediaName.languages("Coast_Run_(2014)_Malayalam_Dubbed.mkv"))
