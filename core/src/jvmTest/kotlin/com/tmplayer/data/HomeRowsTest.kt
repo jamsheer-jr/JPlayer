@@ -214,6 +214,24 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `series stand in language rows by their drama tags alone`() {
+        // No online match hands these a language: the names' own catalogue tags are the
+        // only signal, as most of the owner's drama files carry them (owner, v1.0.14).
+        val seoul = (1..2).map { video(2, "Seoul.Diary.S01E%02d.KDrama.mkv".format(it)) }
+        val beijing = (1..2).map { video(3, "Beijing.Diary.S01E%02d.CDrama.mkv".format(it)) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to listOf(video(1)), 2L to seoul, 3L to beijing),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        assertEquals(1, catalogs.single { it.kind == "series-lang-ko" }.entries.size)
+        assertEquals(1, catalogs.single { it.kind == "series-lang-zh" }.entries.size)
+    }
+
+    @Test
     fun `no series row while the catalog rows are off`() {
         val episodes = (1..2).map { video(2, "Harbour.Notes.S01E%02d.mkv".format(it)) }
         val rows = HomeRows.build(

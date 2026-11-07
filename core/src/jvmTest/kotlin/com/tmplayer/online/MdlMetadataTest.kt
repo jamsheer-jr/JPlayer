@@ -66,7 +66,9 @@ class MdlMetadataTest {
         <meta property="og:title" content="Hidden Moon (2023)">
         <meta property="og:image" content="https://i.mydramalist.com/abc123_4f.jpg">
         <script type="application/ld+json">{"@type":"TVSeries","name":"Hidden Moon","startDate":"2023-05-01","genre":["Historical","Romance"]}</script>
-        </head><body></body></html>
+        </head><body>
+        <div class="row"><div class="col-sm-3"><b>Country:</b></div><div class="col-sm-9">South Korea</div></div>
+        </body></html>
     """.trimIndent()
 
     /** TMDB answers nothing, for films and for shows, with and without a year. */
@@ -146,7 +148,7 @@ class MdlMetadataTest {
     }
 
     @Test
-    fun theGenresReachTheDetailPagesExtras() = runBlocking {
+    fun theGenresAndLanguageReachTheDetailPagesExtras() = runBlocking {
         tmdbHasNothing()
         mdlHasHiddenMoon()
         val online = metadata()
@@ -154,5 +156,8 @@ class MdlMetadataTest {
         val extras = online.extras(info) ?: error("no extras")
         assertEquals(listOf("Historical", "Romance"), extras.genres)
         assertEquals(2023, extras.year)
+        // The page's country, as the title's original language: what shelves an MDL
+        // drama under its language where TMDB never named one.
+        assertEquals("ko", extras.originalLanguage)
     }
 }

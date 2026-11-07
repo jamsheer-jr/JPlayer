@@ -49,6 +49,22 @@ class MdlPageTest {
     """.trimIndent()
 
     @Test
+    fun theCountryIsReadFromTheDetailsList() {
+        val page = moviePage.replace(
+            "<b>Genres:</b>",
+            "<b>Country:</b></div><div class=\"col-sm-9\">China</div></div>\n        <div class=\"row\"><div class=\"col-sm-3\"><b>Genres:</b>",
+        )
+        val facts = MdlPage.facts(page, "/70003-moon-river-movie") ?: error("no facts")
+        assertEquals("China", facts.country)
+        assertEquals("zh", MdlPage.languageOf(facts.country))
+        assertEquals("ko", MdlPage.languageOf("South Korea"))
+        assertNull(MdlPage.languageOf(null))
+        assertNull(MdlPage.languageOf("Atlantis"))
+        // A page with no details list names no country.
+        assertNull((MdlPage.facts(titlePage, "/70001-hidden-moon") ?: error("no facts")).country)
+    }
+
+    @Test
     fun theTopResultIsTheFirstTitleAfterTheHeading() {
         assertEquals("/70001-hidden-moon", MdlPage.topResultPath(searchPage))
     }

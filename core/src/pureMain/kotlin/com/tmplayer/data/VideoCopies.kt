@@ -421,13 +421,21 @@ object VideoCopies {
 
     private val NOT_WORD = Regex("""[^\p{L}\p{N}]+""")
 
-    /** The audio languages release names spell out, as [MediaName] strips them from titles. */
+    /**
+     * The audio languages release names spell out, as [MediaName] strips them from titles.
+     * The second block is the tags drama and region releases actually carry (owner,
+     * v1.0.14): a file named for its catalogue ("KDrama", "CDrama") or with the short
+     * codes ("KOR", "CHI") announces its language as plainly as the word "Korean" does,
+     * and Home's language rows read no other signal from an unmatched title's name.
+     */
     private val LANGUAGES = mapOf(
         "tamil" to "ta", "tam" to "ta", "telugu" to "te", "tel" to "te", "hindi" to "hi", "hin" to "hi",
         "malayalam" to "ml", "mal" to "ml", "kannada" to "kn", "kan" to "kn", "marathi" to "mr",
         "bengali" to "bn", "punjabi" to "pa", "english" to "en", "eng" to "en", "korean" to "ko",
         "japanese" to "ja", "chinese" to "zh", "spanish" to "es", "french" to "fr", "russian" to "ru",
         "german" to "de", "italian" to "it", "turkish" to "tr", "arabic" to "ar",
+        "kor" to "ko", "kdrama" to "ko", "cdrama" to "zh", "jdrama" to "ja",
+        "chi" to "zh", "mandarin" to "zh", "cantonese" to "zh",
     )
 }
 

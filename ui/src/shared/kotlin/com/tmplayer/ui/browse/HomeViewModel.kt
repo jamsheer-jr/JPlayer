@@ -1371,6 +1371,15 @@ private fun homeTitleMeta(
                         anime = info?.provider == com.tmplayer.online.MetaProvider.AniList,
                     )
                 }
+                // An anime catalogue's match settles the one fact Home needs of it even
+                // where its extras were never fetched: the full build must not drop what
+                // the first, memory-only build already knew, or the title stands in
+                // Movies until its detail page has been opened once (owner, v1.0.14).
+                ?: if (info?.provider == com.tmplayer.online.MetaProvider.AniList) {
+                    com.tmplayer.data.TitleMeta(anime = true)
+                } else {
+                    null
+                }
             byQuery[key] = found
             found
         }

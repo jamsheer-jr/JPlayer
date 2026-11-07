@@ -15,6 +15,8 @@ data class MdlFacts(
     val genres: List<String> = emptyList(),
     /** What the page itself calls the title, where it says; null leaves the kind to the query. */
     val kind: MetaKind? = null,
+    /** The country the page's details list names ("South Korea"), where it names one. */
+    val country: String? = null,
 )
 
 /**
@@ -94,7 +96,18 @@ object MdlPage {
             ?: detailsYear(pageHtml)
         val genres = ldGenres(ld).ifEmpty { detailsGenres(pageHtml) }
         val kind = ldKind(ld) ?: detailsKind(pageHtml)
-        return MdlFacts(path = path, title = title, posterUrl = poster, year = year, genres = genres, kind = kind)
+        return MdlFacts(path = path, title = title, posterUrl = poster, year = year, genres = genres, kind = kind, country = detailsCountry(pageHtml))
+    }
+
+    /** The original language a title from [country] is shelved by: MDL's own country names. */
+    fun languageOf(country: String?): String? = when (country?.trim()?.lowercase()) {
+        "south korea" -> "ko"
+        "china", "taiwan", "hong kong" -> "zh"
+        "japan" -> "ja"
+        "thailand" -> "th"
+        "philippines" -> "tl"
+        "vietnam" -> "vi"
+        else -> null
     }
 
     // ---- the OpenGraph tags -------------------------------------------------------------------
@@ -242,6 +255,22 @@ object MdlPage {
         if (linked.isNotEmpty()) return linked.distinct().take(GENRE_LIMIT)
         val plain = decode(ANY_TAG.replace(segment.substring(label.length), " "))
         return plain.split(',').map { it.trim() }.filter { it.isNotBlank() }.distinct().take(GENRE_LIMIT)
+    }
+
+    /**
+     * The country in the details list's Country row, read the way [detailsGenres] reads its
+     * row: the words after the label, up to the next row's label, tags stripped. The first
+     * named country where a page names more than one. Null where the page names none.
+     */
+    private fun detailsCountry(html: String): String? {
+        val label = "Country:"
+        val at = html.indexOf(label)
+        if (at < 0) return null
+        var segment = html.substring(at, minOf(html.length, at + 300))
+        val next = segment.indexOf("<b>", label.length).let { if (it > 0) it else segment.length }
+        segment = segment.substring(0, next)
+        return decode(ANY_TAG.replace(segment.substring(label.length), " "))
+            .split(',').firstOrNull()?.trim()?.ifBlank { null }
     }
 
     /** The details list opens with what the title is: "Drama:", "TV Show:", "Special:" or "Movie:". */

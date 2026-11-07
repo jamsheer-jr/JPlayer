@@ -819,7 +819,7 @@ class MdlApi(
      * then kept by the caller's extras cache like any other provider's.
      */
     suspend fun extras(path: String): MetaReply<MetaExtras> = when (val reply = page(path)) {
-        is MetaReply.Ok -> MetaReply.Ok(reply.value?.let { MetaExtras(genres = it.genres, year = it.year) } ?: MetaExtras())
+        is MetaReply.Ok -> MetaReply.Ok(reply.value?.let { MetaExtras(genres = it.genres, year = it.year, originalLanguage = MdlPage.languageOf(it.country)) } ?: MetaExtras())
         is MetaReply.Throttled -> reply
         MetaReply.Refused -> MetaReply.Refused
         is MetaReply.Failed -> reply
