@@ -135,6 +135,9 @@ internal fun SeriesOpened(
     // each file asked of the disk off the drawing thread, as [queueSeason] does.
     val context = androidx.compose.ui.platform.LocalContext.current
     val settings = remember(context) { com.tmplayer.data.SettingsStore(context) }
+    // The hero's trailer autoplay follows its Playback switch, on until read.
+    val heroTrailerAutoplay by remember(settings) { settings.heroTrailerAutoplay }
+        .collectAsStateWithLifecycle(initialValue = true)
     val history by remember(settings) { settings.downloadHistory }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val downloadedIds by produceState(initialValue = emptySet<String>(), history) {
@@ -178,7 +181,7 @@ internal fun SeriesOpened(
         runCatching { settings.touchResume(latest.chatId, latest.messageId) }
         runCatching { watchedStore.touchWatched(latest.chatId, latest.messageId) }
     }
-    SeriesPage(whole, watch, onPlay, startOver, onDismiss, onLongClick.takeIf { isTouch() }, onDownload, chatTitle, downloadedIds, showActions)
+    SeriesPage(whole, watch, onPlay, startOver, onDismiss, onLongClick.takeIf { isTouch() }, onDownload, chatTitle, downloadedIds, showActions, heroTrailerAutoplay)
 }
 
 /**
@@ -199,6 +202,7 @@ private fun SeriesPage(
     chatTitle: String?,
     downloadedIds: Set<String>,
     showActions: ShowActions,
+    heroTrailerAutoplay: Boolean,
 ) {
     val touch = isTouch()
     // On a phone the page grows out of the show's tile, and folds back towards it.
@@ -222,6 +226,7 @@ private fun SeriesPage(
                 downloadedIds = downloadedIds,
                 chatTitle = chatTitle,
                 showActions = showActions,
+                heroTrailerAutoplay = heroTrailerAutoplay,
                 contentPadding = if (touch) {
                     PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)
                 } else {

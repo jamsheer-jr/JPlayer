@@ -15,3 +15,17 @@ internal fun TrailerPlayer(
     onOpenElsewhere: () -> Unit,
     fallback: @Composable () -> Unit,
 ) = Unit
+
+/** The desktop reads as unmetered, as its connectivity does everywhere. */
+@Composable
+internal fun rememberMeteredConnection(): Boolean = false
+
+/** No embedded player on the desktop, so no hero preview: [com.tmplayer.online.HeroPreview] already says no. */
+@Composable
+@Suppress("UNUSED_PARAMETER")
+internal fun HeroTrailerPlayer(
+    trailer: MetaTrailer,
+    muted: Boolean,
+    onFailed: () -> Unit,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+) = Unit

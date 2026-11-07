@@ -825,6 +825,12 @@ fun SeriesPanel(
      * Go to the chat, as round buttons after Play (HX20); null leaves them out.
      */
     showActions: ShowActions? = null,
+    /**
+     * Whether the hero plays the show's trailer by itself (the Playback switch, on by
+     * default): the rest of the rule is [com.tmplayer.online.HeroPreview]'s, and a
+     * television keeps its artwork (owner, v1.0.15, item 24).
+     */
+    heroTrailerAutoplay: Boolean = true,
 ) {
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -1364,6 +1370,14 @@ fun SeriesPanel(
                                         // Half the list's speed while the hero is on screen; none with animations off.
                                         if (!reduced && list.firstVisibleItemIndex == 0) translationY = list.firstVisibleItemScrollOffset * PARALLAX
                                     },
+                            )
+                            // The promo in the hero (owner, v1.0.15, item 24), in place of the
+                            // still picture while it plays. Nothing where the rule says the
+                            // artwork stays, a television included.
+                            com.tmplayer.ui.online.DetailHeroPreview(
+                                extras?.trailer,
+                                heroTrailerAutoplay,
+                                Modifier.matchParentSize(),
                             )
                         }
                         Row(

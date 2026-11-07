@@ -62,6 +62,7 @@ import com.tmplayer.data.NameInitial
 import com.tmplayer.i18n.Messages
 import com.tmplayer.i18n.Translator
 import com.tmplayer.online.FilmographyEntry
+import com.tmplayer.online.HeroPreview
 import com.tmplayer.online.KnownMedia
 import com.tmplayer.online.KnownTitle
 import com.tmplayer.online.MetaExtras
@@ -379,6 +380,73 @@ fun TrailerHost(launcher: TrailerLauncher) {
         onOpenElsewhere = { launcher.openElsewhere(trailer) },
         fallback = { TrailerQr(trailer, text = LocalStrings.current.metadataTrailerScanPhone) },
     )
+}
+
+/**
+ * Which hero preview may play: only the newest page's. A show's page left open under a
+ * video's page would otherwise go on playing (audibly, once unmuted) under it, so each
+ * preview claims a number as it first qualifies, and only the latest claim draws a player.
+ * A page that loses its claim keeps its artwork for the rest of that visit rather than
+ * starting again when the page over it closes.
+ */
+private object HeroPreviewClaims {
+    var latest by mutableStateOf(0)
+        private set
+    private var counter = 0
+
+    fun claim(): Int {
+        counter += 1
+        latest = counter
+        return counter
+    }
+}
+
+/**
+ * The promo in a detail page's hero (owner, v1.0.15, item 24): the title's trailer playing
+ * muted in place of the still backdrop, with a sound on/off button in the bottom end
+ * corner, while [HeroPreview.autoplay] allows it (the viewer's switch, a trailer known, no
+ * metered connection, not a television, an in-app player present, no reduced motion). Draw
+ * it over the hero's backdrop at the backdrop's own size; it draws nothing at all when the
+ * artwork should stay, and goes back to nothing if the trailer cannot play, so the artwork
+ * stands again. Play, beside it on the page, still starts the video itself, untouched.
+ */
+@Composable
+fun DetailHeroPreview(trailer: MetaTrailer?, switchOn: Boolean, modifier: Modifier = Modifier) {
+    trailer ?: return
+    val inApp = rememberInAppTrailers()
+    val metered = rememberMeteredConnection()
+    val reduced = com.tmplayer.ui.theme.rememberReducedMotion()
+    if (!HeroPreview.autoplay(switchOn, trailer, metered, television = !isTouch(), inAppPlayer = inApp, reducedMotion = reduced)) return
+    val claim = remember { HeroPreviewClaims.claim() }
+    if (HeroPreviewClaims.latest != claim) return
+    val s = LocalStrings.current
+    var muted by remember(trailer.key) { mutableStateOf(true) }
+    var failed by remember(trailer.key) { mutableStateOf(false) }
+    if (failed) return
+    Box(modifier) {
+        HeroTrailerPlayer(trailer, muted, onFailed = { failed = true }, modifier = Modifier.fillMaxSize())
+        // The page's own foot fade over the picture, so the title at the hero's foot stays readable.
+        Box(Modifier.fillMaxSize().background(com.tmplayer.ui.theme.Scrims.bottomLong(160.dp)))
+        val interactions = remember { MutableInteractionSource() }
+        Box(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .padding(12.dp)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .clickable(interactionSource = interactions, indication = androidx.compose.foundation.LocalIndication.current) { muted = !muted }
+                .semantics { contentDescription = if (muted) s.metadataHeroSoundOn else s.metadataHeroSoundOff },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (muted) TmIcons.VolumeOff else TmIcons.VolumeUp,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
 }
 
 /** The trailer's YouTube link as a QR code on a white plate, with a sentence saying what it is for. */

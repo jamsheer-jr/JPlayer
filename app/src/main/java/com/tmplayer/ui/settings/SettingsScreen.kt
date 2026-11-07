@@ -318,6 +318,8 @@ fun SettingsScreen(
     val autoplayNext by settings.autoplayNext.collectAsStateWithLifecycle(initialValue = true)
     val resumeRewindMs by settings.resumeRewindMs.collectAsStateWithLifecycle(initialValue = ResumeRewind.DEFAULT_MS)
     val detailFirst by settings.detailFirst.collectAsStateWithLifecycle(initialValue = true)
+    // On until read, which is the stored default: hero trailer previews play unless turned off.
+    val heroTrailerAutoplay by settings.heroTrailerAutoplay.collectAsStateWithLifecycle(initialValue = true)
     val hideRipTags by settings.hideRipTags.collectAsStateWithLifecycle(initialValue = false)
     // On until read, which is the stored default: cam copies are hidden unless turned off.
     val hideCamCopies by settings.hideCamCopies.collectAsStateWithLifecycle(initialValue = true)
@@ -1020,6 +1022,19 @@ fun SettingsScreen(
                         icon = TmIcons.Info,
                         checked = detailFirst,
                         onToggle = { scope.launch { settings.setDetailFirst(!detailFirst) } },
+                    )
+                }
+                // The promo in a detail page's hero (owner, v1.0.15, item 24): while this is
+                // on, a title's trailer plays muted in the top picture until Play is pressed.
+                // It never autoplays on mobile data or on a television, switch or no switch
+                // (HeroPreview), so those are not choices here.
+                item {
+                    ToggleRow(
+                        title = s.settingsHeroTrailerAutoplay,
+                        subtitle = if (heroTrailerAutoplay) s.settingsHeroTrailerAutoplayOn else s.settingsHeroTrailerAutoplayOff,
+                        icon = TmIcons.Play,
+                        checked = heroTrailerAutoplay,
+                        onToggle = { scope.launch { settings.setHeroTrailerAutoplay(!heroTrailerAutoplay) } },
                     )
                 }
                 // Cam and rip junk out of the titles on tiles and pages, while it is on: the

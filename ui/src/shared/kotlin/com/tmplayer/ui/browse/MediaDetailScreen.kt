@@ -154,6 +154,11 @@ fun MediaDetailScreen(
     hideCamCopies: Boolean = true,
     /** Versions under 5 minutes hidden in the versions list (the Playback switch, on by default). */
     hideShortVideos: Boolean = true,
+    /**
+     * The hero plays its trailer by itself (the Playback switch, on by default): the rest of
+     * the rule is [com.tmplayer.online.HeroPreview]'s, and a television keeps its artwork.
+     */
+    heroTrailerAutoplay: Boolean = true,
 ) {
     // The open itself asks the chats for the rest of this title, so the copies and the
     // episodes fill in here rather than waiting on a visit to the Chats tab (owner, v1.0.14).
@@ -171,7 +176,7 @@ fun MediaDetailScreen(
     // looked up, as the card it was opened from did.
     val art = rememberArtItem(item)
     val source = remember(item.id, art, cover, meta?.wideUrl) { BackdropSource(art.miniThumbnail, art.thumbnailFileId, cover, meta?.wideUrl) }
-    val page = DetailPage(item, chatTitle, watched, finished, rows, meta, extras, source, firstAction, onOpenItem, bookmarks, onOpenBookmark, onPickCopy, copyStarted, metaState, extrasState, hideCamCopies, hideShortVideos)
+    val page = DetailPage(item, chatTitle, watched, finished, rows, meta, extras, source, firstAction, onOpenItem, bookmarks, onOpenBookmark, onPickCopy, copyStarted, metaState, extrasState, hideCamCopies, hideShortVideos, heroTrailerAutoplay)
     // Decided on the first frame and kept for the visit, the phone turned included.
     val holds = rememberHolds(page, firstPaint)
     BoxWithConstraints(modifier.fillMaxSize().background(Tone.background)) {
@@ -252,6 +257,8 @@ private class DetailPage(
     val hideCamCopies: Boolean = true,
     /** Versions under 5 minutes hidden in the versions list (the Playback switch, on by default). */
     val hideShortVideos: Boolean = true,
+    /** The hero trailer autoplay switch, as the viewer set it. */
+    val heroTrailerAutoplay: Boolean = true,
 )
 
 /**
@@ -317,6 +324,17 @@ private fun CinemaLayout(page: DetailPage, holds: Holds, height: Dp) {
                 // Shorter than the whole first screen (user, 2026-11-01: brought in line with the
                 // Home carousel it opens from, which this page now reads as a continuation of,
                 // rather than towering over it).
+                .fillMaxHeight(0.74f)
+                .graphicsLayer { alpha = 1f - 0.75f * (scroll.value / dimOver).coerceIn(0f, 1f) },
+        )
+        // The promo in the hero (owner, v1.0.15, item 24), over the backdrop at its own size
+        // and dimming with it as the page scrolls. Nothing on a television: its artwork stays.
+        com.tmplayer.ui.online.DetailHeroPreview(
+            page.extras?.trailer,
+            page.heroTrailerAutoplay,
+            Modifier
+                .align(Alignment.TopEnd)
+                .fillMaxWidth(BACKDROP_SHARE)
                 .fillMaxHeight(0.74f)
                 .graphicsLayer { alpha = 1f - 0.75f * (scroll.value / dimOver).coerceIn(0f, 1f) },
         )
@@ -397,6 +415,15 @@ private fun StackedLayout(page: DetailPage, holds: Holds, width: Dp, height: Dp)
                     .matchParentSize()
                     // Half the page's speed, so the picture drifts away under the title rather
                     // than leaving with it.
+                    .graphicsLayer { if (!reduced) translationY = scroll.value * PARALLAX },
+            )
+            // The promo in the hero (owner, v1.0.15, item 24), in place of the still picture
+            // while it plays, drifting with it. Nothing where the rule says the artwork stays.
+            com.tmplayer.ui.online.DetailHeroPreview(
+                page.extras?.trailer,
+                page.heroTrailerAutoplay,
+                Modifier
+                    .matchParentSize()
                     .graphicsLayer { if (!reduced) translationY = scroll.value * PARALLAX },
             )
             Column(

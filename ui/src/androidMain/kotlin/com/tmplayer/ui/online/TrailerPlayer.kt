@@ -188,6 +188,131 @@ internal fun TrailerPlayer(
     }
 }
 
+/**
+ * Whether the connection in use is a metered one, followed while the caller is composed: the
+ * hero preview's data rule ([com.tmplayer.online.HeroPreview]) asks it, and a page opened on
+ * Wi-Fi then moved to mobile data should stop qualifying. An unknown network counts as
+ * unmetered, as [com.tmplayer.data.Connectivity] rules everywhere. Registering the system's
+ * default network callback needs API 24; on 23 the value is read once, when the page opens.
+ */
+@Composable
+internal fun rememberMeteredConnection(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var metered by remember { mutableStateOf(meteredNow(context)) }
+    DisposableEffect(context) {
+        val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        if (manager == null || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) {
+            return@DisposableEffect onDispose {}
+        }
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: android.net.NetworkCapabilities) {
+                metered = runCatching { manager.isActiveNetworkMetered }.getOrDefault(false)
+            }
+            override fun onLost(network: android.net.Network) {
+                metered = false
+            }
+        }
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { manager.unregisterNetworkCallback(callback) } }
+    }
+    return metered
+}
+
+/** The metered state as the system states it now; unknown reads as unmetered, on purpose. */
+private fun meteredNow(context: android.content.Context): Boolean = runCatching {
+    val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+    manager?.isActiveNetworkMetered == true
+}.getOrDefault(false)
+
+/**
+ * A trailer playing inside a detail page's hero (owner, v1.0.15, item 24): the same embedded
+ * player as [TrailerPlayer], drawn in place of the backdrop art rather than over everything,
+ * starting muted. It is a picture, not a control: the WebView takes no focus and no touches
+ * (a swipe over the hero still scrolls the page), and the page's own sound button beside it
+ * flips [muted], which is applied to the running player in place. A trailer that cannot play
+ * embedded, or has not started after [HERO_TIMEOUT_MS], says so once ([onFailed]) and the
+ * hero keeps its artwork: an autoplay that failed must never hand over to another app or
+ * leave a black box, the way the pressed Trailer button's player does. Leaving the page
+ * destroys the WebView, so nothing plays on under the next page.
+ */
+@SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+@Composable
+internal fun HeroTrailerPlayer(
+    trailer: MetaTrailer,
+    muted: Boolean,
+    onFailed: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var phase by remember(trailer.key) { mutableStateOf(TrailerPhase.Loading) }
+    var view: WebView? = null
+    LaunchedEffect(trailer.key) {
+        delay(HERO_TIMEOUT_MS)
+        if (phase == TrailerPhase.Loading) phase = TrailerPhase.Failed
+    }
+    LaunchedEffect(phase) {
+        if (phase == TrailerPhase.Failed) onFailed()
+    }
+    // The sound switch on the page, applied to the running player; before it starts, the
+    // page itself was loaded muted (see below), and this lands as soon as it plays.
+    LaunchedEffect(muted, phase) {
+        if (phase != TrailerPhase.Playing) return@LaunchedEffect
+        val script = if (muted) {
+            "window.tmTrailer&&tmTrailer.mute&&tmTrailer.mute()"
+        } else {
+            "window.tmTrailer&&tmTrailer.unMute&&(tmTrailer.unMute(),tmTrailer.setVolume(70))"
+        }
+        runCatching { view?.evaluateJavascript(script, null) }
+    }
+    Box(modifier.background(Color.Black)) {
+        AndroidView(
+            factory = { context ->
+                WebView(context).apply {
+                    view = this
+                    setBackgroundColor(AndroidColor.BLACK)
+                    // A picture, not a stop: no focus for the remote, no touches for the finger.
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    setOnTouchListener { v, _ ->
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                        false
+                    }
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    webChromeClient = WebChromeClient()
+                    webViewClient = H264Only(settings.userAgentString)
+                    val web = this
+                    addJavascriptInterface(
+                        Bridge { event ->
+                            web.post {
+                                when (event) {
+                                    "playing" -> phase = TrailerPhase.Playing
+                                    "failed" -> if (phase != TrailerPhase.Playing) phase = TrailerPhase.Failed
+                                }
+                            }
+                        },
+                        BRIDGE,
+                    )
+                    loadDataWithBaseURL(ORIGIN, page(trailer.key, muted = true), "text/html", "utf-8", null)
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        DisposableEffect(Unit) {
+            onDispose {
+                view?.apply {
+                    removeJavascriptInterface(BRIDGE)
+                    loadUrl("about:blank")
+                    destroy()
+                }
+            }
+        }
+    }
+}
+
+/** Long enough for a slow line to start a hero preview; past it the artwork stays. */
+private const val HERO_TIMEOUT_MS = 12_000L
+
 private enum class TrailerPhase { Loading, Playing, Failed }
 
 /** What the page tells the app: "playing" once the trailer runs, "failed" when it cannot. */
@@ -266,10 +391,13 @@ var P=HTMLMediaElement.prototype,c=P.canPlayType;P.canPlayType=function(x){retur
 
 /**
  * A black page holding only the player, filling the window, starting at once, through YouTube's
- * IFrame API so the page can say when the trailer plays or why it cannot ([Bridge]).
+ * IFrame API so the page can say when the trailer plays or why it cannot ([Bridge]). The player
+ * is kept on `window.tmTrailer`, so a hero preview can mute and unmute it in place
+ * ([HeroTrailerPlayer]); with [muted] it is muted before it starts, so no sound slips out first.
  */
-private fun page(key: String): String {
+private fun page(key: String, muted: Boolean = false): String {
     val safe = key.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+    val muteFirst = if (muted) "e.target.mute();" else ""
     return """
         <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
         <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p,iframe{border:0;width:100%;height:100%}</style>
@@ -279,10 +407,10 @@ private fun page(key: String): String {
         var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';
         tag.onerror=function(){say('failed')};document.head.appendChild(tag);
         function onYouTubeIframeAPIReady(){
-          new YT.Player('p',{host:'https://www.youtube-nocookie.com',videoId:'$safe',
+          window.tmTrailer=new YT.Player('p',{host:'https://www.youtube-nocookie.com',videoId:'$safe',
             playerVars:{autoplay:1,playsinline:1,rel:0,modestbranding:1,origin:'$ORIGIN'},
             events:{
-              onReady:function(e){e.target.playVideo()},
+              onReady:function(e){${muteFirst}e.target.playVideo()},
               onStateChange:function(e){if(e.data===1)say('playing')},
               onError:function(){say('failed')}
             }});
