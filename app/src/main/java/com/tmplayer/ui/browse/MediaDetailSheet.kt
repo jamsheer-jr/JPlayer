@@ -506,12 +506,18 @@ internal fun MediaDetailOpened(
             { copy: MediaItem -> scope.launch { runCatching { settings.setCopyPick(copy) }; open(copy) }; Unit }
         }
         val started: (MediaItem) -> Boolean = { SettingsStore.progressKey(it.chatId, it.messageId) in progress }
-        DetailScreen(item, chatTitle, watched, finished, rows, onDismiss, onBack, returnTo, onOpenItem, bookmarks, onPickCopy, started, hideCamCopies, hideShortVideos, heroTrailerAutoplay) { mark ->
-            // The player takes the position on opening this video, in place of its resume point.
-            BookmarkJump.request(item.chatId, item.messageId, mark.positionMs)
-            // The page stays under the player, as it does for Play.
-            onPlay()
-        }
+        DetailScreen(
+            item, chatTitle, watched, finished, rows, onDismiss, onBack, returnTo, onOpenItem, bookmarks, onPickCopy, started, hideCamCopies, hideShortVideos, heroTrailerAutoplay,
+            onOpenBookmark = { mark ->
+                // The player takes the position on opening this video, in place of its resume point.
+                BookmarkJump.request(item.chatId, item.messageId, mark.positionMs)
+                // The page stays under the player, as it does for Play.
+                onPlay()
+            },
+            // A mark goes only on the viewer's own tap here (item 7b, v1.0.15); the list is the
+            // store's flow, so the row leaves the page as the store writes.
+            onDeleteBookmark = { mark -> scope.launch { runCatching { bookmarkStore.delete(mark.chatId, mark.messageId, mark.id) } } },
+        )
     }
 }
 
@@ -600,6 +606,7 @@ private fun DetailScreen(
     hideShortVideos: Boolean,
     heroTrailerAutoplay: Boolean,
     onOpenBookmark: (Bookmark) -> Unit,
+    onDeleteBookmark: ((Bookmark) -> Unit)? = null,
 ) {
     val touch = isTouch()
     val first = remember { FocusRequester() }
@@ -630,6 +637,7 @@ private fun DetailScreen(
                 onOpenItem = onOpenItem,
                 bookmarks = bookmarks,
                 onOpenBookmark = onOpenBookmark,
+                onDeleteBookmark = onDeleteBookmark,
                 onPickCopy = onPickCopy,
                 copyStarted = copyStarted,
                 hideCamCopies = hideCamCopies,

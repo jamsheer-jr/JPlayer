@@ -202,6 +202,8 @@ fun MediaDetailPanel(
     /** This video's bookmarks, listed under the actions; see [DetailBookmarks]. */
     bookmarks: List<Bookmark> = emptyList(),
     onOpenBookmark: ((Bookmark) -> Unit)? = null,
+    /** Deleting one of this video's bookmarks from its page (item 7b, v1.0.15); null hides it. */
+    onDeleteBookmark: ((Bookmark) -> Unit)? = null,
     /** Another copy chosen from the film's copies list; see [MediaDetailScreen]. */
     onPickCopy: ((MediaItem) -> Unit)? = onOpenItem,
     copyStarted: (MediaItem) -> Boolean = { false },
@@ -385,7 +387,7 @@ fun MediaDetailPanel(
         // Telegram's own lighter copies of the upload (CP80), when it made any.
         TelegramQualityLine(item)
 
-        DetailBookmarks(bookmarks, onOpenBookmark)
+        DetailBookmarks(bookmarks, onOpenBookmark, onDeleteBookmark)
 
         DetailFacts(item, facts, s, overview ?: metaOverview, meta.takeIf { overview == null && metaOverview != null })
 
@@ -427,9 +429,13 @@ fun MediaDetailPanel(
  * The video's bookmarks, under a heading, each a line that opens the player at its moment: "Play
  * from 12:34" with the note under it. Nothing at all while there are none, or where the platform
  * has no way to open the player at a time ([onOpen] null).
+ *
+ * Where the platform can delete a mark ([onDelete], item 7b, v1.0.15), each line carries its own
+ * Delete button beside it: on a remote it is the stop after the line, on a phone a tap target at
+ * the line's end. Deleting here is the viewer's own tap, the only way a mark goes.
  */
 @Composable
-internal fun DetailBookmarks(bookmarks: List<Bookmark>, onOpen: ((Bookmark) -> Unit)?) {
+internal fun DetailBookmarks(bookmarks: List<Bookmark>, onOpen: ((Bookmark) -> Unit)?, onDelete: ((Bookmark) -> Unit)? = null) {
     if (bookmarks.isEmpty() || onOpen == null) return
     val s = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(if (isTouch()) 0.dp else 8.dp)) {
@@ -440,15 +446,23 @@ internal fun DetailBookmarks(bookmarks: List<Bookmark>, onOpen: ((Bookmark) -> U
             modifier = Modifier.padding(bottom = 4.dp),
         )
         bookmarks.forEach { mark ->
-            DetailActionRow(
-                DetailRow(
-                    action = DetailAction.Play,
-                    label = s.detailBookmarkAt(s.formatter.clock(mark.positionMs)),
-                    icon = TmIcons.Bookmark,
-                    detail = mark.note.ifBlank { null },
-                    onSelect = { onOpen(mark) },
-                ),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DetailActionRow(
+                    DetailRow(
+                        action = DetailAction.Play,
+                        label = s.detailBookmarkAt(s.formatter.clock(mark.positionMs)),
+                        icon = TmIcons.Bookmark,
+                        detail = mark.note.ifBlank { null },
+                        onSelect = { onOpen(mark) },
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                if (onDelete != null) {
+                    androidx.compose.material3.IconButton(onClick = { onDelete(mark) }) {
+                        Icon(TmIcons.Delete, contentDescription = s.playerBookmarkDelete, tint = Tone.muted, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
         }
     }
 }
