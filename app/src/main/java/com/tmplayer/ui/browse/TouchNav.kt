@@ -1,7 +1,6 @@
 package com.tmplayer.ui.browse
 
 import android.view.accessibility.AccessibilityManager
-import com.tmplayer.ui.nav.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
@@ -11,8 +10,6 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -37,8 +34,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,7 +41,6 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -71,7 +65,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -117,7 +110,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.collectLatest
 import com.tmplayer.ui.i18n.LocalStrings
@@ -131,7 +123,8 @@ import com.tmplayer.ui.theme.rememberReducedMotion
 /**
  * Where the phone's floating bar can take the viewer, in the bar's order. Search comes after them,
  * a button that opens the search over the page rather than a page of its own, and the profile
- * picture last, which opens [ProfilePopover] with the viewer's own lists and Settings.
+ * picture last, which opens the Profile page ([ProfilePage]) with the viewer's own lists and
+ * Settings.
  */
 internal enum class TouchDestination { Home, Chats }
 
@@ -146,7 +139,7 @@ internal fun barHighlightIndex(current: TouchDestination?, inProfile: Boolean = 
     current?.ordinal ?: if (inProfile) PROFILE_SLOT else null
 
 /**
- * What the floating bar and the popover behind the picture show and do, the same on every page
+ * What the floating bar and the page behind the picture show and do, the same on every page
  * the bar is on. Built once, by whatever hosts the bar ([TouchNavHost]).
  */
 @Immutable
@@ -162,12 +155,17 @@ internal class TouchNav(
     val onHome: () -> Unit,
     val onChats: () -> Unit,
     val onSearch: () -> Unit,
-    /** Settings, from the picture's popover (the phone, the television's account menu). */
+    /** Settings, from the Profile page (the phone) and the television's account menu. */
     val onSettings: () -> Unit,
     val onFavourites: () -> Unit,
     val onDownloads: () -> Unit,
     val onHistory: (HistoryTab) -> Unit,
     val onUpdate: () -> Unit,
+    /**
+     * The Profile page, from the picture on the phone's bar (v1.0.14, item 15). The television's
+     * top bar carries its own account menu and never calls this, so its behaviour is unchanged.
+     */
+    val onProfile: () -> Unit = {},
 )
 
 /**
@@ -238,8 +236,8 @@ internal fun TouchPage(spec: TouchPageSpec?) {
 
 /**
  * The phone's floating bar, hosted once over every page: Home, Chats, Search and the viewer's
- * picture, with the popover of Favourites, Downloads, History, Watch later, Settings and Update
- * behind the picture.
+ * picture, with the Profile page of Favourites, Downloads, History, Watch later, Settings and
+ * Update behind the picture.
  *
  * The bar floats, so it takes no room from the listing: it slides away as the list is pushed up
  * and comes back on the first pull down, on a change of page and on the way back from the player.
@@ -259,19 +257,8 @@ internal fun TouchNavHost(
 ) {
     val reduced = rememberReducedMotion() || Motion.reduced
     val bar = chrome.bar
-    var profileOpen by remember { mutableStateOf(false) }
-    // The popover's New Collection name prompt (v1.0.13): the same sheet the detail page
-    // names a collection with, over the same store; only the collection it makes differs,
-    // holding nothing yet, since no title stands behind this one.
-    var namingCollection by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val settings = remember(context) { com.tmplayer.data.SettingsStore(context) }
-    val s = LocalStrings.current
     SideEffect { chrome.pageKey = pageKey }
     val spec = chrome.specs[pageKey]
-
-    // Back closes the popover before it leaves the screen.
-    BackHandler(enabled = profileOpen) { profileOpen = false }
 
     // The bar comes back whenever the page underneath changes: a bar left hidden across a change
     // of page has no pull-down to restore it on a page too short to scroll.
@@ -378,7 +365,7 @@ internal fun TouchNavHost(
                             onChats = retap(TouchDestination.Chats, nav.onChats),
                             onSearch = nav.onSearch,
                             onSettings = nav.onSettings,
-                            onProfile = { profileOpen = true },
+                            onProfile = nav.onProfile,
                             searchShared = searchShared,
                             vertical = rail,
                         )
@@ -415,62 +402,6 @@ internal fun TouchNavHost(
                     }
                 }
 
-                ProfilePopover(
-                    open = profileOpen,
-                    reduced = reduced,
-                    rail = rail,
-                    railRoom = railRoom,
-                    favoriteCount = nav.favoriteCount,
-                    downloadCount = nav.downloadCount,
-                    watchingCount = nav.watchingCount,
-                    watchedCount = nav.watchedCount,
-                    updateVersion = nav.updateVersion,
-                    onDismiss = { profileOpen = false },
-                    onWatched = { profileOpen = false; nav.onHistory(HistoryTab.Watched) },
-                    onFavourites = { profileOpen = false; nav.onFavourites() },
-                    onDownloads = { profileOpen = false; nav.onDownloads() },
-                    onHistory = { profileOpen = false; nav.onHistory(HistoryTab.Continue) },
-                    onWatchLater = { profileOpen = false; nav.onHistory(HistoryTab.WatchLater) },
-                    onSettings = { profileOpen = false; nav.onSettings() },
-                    onUpdate = { profileOpen = false; nav.onUpdate() },
-                    onNewCollection = { profileOpen = false; namingCollection = true },
-                )
-
-                if (namingCollection) {
-                    com.tmplayer.player.BookmarkNoteSheet(
-                        title = s.detailNewCollection,
-                        initial = "",
-                        saveLabel = s.gridRenameSave,
-                        onSave = { typed ->
-                            // An empty collection: it stands in the store (and so in the
-                            // detail page's own list) at once, and Home draws no row for a
-                            // collection holding nothing. A name already taken, or the cap
-                            // reached, saves nothing, as the detail page's path refuses a
-                            // collection it cannot hold.
-                            val name = typed.trim()
-                            if (name.isNotEmpty()) {
-                                com.tmplayer.App.backgroundScope.launch {
-                                    val existing = settings.collectionsNow()
-                                    if (existing.size < com.tmplayer.data.Collections.MAX_COLLECTIONS &&
-                                        existing.none { it.name.equals(name, ignoreCase = true) }
-                                    ) {
-                                        settings.setCollections(
-                                            existing + com.tmplayer.data.VideoCollection(
-                                                name.take(com.tmplayer.data.Collections.MAX_NAME),
-                                                emptyList(),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            namingCollection = false
-                        },
-                        onDismiss = { namingCollection = false },
-                        onClose = { namingCollection = false },
-                        hint = s.detailCollectionName,
-                        maxLength = com.tmplayer.data.Collections.MAX_NAME,
-                    )
-                }
             }
         }
     }
@@ -809,7 +740,7 @@ private fun FloatingBar(
     }
 }
 
-/** The viewer's picture on the bar, which opens the popover of their own lists. */
+/** The viewer's picture on the bar, which opens the Profile page of their own lists. */
 @Composable
 private fun ProfileButton(account: Account?, inProfile: Boolean, badged: Boolean, onProfile: () -> Unit) {
     val s = LocalStrings.current
@@ -925,173 +856,6 @@ private fun ProfilePicture(account: Account?, size: Dp) {
     }
 }
 
-/**
- * The viewer's own lists, behind their picture: a small card that grows out of the bottom end
- * corner over a dimmed screen, with Favourites, Downloads, History and Watch later, then Settings
- * (which carries the account, Sign out and About) and Update when there is one.
- * A tap outside, Back, or picking a row closes it.
- */
-@Composable
-private fun ProfilePopover(
-    open: Boolean,
-    reduced: Boolean,
-    /** Beside a rail the card grows out of the bottom start corner, next to the picture. */
-    rail: Boolean,
-    railRoom: Dp,
-    favoriteCount: Int,
-    downloadCount: Int,
-    watchingCount: Int,
-    watchedCount: Int,
-    updateVersion: String?,
-    onDismiss: () -> Unit,
-    onWatched: () -> Unit,
-    onFavourites: () -> Unit,
-    onDownloads: () -> Unit,
-    onHistory: () -> Unit,
-    onWatchLater: () -> Unit,
-    onSettings: () -> Unit,
-    onUpdate: () -> Unit,
-    /** A new empty collection, named in the same prompt the detail page names one with (v1.0.13). */
-    onNewCollection: () -> Unit,
-) {
-    val s = LocalStrings.current
-    AnimatedVisibility(
-        visible = open,
-        enter = fadeIn(Motion.standard(if (reduced) 0 else Motion.Fast)),
-        exit = fadeOut(Motion.standard(if (reduced) 0 else Motion.Fast)),
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(FloatingTone.scrim)
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
-        )
-    }
-    val ltr = LocalLayoutDirection.current == LayoutDirection.Ltr
-    // The corner the card grows from, in screen terms: the end one over a bar, the start one
-    // beside a rail.
-    val origin = TransformOrigin(if (rail == ltr) 0f else 1f, 1f)
-    Box(
-        Modifier
-            .fillMaxSize()
-            .then(
-                if (rail) {
-                    Modifier
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
-                        .padding(top = 8.dp, bottom = BAR_MARGIN, start = railRoom + BAR_GAP, end = 16.dp)
-                } else {
-                    Modifier
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .padding(top = 8.dp, bottom = BAR_MARGIN + BAR_HEIGHT + BAR_GAP, end = 16.dp, start = 16.dp)
-                },
-            ),
-    ) {
-        AnimatedVisibility(
-            visible = open,
-            modifier = Modifier.align(if (rail) Alignment.BottomStart else Alignment.BottomEnd),
-            enter = if (reduced) {
-                fadeIn(Motion.standard(0))
-            } else {
-                fadeIn(Motion.standard(Motion.Fast)) + scaleIn(Motion.standard(Motion.Normal), initialScale = 0.85f, transformOrigin = origin)
-            },
-            exit = if (reduced) {
-                fadeOut(Motion.standard(0))
-            } else {
-                fadeOut(Motion.standard(Motion.Fast)) + scaleOut(Motion.standard(Motion.Fast), targetScale = 0.9f, transformOrigin = origin)
-            },
-        ) {
-            Column(
-                Modifier
-                    .widthIn(max = POPOVER_WIDTH)
-                    .shadow(BAR_SHADOW, POPOVER_SHAPE)
-                    .clip(POPOVER_SHAPE)
-                    .background(FloatingTone.dialog)
-                    .border(floatingBorder(), POPOVER_SHAPE)
-                    // Taps inside the card stay inside it rather than reaching the scrim.
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                    .verticalScroll(rememberScrollState())
-                    // The rows' own 6 dp at the sides, so the last row's fill keeps it below too.
-                    .padding(vertical = 6.dp),
-            ) {
-                com.tmplayer.ui.components.ViewingSummary(
-                    watching = watchingCount,
-                    watched = watchedCount,
-                    starred = favoriteCount,
-                    onWatching = onHistory,
-                    onWatched = onWatched,
-                    onStarred = onFavourites,
-                )
-                HorizontalDivider(Modifier.padding(horizontal = 14.dp, vertical = 2.dp))
-                val rows = buildList<@Composable (Modifier) -> Unit> {
-                    add { m -> PopoverRow(TmIcons.StarOutline, s.browseTabFavourites, favoriteCount.takeIf { it > 0 }?.toString(), modifier = m, onClick = onFavourites) }
-                    add { m -> PopoverRow(TmIcons.Download, s.navDownloads, downloadCount.takeIf { it > 0 }?.toString(), modifier = m, onClick = onDownloads) }
-                    add { m -> PopoverRow(TmIcons.History, s.browseTabHistory, null, modifier = m, onClick = onHistory) }
-                    add { m -> PopoverRow(TmIcons.Clock, s.browseTabWatchLater, null, modifier = m, onClick = onWatchLater) }
-                    add { m -> PopoverRow(TmIcons.Settings, s.navSettings, null, modifier = m, onClick = onSettings) }
-                    if (updateVersion != null) {
-                        // Amber, as on the television's rail and the desktop's side bar: the one row that is news.
-                        add { m -> PopoverRow(TmIcons.Refresh, s.navUpdate, updateVersion, ink = Tone.caution, modifier = m, onClick = onUpdate) }
-                    }
-                    // Last, after everything the popover already held (owner, v1.0.13).
-                    add { m -> PopoverRow(TmIcons.Add, s.detailNewCollection, null, modifier = m, onClick = onNewCollection) }
-                }
-                rows.take(POPOVER_LISTS).forEach { it(Modifier) }
-                HorizontalDivider(Modifier.padding(horizontal = 14.dp, vertical = 2.dp))
-                rows.drop(POPOVER_LISTS).forEach { it(Modifier) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PopoverRow(
-    icon: ImageVector,
-    label: String,
-    badge: String?,
-    ink: Color = Tone.text,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val press = remember { MutableInteractionSource() }
-    // A held or keyboard-focused row fills, as the desktop's popover rows do, so a press is seen
-    // under the thumb and not only in the ripple round it.
-    val pressed by press.collectIsPressedAsState()
-    val focused by press.collectIsFocusedAsState()
-    val fill by androidx.compose.animation.animateColorAsState(
-        if (pressed || focused) Tone.surfaceHigh else Color.Transparent,
-        com.tmplayer.ui.theme.Motion.standard(com.tmplayer.ui.theme.Motion.Fast),
-        label = "popoverRowFill",
-    )
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(POPOVER_ROW)
-            .padding(horizontal = 6.dp)
-            // The card's 20 dp corner less the 6 dp inset, so a filled row runs parallel to it.
-            .clip(RoundedCornerShape(14.dp))
-            .background(fill)
-            .clickable(interactionSource = press, indication = ripple(), role = Role.Button, onClick = onClick)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp).pressScale(press))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (badge != null) {
-            Text(
-                badge,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (ink == Tone.text) Tone.onAccent else ink,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(if (ink == Tone.text) Tone.accent else Color.Transparent)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-            )
-        }
-    }
-}
-
 /** The key the bar's magnifier and the search field share, for the one to grow into the other. */
 private const val SEARCH_KEY = "search-field"
 
@@ -1140,12 +904,6 @@ private val RAIL_MARGIN = 12.dp
 private val BAR_SPACING = 4.dp
 private val PICTURE = 30.dp
 internal val BAR_SHADOW = 8.dp
-private val POPOVER_WIDTH = 208.dp
-private val POPOVER_ROW = 44.dp
-
-/** The popover's rows before the divider: the four lists; Settings and Update come after it. */
-private const val POPOVER_LISTS = 4
-private val POPOVER_SHAPE = RoundedCornerShape(20.dp)
 
 /** The bar coming back: quick, with a little give as it lands. */
 private val BAR_SPRING = androidx.compose.animation.core.spring<IntOffset>(

@@ -221,6 +221,8 @@ internal fun BrowseScreen(
     onOpenChat: (ChatSummary) -> Unit,
     onResumeMedia: (ResumeRecord) -> Unit,
     onOpenSettings: () -> Unit,
+    /** The Profile page, from the phone's bar picture (v1.0.14): only the fixture shell behind [PhoneBrowse] reads it. */
+    onOpenProfile: () -> Unit = {},
     /**
      * The Downloads screen, from the drawer on a phone and from the rail on a television. Both
      * form factors keep the downloads the viewer asked for by name until told otherwise; only
@@ -802,7 +804,7 @@ internal fun BrowseScreen(
                                 EmptyTab(tab, query = "", history = HistoryTab.Watched, onGoToChats = goToChats)
                             } else {
                                 Column(Modifier.fillMaxSize()) {
-                                    StatsSummary(watchedHistory, continueWatching, insets)
+                                    StatsSummary(watchedHistory, continueWatching, insets.start, insets.end)
                                     Box(Modifier.weight(1f)) {
                                         // Read once per visit rather than ticking: "5 minutes ago" going
                                         // stale while the tab is open is harmless, and a clock here would
@@ -1017,6 +1019,7 @@ internal fun BrowseScreen(
             onHistory = { pickHistory(it); onPickTab(BrowseSection.of(BrowseTab.History)) },
             onOpenDownloads = onOpenDownloads,
             onOpenSettings = onOpenSettings,
+            onProfile = onOpenProfile,
             onUpdate = onUpdate,
             search = search,
             chats = (state as? UiState.Content)?.value?.chats.orEmpty(),
@@ -1566,7 +1569,7 @@ private fun WatchLaterRecord.cardText() = VideoCardText(
  * lands on the first card below, as it always has.
  */
 @Composable
-private fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRecord>, insets: BrowseInsets) {
+internal fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRecord>, start: Dp, end: Dp) {
     val s = LocalStrings.current
     // Data usage (owner, 2026-11-06): the bytes the viewer chose to keep on this device,
     // counted from the download index itself, never estimated.
@@ -1604,7 +1607,7 @@ private fun StatsSummary(watched: List<WatchedRecord>, continuing: List<ResumeRe
     if (shown.isEmpty) return
     Column(
         Modifier
-            .padding(start = insets.start, end = insets.end, top = 8.dp, bottom = 4.dp)
+            .padding(start = start, end = end, top = 8.dp, bottom = 4.dp)
             .clip(RoundedCornerShape(Corner.Medium))
             .background(Tone.surfaceHigh)
             .padding(horizontal = 16.dp, vertical = 12.dp),

@@ -103,6 +103,7 @@ import com.tmplayer.ui.auth.LoginScreen
 import com.tmplayer.ui.browse.BrowseScreen
 import com.tmplayer.ui.browse.TouchChrome
 import com.tmplayer.ui.browse.onChatsPage
+import com.tmplayer.ui.browse.ProfilePage
 import com.tmplayer.ui.browse.TouchNav
 import com.tmplayer.ui.browse.TouchNavHost
 import com.tmplayer.ui.browse.TouchPage
@@ -194,6 +195,9 @@ private sealed interface Screen {
     data class Media(val chat: ChatSummary) : Screen
     data object Settings : Screen
     data object Downloads : Screen
+
+    /** The phone's Profile page (v1.0.14): the viewer's own lists, behind the bar's picture. */
+    data object Profile : Screen
     data object About : Screen
 
     /** The Add chats picker (HX27), a full screen of its own over whatever opened it. */
@@ -213,6 +217,7 @@ private val ScreenSaver = listSaver<Screen, Any>(
             is Screen.Chats -> listOf(SCREEN_CHATS)
             is Screen.Settings -> listOf(SCREEN_SETTINGS)
             is Screen.Downloads -> listOf(SCREEN_DOWNLOADS)
+            is Screen.Profile -> listOf(SCREEN_PROFILE)
             is Screen.About -> listOf(SCREEN_ABOUT)
             is Screen.AddChats -> listOf(SCREEN_ADD_CHATS)
             is Screen.Media -> listOf(
@@ -237,6 +242,7 @@ private val ScreenSaver = listSaver<Screen, Any>(
             )
             SCREEN_SETTINGS -> Screen.Settings
             SCREEN_DOWNLOADS -> Screen.Downloads
+            SCREEN_PROFILE -> Screen.Profile
             SCREEN_ABOUT -> Screen.About
             SCREEN_ADD_CHATS -> Screen.AddChats
             else -> Screen.Chats
@@ -248,6 +254,7 @@ private const val SCREEN_CHATS = "chats"
 private const val SCREEN_MEDIA = "media"
 private const val SCREEN_SETTINGS = "settings"
 private const val SCREEN_DOWNLOADS = "downloads"
+private const val SCREEN_PROFILE = "profile"
 private const val SCREEN_ABOUT = "about"
 private const val SCREEN_ADD_CHATS = "add_chats"
 
@@ -259,6 +266,7 @@ private object TouchScreens {
         is Screen.Media -> SCREEN_MEDIA
         is Screen.Settings -> SCREEN_SETTINGS
         is Screen.Downloads -> SCREEN_DOWNLOADS
+        is Screen.Profile -> SCREEN_PROFILE
         is Screen.About -> SCREEN_ABOUT
         is Screen.AddChats -> SCREEN_ADD_CHATS
     }
@@ -276,11 +284,12 @@ private object TouchScreens {
             else -> 3
         }
         is Screen.Downloads -> 3
+        is Screen.Profile -> 3
         is Screen.Settings, is Screen.Media, is Screen.About, is Screen.AddChats -> null
     }
 
     /**
-     * Settings, which the picture's popover opens as a screen of its own rather than a tab: it
+     * Settings, which the Profile page opens as a screen of its own rather than a tab: it
      * comes in from the end and goes back out towards it, the way a pushed screen does, and no
      * swipe leads into it.
      */
@@ -1045,8 +1054,10 @@ private fun Root() {
     val device = remember { if (FormFactor.isTv(context)) "tv" else "phone" }
     // Where leaving the Downloads screen goes back to.
     var downloadsCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
-    // Where leaving Settings goes back to: the page the profile popover's Settings was picked on.
+    // Where leaving Settings goes back to: the page the Profile page's Settings was picked on.
     var settingsCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
+    // Where leaving the Profile page goes back to: the page its picture was pressed on.
+    var profileCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
     // On a television, the rail item to put the remote back on when Back from Settings or
     // Downloads returns to the browser: the place it was pressed, not the first tile of the page.
     var railReturn by remember { mutableStateOf<com.tmplayer.ui.browse.RailReturn?>(null) }
@@ -1862,10 +1873,12 @@ private fun Root() {
             HomeLaunch.show.compareAndSet(ask, null)
         }
 
-        // Settings and Downloads, from the picture's popover (the television's account menu), the
-        // chat list's menus and the notification. Back from either goes to the page they were opened
-        // from; moving between the two by the popover is a step sideways, so Back skips the other
-        // one rather than bouncing between them (TouchRoutes).
+        // Settings and Downloads, from the Profile page (the phone) and the television's
+        // account menu, the chat list's menus and the notification. Back from either goes to
+        // the page they were opened from; moving between the two is a step sideways, so Back
+        // skips the other one rather than bouncing between them (TouchRoutes). The Profile
+        // page is no part of that pair: it is the page both are opened from, so Back from
+        // either returns to it when it opened them.
         val openSettings: () -> Unit = {
             if (screen !is Screen.Settings) {
                 settingsCameFrom = TouchRoutes.backTarget(
@@ -1894,6 +1907,27 @@ private fun Root() {
             downloadsOnCached = false
             downloadsFreeUp = 0
             screen = Screen.Downloads
+        }
+        // The Profile page, from the bar's picture on the phone: a page of its own behind the
+        // picture, as Downloads is. Back leaves it for the page the picture was pressed on;
+        // pressed on Settings or Downloads, it leaves for where that page came from, as
+        // moving between those two does, rather than bouncing back into it (TouchRoutes).
+        val openProfile: () -> Unit = {
+            if (screen !is Screen.Profile) {
+                profileCameFrom = TouchRoutes.backTarget(
+                    to = Screen.Profile,
+                    from = screen,
+                    fromBack = when (screen) {
+                        is Screen.Downloads -> downloadsCameFrom
+                        is Screen.Settings -> settingsCameFrom
+                        else -> null
+                    },
+                    toBack = profileCameFrom,
+                    lateral = { it is Screen.Settings || it is Screen.Downloads },
+                    home = Screen.Chats,
+                )
+                screen = Screen.Profile
+            }
         }
         // "Add chats" from Settings' Library, a chat list or Home with nothing added (AddChatsRequest):
         // the picker over whatever asked, which Back returns to.
@@ -1941,6 +1975,7 @@ private fun Root() {
                 browseTo(BrowseSection.of(BrowseTab.History))
             },
             onUpdate = { showUpdate = true },
+            onProfile = openProfile,
         )
 
         // The television's top bar over Downloads, as it is over the browser's pages. Settings has
@@ -1977,6 +2012,7 @@ private fun Root() {
                     onOpenChat = { openChat(it) },
                     onResumeMedia = { resumeMedia(it) },
                     onOpenSettings = openSettings,
+                    onOpenProfile = openProfile,
                     onOpenDownloads = openDownloads,
                     returnToRail = railReturn,
                     tvNav = if (tvBar) touchNav else null,
@@ -2146,6 +2182,51 @@ private fun Root() {
                 }
             }
 
+            is Screen.Profile -> {
+                // Back to the page the bar's picture was pressed on (openProfile).
+                BackHandler(onBack = { screen = profileCameFrom })
+                ProfilePage(
+                    account = accountHeader,
+                    favorites = favorites,
+                    chats = chats,
+                    continueWatching = continueWatching,
+                    watchedHistory = watchedHistory,
+                    watchLater = watchLater,
+                    collections = collections,
+                    downloadCount = activeDownloadCount,
+                    watchingCount = continueWatching.size,
+                    watchedCount = watchedVideos.size,
+                    updateVersion = offeredUpdate,
+                    watch = homeWatch,
+                    onDownloads = openDownloads,
+                    onSettings = openSettings,
+                    // The header opens Settings on its account page, where accounts switch.
+                    onAccount = {
+                        openSettings()
+                        settingsPage = SettingsPage.Account
+                    },
+                    onUpdate = { showUpdate = true },
+                    onFavourites = { browseTo(BrowseSection.of(BrowseTab.Favorites)) },
+                    onHistory = { tab ->
+                        scope.launch { settings.setHistoryTab(tab.name) }
+                        browseTo(BrowseSection.of(BrowseTab.History))
+                    },
+                    onHome = { browseTo(BrowseSection.of(BrowseTab.Home)) },
+                    onOpenChat = { openChat(it) },
+                    onResume = { resumeMedia(it) },
+                    onRestart = { record ->
+                        scope.launch {
+                            settings.clearResumePosition(record.chatId, record.messageId)
+                            resumeMedia(record)
+                        }
+                    },
+                    onMarkWatched = { record -> setWatched(record.toMediaItem(), record.chatTitle, true) },
+                    onPlayItem = { item, title -> play(item, chatTitle = title) },
+                    onSetWatched = { item, title, watched -> setWatched(item, title, watched) },
+                    onMessage = toast,
+                )
+            }
+
             is Screen.Settings -> {
                 val leaveSettings = {
                     // Only if it has had time to go stale. Settings cannot change the chat list,
@@ -2163,7 +2244,7 @@ private fun Root() {
                 // With no PIN there is nothing to ask, and a PIN set from inside Settings must not
                 // lock the viewer out of the page they set it on.
                 LaunchedEffect(lock?.pinSet) { if (lock?.pinSet == false) settingsUnlocked = true }
-                // No floating bar: Settings is a screen pushed from the picture's popover, with
+                // No floating bar: Settings is a screen pushed from the Profile page, with
                 // its own back arrow, as a chat is.
                 TouchPage(null)
                 if (lock == null) return@screens

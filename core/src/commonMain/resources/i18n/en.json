@@ -2163,7 +2163,12 @@
     "zoom_percent": "Zoom {percent}"
   },
   "profile": {
+    "browse_my_list": "Browse to Add to My List",
+    "downloads_detail": "Videos that you download appear here.",
     "heading": "Your viewing",
+    "my_list_detail": "Keep track of the videos you want to watch next.",
+    "my_list_title": "Add to My List",
+    "recently_watched": "Recently watched",
     "starred": "Starred",
     "summary": "{watching} watching, {watched} watched, {starred} starred",
     "watched": "Watched",

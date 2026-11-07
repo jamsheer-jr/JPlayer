@@ -104,6 +104,8 @@ internal fun PhoneBrowse(
     onHistory: (HistoryTab) -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** The Profile page, for the bar this composes when no host above draws one (the fixture). */
+    onProfile: () -> Unit = {},
     onUpdate: () -> Unit,
     search: GlobalSearchViewModel,
     chats: List<ChatSummary>,
@@ -259,6 +261,7 @@ internal fun PhoneBrowse(
             onDownloads = onOpenDownloads,
             onHistory = onHistory,
             onUpdate = onUpdate,
+            onProfile = onProfile,
         ),
         selected = tab,
         searchOpen = searchOpen,
@@ -393,7 +396,7 @@ internal fun chatsPageOf(lastChats: String, sections: List<BrowseSection>): Brow
 
 /**
  * Home and Chats side by side: a swipe from Home towards the end goes to Chats, and back the other
- * way. Settings is not a page of it: it opens from the picture's popover as a screen of its own,
+ * way. Settings is not a page of it: it opens from the Profile page as a screen of its own,
  * so no swipe leads into it or out of it. A row that scrolls sideways inside a page (a Home shelf,
  * the chips) takes the swipe first; the page turns only once it can go no further, or when the
  * swipe starts outside it. Both pages stay composed, so each keeps its scroll.
