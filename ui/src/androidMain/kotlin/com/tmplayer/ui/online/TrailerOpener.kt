@@ -32,21 +32,6 @@ internal fun rememberTrailerOpener(): (MetaTrailer) -> Boolean {
 }
 
 /**
- * The YouTube app before anything else, on a television and on a phone: its own client plays
- * every trailer, which YouTube's embedded player in a WebView does not on many TVs (a press that
- * seemed to do nothing) nor on some phones (sound over a black screen on a POCO F5 with WebView
- * 157, 2026-10-22). Only the `vnd.youtube:` link, which only a YouTube app answers, so a device
- * without one goes on to the in-app player rather than to a browser.
- */
-@Composable
-internal fun rememberTrailerAppFirst(): ((MetaTrailer) -> Boolean)? {
-    val context = LocalContext.current
-    return remember(context) {
-        { trailer: MetaTrailer -> openInYouTubeApp(context, trailer) }
-    }
-}
-
-/**
  * The trailer in whichever YouTube app answers `vnd.youtube:` links. Google's own apps take the
  * video id in that link; a third party client set as the default for them does not always:
  * SmartTube on a Mi TV opened its home screen and left the trailer unplayed, which looked like a

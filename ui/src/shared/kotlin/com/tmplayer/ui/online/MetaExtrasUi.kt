@@ -312,18 +312,24 @@ private val SCORE_GAP: Dp = 14.dp
 // ---- the trailer ------------------------------------------------------------------------------
 
 /**
- * Opens trailers. On a television the YouTube app comes first where there is one ([appFirst]):
- * it is made for the remote and plays every trailer, where YouTube's embedded player in a WebView
- * is at its weakest on a TV (no remote keys, codecs the chip decodes badly, trailers not allowed
- * embedded). Otherwise, and on a phone, the app's own player where the platform has one
- * ([playing], drawn by [TrailerHost]), else the YouTube app or the browser. Remembers the one
- * nothing on this device could open, so its QR code can be shown in its place.
+ * Opens trailers (owner, v1.0.14, the order flipped): the app's own player first, wherever
+ * the platform has one ([playing], drawn by [TrailerHost]), so a trailer plays without
+ * leaving the app. The YouTube app is the fallback, not the first step: the player hands
+ * over to it by itself when the embed cannot play (see TrailerPlayer), and the "Watch on
+ * YouTube" over the picture hands over whenever the viewer asks, which is also the way
+ * out of the one failure no signal reports, sound over a black picture. A set with no
+ * WebView never tries the embed and goes straight to [openElsewhere], and what nothing
+ * on the device could open is remembered ([unopened]) so its QR code can be shown in its
+ * place, for a phone to scan.
+ *
+ * Until v1.0.14 the app came first, for the embed's real weaknesses (black screens on
+ * some phones and TVs, trailers YouTube will not embed); those are now the fallback's
+ * job rather than a reason to leave the app for every trailer.
  */
 @Stable
 class TrailerLauncher internal constructor(
     private val opener: (MetaTrailer) -> Boolean,
     private val inApp: Boolean,
-    private val appFirst: ((MetaTrailer) -> Boolean)? = null,
 ) {
     var unopened by mutableStateOf<MetaTrailer?>(null)
         private set
@@ -334,7 +340,6 @@ class TrailerLauncher internal constructor(
 
     fun open(trailer: MetaTrailer) {
         unopened = null
-        if (appFirst?.invoke(trailer) == true) return
         if (inApp) {
             playing = trailer
         } else {
@@ -358,8 +363,7 @@ class TrailerLauncher internal constructor(
 fun rememberTrailerLauncher(): TrailerLauncher {
     val opener = rememberTrailerOpener()
     val inApp = rememberInAppTrailers()
-    val appFirst = rememberTrailerAppFirst()
-    return remember(opener, inApp, appFirst) { TrailerLauncher(opener, inApp, appFirst) }
+    return remember(opener, inApp) { TrailerLauncher(opener, inApp) }
 }
 
 /** The in-app trailer player, while [launcher] has one playing. Place it once beside the trailer button. */

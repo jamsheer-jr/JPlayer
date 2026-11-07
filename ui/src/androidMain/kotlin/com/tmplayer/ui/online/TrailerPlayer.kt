@@ -14,15 +14,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -79,8 +76,14 @@ internal fun rememberInAppTrailers(): Boolean {
  * that arrives with no referrer, which is what a bare embed URL in a WebView sends. The page runs
  * YouTube's IFrame player API and reports back through [Bridge]: a spinner stays up until the
  * trailer really plays, and a trailer that is not allowed to play embedded (YouTube's errors 101,
- * 150, 152 and 153), fails, or has not started after [START_TIMEOUT_MS] is said so, with its QR
- * code ([fallback]) and "Watch on YouTube" beside Close, instead of a black screen.
+ * 150, 152 and 153), fails, or has not started after [START_TIMEOUT_MS] hands over to the YouTube
+ * app or the browser by itself ([onOpenElsewhere], owner, v1.0.14): the embed is tried first now,
+ * so its failures are the fallback's cue rather than a card to read. Where that handover also
+ * finds nothing to open, the page behind shows the trailer's QR code, as it always has.
+ *
+ * One failure no signal reports: sound over a black picture (a POCO F5 with WebView 157,
+ * 2026-10-22), where the page says "playing" and means the audio. The "Watch on YouTube"
+ * button over the picture is the viewer's own way out of that one, and stays.
  *
  * On a television the WebView takes no focus, so the remote's keys stay with the two buttons:
  * Close has the focus at once, and Back closes too.
@@ -94,7 +97,7 @@ internal fun TrailerPlayer(
     trailer: MetaTrailer,
     onClose: () -> Unit,
     onOpenElsewhere: () -> Unit,
-    fallback: @Composable () -> Unit,
+    @Suppress("UNUSED_PARAMETER") fallback: @Composable () -> Unit,
 ) {
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -102,6 +105,11 @@ internal fun TrailerPlayer(
     LaunchedEffect(trailer.key) {
         delay(START_TIMEOUT_MS)
         if (phase == TrailerPhase.Loading) phase = TrailerPhase.Failed
+    }
+    // The embed cannot play: hand over at once, rather than leaving a card over a trailer
+    // that is never coming. [onOpenElsewhere] closes this player as it opens the app.
+    LaunchedEffect(phase) {
+        if (phase == TrailerPhase.Failed) onOpenElsewhere()
     }
     val closeFocus = remember { FocusRequester() }
     Dialog(
@@ -162,19 +170,9 @@ internal fun TrailerPlayer(
                     strokeWidth = 3.dp,
                     modifier = Modifier.align(Alignment.Center).size(if (tv) 56.dp else 44.dp),
                 )
-                TrailerPhase.Failed -> Column(
-                    Modifier
-                        .align(Alignment.Center)
-                        .padding(24.dp)
-                        .widthIn(max = 560.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Tone.surfaceHigh)
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(s.metadataTrailerUnavailable, style = MaterialTheme.typography.titleMedium, color = Tone.text)
-                    fallback()
-                }
+                // Failed hands over in the effect above; the frame it leaves is black for
+                // the moment the player takes to close.
+                TrailerPhase.Failed -> Unit
                 TrailerPhase.Playing -> Unit
             }
             Row(
