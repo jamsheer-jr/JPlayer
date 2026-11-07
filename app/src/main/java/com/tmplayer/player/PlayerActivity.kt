@@ -4336,6 +4336,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** True while the sheet counts down to the next episode ([onVideoEnded]). */
     private var countingDownToNext = false
 
+    /** The viewer stopped the countdown to the next episode (owner, v1.0.14): the sheet's Cancel, or Back. */
+    private var countdownStopped = false
+
     private fun startBackgroundAudio() {
         val session = mediaSession ?: return
         val started = PlaybackService.start(
@@ -5814,6 +5817,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 return@launch
             }
             countingDownToNext = true
+            countdownStopped = false
             for (second in AUTOPLAY_COUNTDOWN_SEC downTo 1) {
                 // Left mid-count with background audio on ([keepsPlayingUnseen]): nobody is
                 // watching the count, and the next episode should start while Android still
@@ -5824,9 +5828,26 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 showLoadingProgress(
                     (AUTOPLAY_COUNTDOWN_SEC - second).toFloat() / AUTOPLAY_COUNTDOWN_SEC,
                 )
+                // The way to stop the count (owner, v1.0.14): the sheet's own button as
+                // Cancel while the count runs. showStatus hides it, so it is put back
+                // every second; on a television it takes the focus as it first stands, so
+                // OK presses it and Back stops the count too (see dispatchKeyEvent). A
+                // stopped count leaves the finished sheet up, as an episode with no next
+                // one does.
+                statusRetry?.apply {
+                    text = L.commonCancel
+                    visibility = View.VISIBLE
+                    setOnClickListener { countdownStopped = true }
+                    if (second == AUTOPLAY_COUNTDOWN_SEC && FormFactor.isTv(this@PlayerActivity)) requestFocus()
+                }
                 delay(1_000)
+                if (countdownStopped) break
             }
             countingDownToNext = false
+            if (countdownStopped) {
+                showFinished()
+                return@launch
+            }
             autoplay(next)
         }
     }
@@ -6203,6 +6224,14 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)
         ) {
             if (event.repeatCount == 0) skipOffered()
+            return true
+        }
+
+        // The countdown to the next episode is running on the sheet (owner, v1.0.14):
+        // Back stops it, as Back puts the next-up card away. On a phone the sheet's
+        // Cancel button is the touch way; on a television it has the focus for OK.
+        if (countingDownToNext && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            countdownStopped = true
             return true
         }
 
@@ -9819,7 +9848,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         private const val ART_DRIFT_MS = 20_000L
 
         /** Long enough to read the next title and to stop it; short enough not to be a wait. */
-        private const val AUTOPLAY_COUNTDOWN_SEC = 8
+        /** The count at the end of an episode before the next one starts (owner, v1.0.14: about ten seconds). */
+        private const val AUTOPLAY_COUNTDOWN_SEC = 10
 
         /**
          * Four attempts over roughly twelve seconds. Enough to ride out a moved download window or
