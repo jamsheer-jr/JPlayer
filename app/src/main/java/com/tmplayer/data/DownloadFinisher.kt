@@ -101,6 +101,19 @@ class DownloadFinisher(
                 onProgress(done, total)
             }
         } catch (failure: IOException) {
+            // A move that died because the disk filled says so in figures, like a fetch that
+            // died the same way: the whole file is what the folder still needs, and the free
+            // figure is the folder's own as it stands now. Any other move failure keeps the
+            // generic sentence, since figures would be a guess there.
+            if (DownloadRelocation.isNoSpace(failure)) {
+                val free = runCatching { downloadsDir().usableSpace }.getOrDefault(0L)
+                return Outcome.Failed(
+                    L.downloadsNoSpaceNeededFree(
+                        needed = com.tmplayer.i18n.Translator.messages.formatter.bytes(source.length()),
+                        free = com.tmplayer.i18n.Translator.messages.formatter.bytes(free),
+                    ),
+                )
+            }
             return Outcome.Failed(MOVE_FAILED)
         }
 

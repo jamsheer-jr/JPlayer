@@ -459,17 +459,27 @@ class DownloadService : Service() {
             withContext(NonCancellable) {
                 val short = stillToCome + CacheShelf.HEADROOM_BYTES - free
                 Log.w(TAG, "No room for ${request.title}: ${StreamStats.formatBytes(short)} short")
+                // Plain figures, not only the shortfall: what this download still needs in
+                // total (the bytes still to come plus the headroom the check above keeps),
+                // and what the disk actually has free now. Resume runs this same check again,
+                // so a row that is pressed before room is made fails with these figures again
+                // rather than starting and dying part way.
+                val needed = stillToCome + CacheShelf.HEADROOM_BYTES
+                val spaceMessage = L.downloadsNoSpaceNeededFree(
+                    needed = Translator.messages.formatter.bytes(needed),
+                    free = Translator.messages.formatter.bytes(free),
+                )
                 val row = OfflineDownloads.active.value[request.fileId]
                 if (row != null) {
                     OfflineDownloads.note(
                         row.copy(
                             downloadedBytes = landedAlready,
                             stage = OfflineDownloads.Stage.Failed,
-                            failure = L.downloadsNotEnoughSpace(short = Translator.messages.formatter.bytes(short)),
+                            failure = spaceMessage,
                             bytesPerSecond = 0,
                         ),
                     )
-                    settled(request, ok = false, reason = L.downloadsNotEnoughSpace(short = Translator.messages.formatter.bytes(short)))
+                    settled(request, ok = false, reason = spaceMessage)
                 }
                 persistNow()
             }
@@ -580,6 +590,25 @@ class DownloadService : Service() {
                     // back with an error, or the connectivity callback. It waits, like every other
                     // held row, and the watcher above puts it back.
                     val waitingInstead = holdReason
+                    val humanised = error?.let(Failures::humanise)
+                    // A disk that filled part way: say it was space, with the figures as they
+                    // stand now, rather than the generic storage sentence. What is still
+                    // needed is what is still to come; what is free is measured here, at the
+                    // moment of the failure, not remembered from when the download started.
+                    val spaceFailure = if (waitingInstead == null && isNoSpaceFailure(humanised)) {
+                        val stillNeeded = (request.sizeBytes - landed).coerceAtLeast(0)
+                        val freeNow = DiskSpace.read(applicationContext).freeBytes
+                        if (stillNeeded > 0) {
+                            L.downloadsNoSpaceNeededFree(
+                                needed = Translator.messages.formatter.bytes(stillNeeded),
+                                free = Translator.messages.formatter.bytes(freeNow),
+                            )
+                        } else {
+                            humanised
+                        }
+                    } else {
+                        null
+                    }
                     OfflineDownloads.note(
                         row.copy(
                             downloadedBytes = landed,
@@ -587,15 +616,16 @@ class DownloadService : Service() {
                             failure = if (waitingInstead != null) {
                                 null
                             } else {
-                                // Gone from its chat (HX21): that, not TDLib's word for a file it lost.
-                                com.tmplayer.data.GoneVideos.failureText(request.chatId, request.messageId)
-                                    ?: error?.let(Failures::humanise) ?: FAILED_TEXT
+                                spaceFailure
+                                    // Gone from its chat (HX21): that, not TDLib's word for a file it lost.
+                                    ?: com.tmplayer.data.GoneVideos.failureText(request.chatId, request.messageId)
+                                    ?: humanised ?: FAILED_TEXT
                             },
                             bytesPerSecond = 0,
                         ),
                     )
                     if (waitingInstead == null) {
-                        settled(request, ok = false, reason = error?.let(Failures::humanise))
+                        settled(request, ok = false, reason = spaceFailure ?: humanised)
                     }
                 }
             }

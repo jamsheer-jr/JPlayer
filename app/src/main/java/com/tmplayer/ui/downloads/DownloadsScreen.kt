@@ -2214,14 +2214,19 @@ private fun ActiveDownloadCard(
                     PrimaryAction(s.commonResume, TmIcons.Play, onResume)
                 // Refused because the chat forbids keeping a copy: trying again is refused the
                 // same way, so the only offer left is Dismiss below.
-                // Refused for room: Try again would find the same full drive, so the first
-                // offer is the one that makes room, and Try again stays beside it for after.
+                // A failed row says Resume, not Try again, because that is what the press
+                // does: it re-queues the same request and TDLib carries on from the partial
+                // file already on disk, it does not fetch the bytes that landed a second time.
+                // The icon stays Refresh, so the row reads the same shape as before.
+                // Refused for room: Resume would find the same full drive, so the first
+                // offer is the one that makes room, and Resume stays beside it for after. The
+                // service checks the room again before Resume fetches a byte.
                 OfflineDownloads.Stage.Failed ->
                     if (com.tmplayer.data.isNoSpaceFailure(progress.failure) && onFreeUp != null) {
                         PrimaryAction(s.downloadsFreeUpSpace, TmIcons.Delete, onFreeUp)
-                        PrimaryAction(s.commonTryAgain, TmIcons.Refresh, onResume)
+                        PrimaryAction(s.commonResume, TmIcons.Refresh, onResume)
                     } else if (progress.failure != ContentProtection.NOT_SAVABLE) {
-                        PrimaryAction(s.commonTryAgain, TmIcons.Refresh, onResume)
+                        PrimaryAction(s.commonResume, TmIcons.Refresh, onResume)
                     }
                 // It will start itself the moment the signal is back, so the useful offer is the
                 // other one: hold it, and do not.
