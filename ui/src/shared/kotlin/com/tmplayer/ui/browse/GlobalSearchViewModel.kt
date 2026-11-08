@@ -457,6 +457,22 @@ class GlobalSearchViewModel(
         return there != false
     }
 
+    /**
+     * The local half's pool, gated the way the Telegram ask is (owner, v1.0.20: with the
+     * switch off, searching in the chats still brought results from everywhere). The
+     * switch used to close only Telegram's ask, while this pool went on listing every
+     * video the device had ever listed, from any chat ever opened, so an off search
+     * still read as a global one. One rule for both halves: off, with a picked set of
+     * chats, nothing outside the pick is a result, this device's knowledge included;
+     * on, or no pick made, the pool is everything known, as before.
+     */
+    private suspend fun localPool(): List<MediaItem> {
+        val now = _state.value
+        val added = if (!now.globalSearch && now.scopePicked) com.tmplayer.data.AddedChats.awaitReady() else null
+        val pool = known() + alsoKnown
+        return if (added == null) pool else pool.filter { it.chatId in added }
+    }
+
     private fun start(text: String, settle: Long, force: Boolean = false, preserve: Boolean = false) {
         val query = GlobalSearch.parse(text)
         val now = _state.value
@@ -476,10 +492,10 @@ class GlobalSearchViewModel(
         // staleness start already accepts for [allowed] below.
         val shownGroups = if (keepShown) now.groups else emptyList()
         // The kids lock and the added chats (HX27): search lists videos from the added chats alone.
-        // Global Search off (owner, v1.0.16) closes the Telegram ask (see [searchAsk]);
-        // the local half still lists what this device already knows through the gate as
-        // it stands, the v1.0.15 settlement, and the scope notice on the screen carries
-        // the nowhere-to-look case with its two ways out.
+        // Global Search off (owner, v1.0.16) closes the Telegram ask (see [searchAsk]),
+        // and off confines the local half to the same pick (owner, v1.0.20: see
+        // [localPool]); the scope notice on the screen carries the nowhere-to-look case
+        // with its two ways out.
         val allowed = ChatGate.browsing.value
         // Only the words around Telegram's part changed (a quality marker, a space): the answer
         // asked for, or about to be, stands, and the new words only screen and rank it.
@@ -489,7 +505,7 @@ class GlobalSearchViewModel(
             _state.update { it.copy(query = query) }
             localJob?.cancel()
             localJob = viewModelScope.launch {
-                val local = withContext(work) { GlobalSearch.localVideos(known() + alsoKnown, query, allowed, ::onlineNames) }
+                val local = withContext(work) { GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames) }
                 localNow = local
                 regroup { s -> GlobalSearch.merge(GlobalSearch.order(s.groups, query, s.sort), local, query, s.sort, identity) }
             }
@@ -535,7 +551,7 @@ class GlobalSearchViewModel(
             // The local half, off the main thread: no connection needed and no wait. What was
             // listed and still answers the new words stays up until Telegram's answer takes its
             // place.
-            val local = withContext(work) { GlobalSearch.localVideos(known() + alsoKnown, query, allowed, ::onlineNames) }
+            val local = withContext(work) { GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames) }
             localNow = local
             regroup { s ->
                 // On a re-run of the words on screen, the whole of what is shown is carried,
