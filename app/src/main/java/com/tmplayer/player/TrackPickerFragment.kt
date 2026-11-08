@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -269,6 +270,22 @@ class TrackPickerFragment : Fragment() {
             Page.Tracks -> {
                 // Bumped by every in-place line, so the timing and look figures under them redraw.
                 var tick by remember { mutableIntStateOf(0) }
+                // The list follows the player's tracks as they land (owner, v1.0.19):
+                // attaching a subtitle rebuilds the item, and the loaded track's group is
+                // known at once while the file's own tracks come back only as the new
+                // preparation reads the container again, so a panel opened in between
+                // showed the new track alone and read as the old ones being gone. A
+                // tracks change redraws the list with the whole set.
+                val listenedPlayer = host?.player
+                DisposableEffect(listenedPlayer) {
+                    val listener = object : Player.Listener {
+                        override fun onTracksChanged(tracks: Tracks) {
+                            tick++
+                        }
+                    }
+                    listenedPlayer?.addListener(listener)
+                    onDispose { listenedPlayer?.removeListener(listener) }
+                }
                 val title = if (trackType == C.TRACK_TYPE_AUDIO) L.tracksAudioLanguage else L.tracksSubtitles
                 if (touch) {
                     // The phone's panel is the MX shaped side panel (item 7, v1.0.16): see
@@ -328,14 +345,33 @@ class TrackPickerFragment : Fragment() {
                 }
             }
         }.let { built ->
-            // The video's own tracks first (owner, 2026-11-06): a subtitle the file itself
-            // carries stands above the ones loaded onto it from a file, a link or a search,
-            // which keep the player's order among themselves. Off stays at the head, where
-            // it has always been. Sound has no loaded tracks, so its order is untouched.
-            if (trackType != C.TRACK_TYPE_TEXT) return@let built
+            // The file's own original first, the rest alphabetical (owner, v1.0.19), for
+            // sound and subtitles alike: the track the file marks as its default (for
+            // sound, its default audio) heads its kind, and everything after it stands
+            // in the order of the name it is listed under. A subtitle loaded onto the
+            // video keeps its place after the file's own tracks (owner, 2026-11-06),
+            // alphabetical among themselves. Off stays at the head, where it has
+            // always been.
             val (off, tracks) = built.partition { it.group == null }
-            off + tracks.sortedBy { option -> if (isLoadedTrack(option)) 1 else 0 }
+            val (loaded, embedded) = tracks.partition { option -> isLoadedTrack(option) }
+            off + originalFirst(embedded) + loaded.sortedBy { it.label.lowercase(Locale.ROOT) }
         }.let(::numberNamesakes)
+
+    /**
+     * [tracks] with the file's own original at the head: the track the file marks as its
+     * default, or its first when it marks none (the one players treat as the original);
+     * the rest follow alphabetically by the name they are listed under.
+     */
+    private fun originalFirst(tracks: List<Option>): List<Option> {
+        if (tracks.size < 2) return tracks
+        val original = tracks.firstOrNull { option ->
+            val group = option.group ?: return@firstOrNull false
+            group.getTrackFormat(option.trackIndex).selectionFlags and C.SELECTION_FLAG_DEFAULT != 0
+        } ?: tracks.first()
+        val at = tracks.indexOfFirst { it.group === original.group && it.trackIndex == original.trackIndex }
+        return listOf(original) + tracks.filterIndexed { index, _ -> index != at }
+            .sortedBy { it.label.lowercase(Locale.ROOT) }
+    }
 
     private fun trackLines(onOnline: () -> Unit, onMsone: () -> Unit, onTranslate: () -> Unit, onInPlace: () -> Unit, lookIcon: ImageVector): List<Line> {
         val host = host ?: return emptyList()
