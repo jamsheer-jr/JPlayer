@@ -437,6 +437,9 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         com.tmplayer.ui.components.PlayPress.end()
+        // The home screen widget (item 9c, v1.0.15) redraws as the app leaves: a watch
+        // finished or begun in this visit is what changed its lines.
+        com.tmplayer.ui.widget.ContinueWidget.refresh(this)
     }
 
     override fun onUserInteraction() {
