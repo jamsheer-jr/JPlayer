@@ -100,6 +100,8 @@ class OpenSubtitlesApi(
         val episode: Int? = null,
         val languages: List<String>,
         val includeMachine: Boolean = false,
+        /** The title's year where known (item 11, v1.0.16), the API's own year parameter. */
+        val year: Int? = null,
     )
 
     suspend fun login(username: String, password: String): Reply<Session> {
@@ -136,6 +138,7 @@ class OpenSubtitlesApi(
         query.name?.let { params["query"] = it.lowercase(Locale.ROOT).trim() }
         query.season?.let { params["season_number"] = it.toString() }
         query.episode?.let { params["episode_number"] = it.toString() }
+        query.year?.let { params["year"] = it.toString() }
         val encoded = params.entries.joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
         return call("GET", url(host, "subtitles") + "?" + encoded) { json ->
             val data = json.optJSONArray("data") ?: return@call emptyList()

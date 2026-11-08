@@ -792,6 +792,31 @@ class OnlineSubtitlesTest {
     }
 
     @Test
+    fun `SubDL is asked with the year, and a hit stating that year stands first`() = runBlocking {
+        // Item 11, v1.0.16: name + year, the rule MSone already followed. The film's
+        // name carries its year; the query must carry it too, the cache key holds it
+        // (a second search asks nothing), and of two SubDL hits the one stating the
+        // film's year stands over the one stating another.
+        val o = online()
+        o.setSubdlKey("subdl-key")
+        http.on("api.opensubtitles.com", page(), page())
+        http.on(
+            "api.subdl.com",
+            json(200, """{"status":true,"subtitles":[{"release_name":"Old One","name":"Old.zip","language":"EN","url":"/subtitle/1.zip","year":1998},{"release_name":"Right One","name":"Right.zip","language":"EN","url":"/subtitle/2.zip","year":2026}]}"""),
+        )
+        val filmTarget = SubtitleTarget("Night Sky (2026).mkv", 0, languages = listOf("en"))
+        val result = o.search(filmTarget)
+        val search = http.requests.first { "api.subdl.com" in it.url }.url
+        assertTrue(search, "film_name=Night+Sky" in search)
+        assertTrue(search, "year=2026" in search)
+        assertEquals(listOf("Right One", "Old One"), result.hits.map { it.release })
+        // Cached under a key holding the year: asking again sends nothing.
+        val before = http.requests.size
+        assertTrue(o.search(filmTarget).fromCache)
+        assertEquals(before, http.requests.size)
+    }
+
+    @Test
     fun `a refused SubDL key says so and is not tried again`() = runBlocking {
         val o = online()
         o.setSubdlKey("bad")

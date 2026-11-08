@@ -6,7 +6,7 @@ import java.util.Locale
 
 /**
  * SubDL, the fallback when OpenSubtitles has nothing or is unavailable: a free key of the viewer's
- * own (2,000 requests a day), searched by name, season and episode. Its files are zip archives;
+ * own (2,000 requests a day), searched by name and year, season and episode. Its files are zip archives;
  * [SubtitleText.fromArchive] takes the subtitle out.
  *
  * See https://subdl.com/api-doc.
@@ -22,6 +22,9 @@ class SubdlApi(
         season: Int?,
         episode: Int?,
         languages: List<String>,
+        // The title's year where it is known (item 11, v1.0.16): SubDL takes it as its
+        // own parameter, so same-name remakes stop mixing in the answers.
+        year: Int? = null,
     ): Reply<List<SubtitleHit>> {
         val params = sortedMapOf(
             "api_key" to key,
@@ -32,6 +35,7 @@ class SubdlApi(
         )
         season?.let { params["season_number"] = it.toString() }
         episode?.let { params["episode_number"] = it.toString() }
+        year?.let { params["year"] = it.toString() }
         val query = params.entries.joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
         limiter.acquire()
         val response = http.sendLogged(
@@ -60,6 +64,9 @@ class SubdlApi(
                     release = item.optString("release_name").ifBlank { item.optString("name") },
                     fileName = item.optString("name"),
                     hearingImpaired = item.optBoolean("hi"),
+                    // Stated where the answer carries it; the caller's ordering prefers
+                    // a hit whose year is the title's (item 11, v1.0.16).
+                    featureYear = item.optInt("year", 0).takeIf { it > 0 },
                 )
             },
         )

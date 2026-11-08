@@ -235,8 +235,8 @@ class OnlineSubtitles(
             // OpenSubtitles answers a title under three letters with a 400, "Query is too short".
             if (name.length >= MIN_QUERY) {
                 add(
-                    "os|name:${name.lowercase(Locale.ROOT)}|${parsed.season}|${parsed.episode}$tail" to
-                        OpenSubtitlesApi.Query(name = name, season = parsed.season, episode = parsed.episode, languages = languages, includeMachine = machine),
+                    "os|name:${name.lowercase(Locale.ROOT)}|${parsed.year}|${parsed.season}|${parsed.episode}$tail" to
+                        OpenSubtitlesApi.Query(name = name, season = parsed.season, episode = parsed.episode, languages = languages, includeMachine = machine, year = parsed.year),
                 )
             }
         }
@@ -297,13 +297,13 @@ class OnlineSubtitles(
         val fallback = subdlKey.isNotBlank() && !a.subdlRefused && name.isNotBlank() &&
             (hits.isEmpty() || problem != null || a.quotaUsed(now()) || a.anonQuotaUsed(now()))
         if (fallback) {
-            val key = "subdl|${name.lowercase(Locale.ROOT)}|${parsed.season}|${parsed.episode}$tail"
+            val key = "subdl|${name.lowercase(Locale.ROOT)}|${parsed.year}|${parsed.season}|${parsed.episode}$tail"
             val cached = cache.search(key)
             if (cached != null) {
                 hits = hits + cached
                 fromCache = fromCache || hits.isNotEmpty()
             } else {
-                when (val reply = withBackoff { subdl.search(subdlKey, name, parsed.season, parsed.episode, languages) }) {
+                when (val reply = withBackoff { subdl.search(subdlKey, name, parsed.season, parsed.episode, languages, year = parsed.year) }) {
                     is Reply.Ok -> {
                         cache.putSearch(key, reply.value)
                         hits = hits + reply.value
@@ -320,6 +320,10 @@ class OnlineSubtitles(
         val order = languages.withIndex().associate { (i, code) -> code to i }
         val sorted = relevant(hits, parsed).sortedWith(
             compareByDescending<SubtitleHit> { it.hashMatch }
+                // A hit whose stated year is the title's year stands over one that does
+                // not say, or says another (item 11, v1.0.16); series keep their season
+                // and episode through relevance below, as they always have.
+                .thenByDescending { parsed.year != null && it.featureYear == parsed.year }
                 .thenByDescending { relevance(it, parsed) }
                 .thenBy { order[iso1(it.language)] ?: order.size }
                 .thenBy { it.provider.ordinal }
