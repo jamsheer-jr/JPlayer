@@ -448,21 +448,11 @@ private fun TouchPhonePane(
 
     Pane {
         // The first screen is the app's front door (owner, 2026-11-08: change the login UI
-        // itself), so it opens with the full lockup, large and centred, and the title and blurb
-        // centred under it; the other panes keep the medium band ([SignInBrandHeader]). With no
-        // way back behind the first screen (onBack null) the band carries the mark alone, and an
-        // arrow that leaves the app is not what a back arrow means anywhere else.
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (onBack != null) {
-                Box(Modifier.align(Alignment.CenterStart)) {
-                    BackArrow(onBack = onBack)
-                }
-            }
-            com.tmplayer.ui.components.BrandLockup(
-                size = com.tmplayer.ui.components.BrandSize.Large,
-                layout = com.tmplayer.ui.components.BrandLayout.Stacked,
-            )
-        }
+        // itself), opening on the shared band, which now draws the full lockup large, and
+        // with its title and blurb centred under it. With no way back behind the first screen
+        // (onBack null) the band carries the mark alone, and an arrow that leaves the app is
+        // not what a back arrow means anywhere else.
+        SignInBrandHeader(onBack = onBack)
         Text(
             s.loginPhoneTitle,
             style = MaterialTheme.typography.headlineLarge,
@@ -702,8 +692,20 @@ private fun TouchCodePane(
 
     Pane {
         PaneHeader(onBack = onStartOver)
-        Text(s.loginCodeTitle, style = MaterialTheme.typography.headlineLarge)
-        Text(SignInWords.codeBlurb(state), style = MaterialTheme.typography.bodyLarge)
+        // Centred like the front door's, at the owner's word: the code page and the two step
+        // page carry the new login look too (2026-11-08).
+        Text(
+            s.loginCodeTitle,
+            style = MaterialTheme.typography.headlineLarge,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            SignInWords.codeBlurb(state),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
 
         if (boxed) {
             CodeBoxes(
@@ -875,7 +877,7 @@ private fun SignInBrandHeader(onBack: (() -> Unit)?) {
             }
         }
         com.tmplayer.ui.components.BrandLockup(
-            size = com.tmplayer.ui.components.BrandSize.Medium,
+            size = com.tmplayer.ui.components.BrandSize.Large,
             layout = com.tmplayer.ui.components.BrandLayout.Stacked,
         )
     }
@@ -1373,8 +1375,21 @@ private fun LoginForm(
 
     Pane {
         PaneHeader(onBack = onBack)
-        Text(title, style = MaterialTheme.typography.headlineLarge)
-        Text(blurb, style = MaterialTheme.typography.bodyLarge)
+        // On a phone the form's head is centred like the front door's (the owner's login
+        // redo, 2026-11-08, the two step page included at his word); a television keeps
+        // the left aligned head its D-pad layout was built on.
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineLarge,
+            modifier = if (touch) Modifier.fillMaxWidth() else Modifier,
+            textAlign = if (touch) TextAlign.Center else TextAlign.Start,
+        )
+        Text(
+            blurb,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = if (touch) Modifier.fillMaxWidth() else Modifier,
+            textAlign = if (touch) TextAlign.Center else TextAlign.Start,
+        )
         if (note != null || noteLoading) {
             GuessFade(noteLoading, skeletonWidth = 180.dp) {
                 Text(note.orEmpty(), style = MaterialTheme.typography.bodyMedium)
