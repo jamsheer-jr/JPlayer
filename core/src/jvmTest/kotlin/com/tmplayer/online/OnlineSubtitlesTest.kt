@@ -836,6 +836,51 @@ class OnlineSubtitlesTest {
     }
 
     @Test
+    fun `SubDL answers a plainer query when the full one is turned down`() = runBlocking {
+        // Owner, v1.0.18: an episode search came back "No subtitles found online"
+        // for a series SubDL holds, because the full query (season and episode
+        // together) was turned down whole and the empty answer ended the search.
+        // The ladder asks plainer, and the hit's own season and episode are read.
+        val o = online()
+        o.setSubdlKey("subdl-key")
+        http.on("api.opensubtitles.com", page(), page())
+        http.on(
+            "api.subdl.com",
+            json(200, """{"status":false,"error":"No subtitles found"}"""),
+            json(200, """{"status":true,"results":[{"year":2019}],"subtitles":[{"release_name":"Night.Sky.S01E02","name":"Night.Sky.S01E02.zip","lang":"english","language":"EN","url":"/subtitle/9.zip","season":1,"episode":2}]}"""),
+        )
+        val result = o.search(episode)
+        val hit = result.hits.single()
+        assertEquals(SubtitleProvider.Subdl, hit.provider)
+        assertEquals(2, http.count("api.subdl.com"))
+        val second = http.requests.filter { "api.subdl.com" in it.url }[1].url
+        assertTrue(second, "season_number=1" in second)
+        assertFalse(second, "episode_number" in second)
+        // The hit states its season and episode; its year is the result's.
+        assertEquals(1, hit.featureSeason)
+        assertEquals(2, hit.featureEpisode)
+        assertEquals(2019, hit.featureYear)
+    }
+
+    @Test
+    fun `SubDL is asked by the title's IMDb id where the details found one`() = runBlocking {
+        val o = online()
+        o.setSubdlKey("subdl-key")
+        http.on("api.opensubtitles.com", page())
+        http.on(
+            "api.subdl.com",
+            json(200, """{"status":true,"results":[{"year":2019}],"subtitles":[{"release_name":"Crash.Fall.2019","name":"Crash.Fall.2019.zip","language":"EN","url":"/subtitle/3.zip","year":2020}]}"""),
+        )
+        val target = SubtitleTarget("Crash Fall (2019).mkv", 0, languages = listOf("en"), imdb = "tt1234567")
+        val result = o.search(target)
+        assertEquals(1, http.count("api.subdl.com"))
+        val search = http.requests.first { "api.subdl.com" in it.url }.url
+        assertTrue(search, "imdb_id=tt1234567" in search)
+        // A subtitle's own stated year stands over its result's.
+        assertEquals(2020, result.hits.single().featureYear)
+    }
+
+    @Test
     fun `a refused SubDL key says so and is not tried again`() = runBlocking {
         val o = online()
         o.setSubdlKey("bad")

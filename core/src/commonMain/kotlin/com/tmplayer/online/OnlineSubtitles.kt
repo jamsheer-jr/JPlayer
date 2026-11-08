@@ -42,6 +42,15 @@ import java.util.Locale
  * - **Polite.** Five requests a second at most and one sign in a second ([RateLimiter]); one
  *   search per video at a time; everything kept in [cache] for up to six months.
  */
+/** One rung of the SubDL ladder in [OnlineSubtitles.searchNow]: what one query carries. */
+private data class SubdlAsk(
+    val season: Int?,
+    val episode: Int?,
+    val year: Int?,
+    val imdbId: String?,
+    val tmdbId: String?,
+)
+
 class OnlineSubtitles(
     private val apiKey: String,
     val store: OnlineSubtitlesStore,
@@ -323,16 +332,57 @@ class OnlineSubtitles(
                 hits = hits + cached
                 fromCache = fromCache || hits.isNotEmpty()
             } else {
-                when (val reply = withBackoff { subdl.search(subdlKey, name, parsed.season, parsed.episode, languages, year = parsed.year) }) {
-                    is Reply.Ok -> {
-                        cache.putSearch(key, reply.value)
-                        hits = hits + reply.value
+                // The ladder (owner, v1.0.18): SubDL turns a query down whole when
+                // its parts do not fit together (a year beside a season and an
+                // episode, a language it holds nothing in), and that empty answer
+                // read as "no subtitles found" for titles it holds plenty of, a
+                // series episode most of all. So the queries go from the surest to
+                // the plainest, and the first answer with anything in it ends the
+                // ladder: the title's own ids where the details found them, the
+                // full query as it always was, then without the year, then the
+                // season without the episode, then the name alone. The ladder's
+                // answer is cached under the one key above, so a second search of
+                // the same video asks nothing.
+                val ladder = buildList {
+                    if (!target.imdb.isNullOrBlank() || !target.tmdb.isNullOrBlank()) {
+                        add(SubdlAsk(parsed.season, parsed.episode, parsed.year, target.imdb, target.tmdb))
                     }
-                    Reply.Unauthorized, Reply.Forbidden -> {
-                        store.update { it.copy(subdlRefused = true) }
-                        subdlProblem = SubtitleNotice.SubdlKeyRefused
+                    add(SubdlAsk(parsed.season, parsed.episode, parsed.year, null, null))
+                    if (parsed.year != null) add(SubdlAsk(parsed.season, parsed.episode, null, null, null))
+                    if (parsed.episode != null) add(SubdlAsk(parsed.season, null, null, null, null))
+                    if (parsed.season != null || parsed.episode != null) add(SubdlAsk(null, null, null, null, null))
+                }
+                var found: List<SubtitleHit>? = null
+                var answeredOk = false
+                for (ask in ladder) {
+                    when (val reply = withBackoff {
+                        subdl.search(subdlKey, name, ask.season, ask.episode, languages, year = ask.year, imdbId = ask.imdbId, tmdbId = ask.tmdbId)
+                    }) {
+                        is Reply.Ok -> {
+                            answeredOk = true
+                            if (reply.value.isNotEmpty()) {
+                                found = reply.value
+                                break
+                            }
+                        }
+                        Reply.Unauthorized, Reply.Forbidden -> {
+                            store.update { it.copy(subdlRefused = true) }
+                            subdlProblem = SubtitleNotice.SubdlKeyRefused
+                            found = emptyList()
+                            break
+                        }
+                        // A query turned down, or no connection: the next,
+                        // plainer one has its turn.
+                        else -> Unit
                     }
-                    else -> Unit
+                }
+                // Cached only where SubDL answered (an empty answer included, as
+                // it always was): a ladder that failed outright end to end is
+                // asked again next time, as a failed search always was.
+                val answer = found ?: if (answeredOk) emptyList() else null
+                if (answer != null) {
+                    cache.putSearch(key, answer)
+                    hits = hits + answer
                 }
             }
         }

@@ -25,6 +25,11 @@ class SubdlApi(
         // The title's year where it is known (item 11, v1.0.16): SubDL takes it as its
         // own parameter, so same-name remakes stop mixing in the answers.
         year: Int? = null,
+        // The title's own ids where the online details found them (owner, v1.0.18):
+        // an id names one title exactly, where a name shared with other titles
+        // answers with a stranger's subtitles or none at all.
+        imdbId: String? = null,
+        tmdbId: String? = null,
     ): Reply<List<SubtitleHit>> {
         val params = sortedMapOf(
             "api_key" to key,
@@ -36,6 +41,8 @@ class SubdlApi(
         season?.let { params["season_number"] = it.toString() }
         episode?.let { params["episode_number"] = it.toString() }
         year?.let { params["year"] = it.toString() }
+        imdbId?.takeIf { it.isNotBlank() }?.let { params["imdb_id"] = it }
+        tmdbId?.takeIf { it.isNotBlank() }?.let { params["tmdb_id"] = it }
         val query = params.entries.joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
         limiter.acquire()
         val response = http.sendLogged(
@@ -49,9 +56,18 @@ class SubdlApi(
         val json = runCatching { JSONObject(response.text) }.getOrNull() ?: return Reply.Failed(response.code)
         if (!json.optBoolean("status")) {
             val error = json.optString("error")
-            // "No subtitles found" and friends are an empty answer; a refused key is not.
-            return if (error.contains("key", ignoreCase = true)) Reply.Unauthorized else Reply.Ok(emptyList())
+            // A refused key is its own answer. Anything else is this query turned
+            // down (a year beside a season and an episode, say), which is a failure
+            // the search's ladder answers with a plainer query: returning an empty
+            // list here read as "no subtitles" and stopped it (owner, v1.0.18).
+            return if (error.contains("key", ignoreCase = true)) Reply.Unauthorized else Reply.Failed(400)
         }
+        // The year lives on the results, not on the subtitles (SubDL's own shape):
+        // the subtitles belong to the first result, so its year is theirs where a
+        // subtitle does not state its own.
+        val results = json.optJSONArray("results")
+        val resultYear = (if (results != null && results.length() > 0) results.optJSONObject(0)?.optInt("year", 0) else null)
+            ?.takeIf { it > 0 }
         val subtitles = json.optJSONArray("subtitles") ?: return Reply.Ok(emptyList())
         return Reply.Ok(
             (0 until subtitles.length()).mapNotNull { index ->
@@ -64,9 +80,14 @@ class SubdlApi(
                     release = item.optString("release_name").ifBlank { item.optString("name") },
                     fileName = item.optString("name"),
                     hearingImpaired = item.optBoolean("hi"),
+                    // The season and episode the subtitle is for, where it states
+                    // them: the caller's ordering puts the right episode first, and
+                    // until these were read every SubDL hit looked episode-less.
+                    featureSeason = item.optInt("season", 0).takeIf { it > 0 },
+                    featureEpisode = item.optInt("episode", 0).takeIf { it > 0 },
                     // Stated where the answer carries it; the caller's ordering prefers
                     // a hit whose year is the title's (item 11, v1.0.16).
-                    featureYear = item.optInt("year", 0).takeIf { it > 0 },
+                    featureYear = item.optInt("year", 0).takeIf { it > 0 } ?: resultYear,
                 )
             },
         )
