@@ -2676,7 +2676,8 @@ private val TV_DOWN_STEP = 200.dp
  * most [HomeFeatured.FILL_WAIT_MS] once the row is in), empty for nothing to feature, which hides
  * the carousel. Only complete pages ([com.tmplayer.ui.online.completeFeatured]), decided once
  * per fill so no page comes or goes while it is looked at; a refresh keeps the pages up until
- * the new ones are decided. With online lookups off there are no complete pages, so none at once.
+ * the new ones are decided. Each fill draws the unpinned pages in a fresh order (owner,
+ * v1.0.17), so a refresh brings different banners rather than the same ones again. With online lookups off there are no complete pages, so none at once.
  * The decided pages are [HomeFeatured.bannerSet]'s: the pinned titles ([pinEntries], named by
  * [pinKeys]) lead, and the rest fill toward the full set in its six films and four shows mix.
  */
@@ -2718,9 +2719,17 @@ private fun rememberFeatured(
         } catch (e: Exception) {
             emptySet()
         }
+        val complete = picks.filter { it.key in keys }
+        val isPinned = { pick: com.tmplayer.data.FeaturedPick ->
+            pinKeys.isNotEmpty() && com.tmplayer.data.VideoCopies.keyOf(pick.item) in pinKeys
+        }
         decided = com.tmplayer.data.HomeFeatured.bannerSet(
-            picks.filter { it.key in keys },
-            pinned = { pick -> pinKeys.isNotEmpty() && com.tmplayer.data.VideoCopies.keyOf(pick.item) in pinKeys },
+            // A fresh draw on every fill (owner, v1.0.17): the unpinned pages are
+            // shuffled before the set is made, so a refresh brings different banners
+            // from the whole complete pool instead of the same newest pages in the
+            // same order. The pinned titles keep their head places and their order.
+            complete.filter(isPinned) + complete.filterNot(isPinned).shuffled(),
+            pinned = isPinned,
         )
     }
     return if (!enabled) emptyList() else decided
