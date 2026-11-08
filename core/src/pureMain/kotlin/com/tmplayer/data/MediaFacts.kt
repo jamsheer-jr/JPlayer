@@ -272,9 +272,18 @@ data class MediaFacts(
          * Whether [item] is a cam family copy, by its raw file name (the title only where
          * the file name is blank, which is all a surface would have): the one reading
          * every surface's cam hiding shares (Copies, Versions, chat lists, Search, Home).
+         *
+         * A name that carries a source of its own settles it, cam or not. Only a name
+         * silent about its source falls through to the post's caption, the other place a
+         * copy says what it is: the owner's HDTS that stood unhidden (2026-11-08) was
+         * named in its caption while its file name said nothing at all.
          */
-        fun isCam(item: MediaItem): Boolean =
-            isCam(read(item.fileName.ifBlank { item.title }, item.width, item.height))
+        fun isCam(item: MediaItem): Boolean {
+            val named = read(item.fileName.ifBlank { item.title }, item.width, item.height)
+            if (named.source != null || named.cleanAudio) return isCam(named)
+            if (item.caption.isBlank()) return false
+            return isCam(read(item.caption, item.width, item.height))
+        }
 
         private val TRACKS = listOf(
             Track.DualAudio to word("""dual[ ._-]?audio"""),
