@@ -237,9 +237,10 @@ class PlayerMenuTest {
     fun `picture shape is in the phone's panel for any picture, before the speed`() {
         assertFalse(PhoneMenuEntry.PictureShape in PlayerMenu.phoneEntries(true, true, true, true))
         val picture = PlayerMenu.phoneEntries(true, true, true, true, pictureShape = true)
-        // After the lock and picture in picture, the other lines about the screen itself.
-        assertEquals(2, picture.indexOf(PhoneMenuEntry.PictureShape))
-        assertEquals(3, picture.indexOf(PhoneMenuEntry.Speed))
+        // After the lock, picture in picture and background play, the other lines about
+        // the screen itself.
+        assertEquals(3, picture.indexOf(PhoneMenuEntry.PictureShape))
+        assertEquals(4, picture.indexOf(PhoneMenuEntry.Speed))
         assertEquals("Picture shape (Fill)", PhoneMenuEntry.PictureShape.label(shape = VideoScale.Crop))
     }
 
@@ -277,6 +278,7 @@ class PlayerMenuTest {
         assertEquals(
             listOf(
                 PhoneMenuEntry.LockScreen,
+                PhoneMenuEntry.BackgroundPlay,
                 PhoneMenuEntry.Speed,
                 PhoneMenuEntry.LoadSubtitleFile,
                 PhoneMenuEntry.LoadSubtitleUrl,
