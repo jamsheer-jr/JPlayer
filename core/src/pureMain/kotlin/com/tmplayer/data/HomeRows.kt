@@ -641,6 +641,9 @@ object HomeRows {
     /** The rating a title needs to stand in Hidden gems (v1.0.17). */
     const val GEMS_MIN = 8.0
 
+    /** Episodes an ended series must hold in the chats to stand in Binge ready (v1.0.17). */
+    const val BINGE_MIN_EPISODES = 8
+
     /** The lowest rating, out of ten, that earns a tile a place on the Top Rated shelf. */
     const val TOP_RATED_MIN = 7.5
 
@@ -901,6 +904,23 @@ object HomeRows {
             val trailers = all.filter { entry -> metaOf(entry, titleMeta)?.hasTrailer == true }
                 .sortedByDescending { entry -> leadDateOf(entry) }
             if (trailers.size >= CATALOG_MIN) add(HomeRow.Catalog("trailers", "", trailers.take(LIMIT), all = trailers))
+            // Binge ready (owner, v1.0.17): ended series with a full run of episodes
+            // in the chats, one sitting's worth.
+            val binge = all.filterIsInstance<ShelfEntry.Show>().filter { entry ->
+                metaOf(entry, titleMeta)?.ended == true && entry.series.episodes.size >= BINGE_MIN_EPISODES
+            }
+            if (binge.size >= CATALOG_MIN) add(HomeRow.Catalog("binge", "", binge.take(LIMIT), all = binge))
+            // Malayalam audio (owner, v1.0.17): titles one of whose copies carries a
+            // Malayalam track, read off the copies' own names.
+            val malayalamAudio = all.filter { entry -> itemsOf(entry).any { "ml" in VideoCopies.languagesOf(it) } }
+            if (malayalamAudio.size >= CATALOG_MIN) add(HomeRow.Catalog("ml-audio", "", malayalamAudio.take(LIMIT), all = malayalamAudio))
+            // Best quality (owner, v1.0.17): a 4K copy and an HDR range on the title,
+            // together.
+            val bestQuality = all.filter { entry ->
+                val items = itemsOf(entry)
+                items.any { (VideoCopies.heightOf(it) ?: 0) >= 2000 } && items.any { MediaFacts.of(it).dynamicRange in HDR_RANGES }
+            }
+            if (bestQuality.size >= CATALOG_MIN) add(HomeRow.Catalog("best-quality", "", bestQuality.take(LIMIT), all = bestQuality))
             val byLanguage = all.filterNot { entry -> isAnime(entry, titleMeta) }.groupBy { languageOf(it, titleMeta) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }

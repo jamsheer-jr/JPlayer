@@ -35,6 +35,9 @@ fun homeRowTitle(row: HomeRow, s: Messages): String = when (row) {
         "top-picks" -> s.homeRowTopPicks
         "gems" -> s.homeRowGems
         "trailers" -> s.homeRowTrailers
+        "binge" -> s.homeRowBinge
+        "ml-audio" -> s.homeRowMlAudio
+        "best-quality" -> s.homeRowBestQuality
         "decade-1990" -> s.homeRowDecade1990
         "decade-2000" -> s.homeRowDecade2000
         "decade-2010" -> s.homeRowDecade2010

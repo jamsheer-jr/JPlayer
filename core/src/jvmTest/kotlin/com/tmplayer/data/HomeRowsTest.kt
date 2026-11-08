@@ -337,6 +337,35 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `binge, malayalam audio and best quality rows stand by their rules`() {
+        val shows = listOf("Alpha Show", "Beta Show", "Gamma Show").map { name ->
+            (1..8).map { ep -> video(2, "$name S01E0$ep.mkv") }
+        }.flatten()
+        val films = listOf(
+            video(1, "Alpha Malayalam 2024.mp4"),
+            video(1, "Beta Malayalam 2024.mp4"),
+            video(1, "Gamma Malayalam 2024.mp4"),
+            video(1, "First Film 2160p HDR.mkv"),
+            video(1, "Second Film 2160p HDR.mkv"),
+            video(1, "Third Film 2160p HDR.mkv"),
+        )
+        val meta = HashMap<String, TitleMeta>()
+        shows.forEach { meta[it.id] = TitleMeta(emptyList(), null, ended = true) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1), chat(2)),
+            loaded = mapOf(1L to films, 2L to shows),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        assertEquals(3, catalogs.single { it.kind == "binge" }.entries.size)
+        assertEquals(3, catalogs.single { it.kind == "ml-audio" }.entries.size)
+        assertEquals(3, catalogs.single { it.kind == "best-quality" }.entries.size)
+    }
+
+    @Test
     fun `series stand in language rows by their drama tags alone`() {
         // No online match hands these a language: the names' own catalogue tags are the
         // only signal, as most of the owner's drama files carry them (owner, v1.0.14).

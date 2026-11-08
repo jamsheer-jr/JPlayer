@@ -77,6 +77,7 @@ data class HomeLayout(
         val CATALOG_GROUPS = listOf(
             "trending", "top10", "movies", "series", "anime", "uhd", "hdr", "remastered", "lang", "foreign",
             "genre", "series-genre", "series-status", "top-rated", "stars", "decades", "gems", "trailers",
+            "binge", "ml-audio", "best-quality",
             "ott", "multi", "weekly", "because", "collections",
         )
 

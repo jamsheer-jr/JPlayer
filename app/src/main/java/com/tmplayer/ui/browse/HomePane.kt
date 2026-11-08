@@ -2811,6 +2811,7 @@ private val STRIP_GAP = 12.dp
 /** The lazy key of the phone's featured carousel at the top of Home. */
 private const val FEATURED_KEY = "featured"
 private const val SURPRISE_KEY = "surprise"
+private const val LANGUAGE_TILES_KEY = "language-tiles"
 private const val CHIPS_KEY = "chips"
 private const val BUILT_IN_KEY = "built-in"
 
