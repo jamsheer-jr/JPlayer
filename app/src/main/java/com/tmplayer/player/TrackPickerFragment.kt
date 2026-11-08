@@ -802,12 +802,30 @@ class TrackPickerFragment : Fragment() {
         var lookShown by remember { mutableStateOf(false) }
         FloatingWindow(onDismiss = ::close, ignoreRelease = false) {
             val panelWidth = if (maxWidth > maxHeight) (maxWidth * 0.42f).coerceAtMost(480.dp) else (maxWidth * 0.88f).coerceAtMost(480.dp)
+            // A touch anywhere outside the panel closes it (owner, 2026-11-08): the window
+            // fills the screen, so the dialog's own outside tap never fires; this catcher is
+            // the outside. The panel column carries its own empty clickable below, so its
+            // dead space (padding, spacers) does not fall through to the catcher.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = ::close,
+                    ),
+            )
             Column(
                 Modifier
                     .align(Alignment.CenterEnd)
                     .width(panelWidth)
                     .fillMaxHeight()
                     .background(Color(0xFF0A0A0C))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 20.dp),
             ) {
