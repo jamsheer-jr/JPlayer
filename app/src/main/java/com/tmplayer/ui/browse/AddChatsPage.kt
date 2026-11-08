@@ -1,11 +1,14 @@
 package com.tmplayer.ui.browse
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tmplayer.data.SettingsStore
+import kotlinx.coroutines.flow.first
 import com.tmplayer.ui.components.TvSearchField
 import com.tmplayer.ui.components.isTouch
 import com.tmplayer.ui.settings.SendLogsButton
@@ -69,5 +72,45 @@ internal fun AddChatsPage(
         },
         required = required,
         onLeave = onLeave,
+    )
+}
+
+/**
+ * The channel assignment picker (item 3, v1.0.16): [AddChatsPage]'s twin for
+ * Settings' Movie channels and Show channels, the same screen and counting, with
+ * the view model reading and writing the assignment's own stored list and the
+ * screen told that list for its gone rows' names.
+ */
+@Composable
+internal fun ChannelPickPage(
+    settings: SettingsStore,
+    chatsViewModel: ChatListViewModel,
+    run: Int,
+    target: ChannelPickTarget,
+    onClose: () -> Unit,
+) {
+    val model: AddChatsViewModel = viewModel(
+        key = "channel-pick-$target-$run",
+        factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = when (target) {
+                ChannelPickTarget.Movies -> newChannelListViewModel(settings, { settings.movieChannels.first() }, settings::setMovieChannels)
+                ChannelPickTarget.Shows -> newChannelListViewModel(settings, { settings.showChannels.first() }, settings::setShowChannels)
+            } as T
+        },
+    )
+    val baseChats by remember(settings, target) {
+        if (target == ChannelPickTarget.Movies) settings.movieChannels else settings.showChannels
+    }.collectAsState(initial = emptyList())
+    AddChatsFed(
+        settings = settings,
+        chatsViewModel = chatsViewModel,
+        model = model,
+        onClose = onClose,
+        sendLogs = { SendLogsButton() },
+        searchField = if (isTouch()) null else { value, onValueChange, placeholder, modifier, onSubmit ->
+            TvSearchField(value = value, onValueChange = onValueChange, placeholder = placeholder, modifier = modifier, onSubmit = onSubmit)
+        },
+        baseChats = baseChats,
     )
 }

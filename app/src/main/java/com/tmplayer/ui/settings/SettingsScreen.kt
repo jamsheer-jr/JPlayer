@@ -424,6 +424,9 @@ fun SettingsScreen(
     var pinsQuery by remember { mutableStateOf("") }
     val bannerMode by settings.homeBannerMode.collectAsStateWithLifecycle(initialValue = "auto")
     val bannerPins by settings.homeBannerPins.collectAsStateWithLifecycle(initialValue = emptyList())
+    // The channels assigned to Home's Movies and Shows chips (item 3, v1.0.16).
+    val movieChannels by settings.movieChannels.collectAsStateWithLifecycle(initialValue = emptyList())
+    val showChannels by settings.showChannels.collectAsStateWithLifecycle(initialValue = emptyList())
     val language by settings.language.collectAsStateWithLifecycle(initialValue = "")
     // What TMPlayer is holding, split into downloads, cache and everything else. Worked out by
     // [StorageSplit], which is also what the Downloads screen reads, so the two panels cannot
@@ -1689,6 +1692,27 @@ fun SettingsScreen(
                         subtitle = s.settingsHomeCategoriesDetail,
                         icon = TmIcons.Grid,
                         onClick = { homeSheet = "categories" },
+                    )
+                }
+                // The channels each Home chip draws from (item 3, v1.0.16): the picker
+                // itself, over the shell's chat list, aimed at the assignment's own
+                // stored list. Nothing chosen is the chips reading kinds as before.
+                item(key = "home_movie_channels") {
+                    ActionRow(
+                        title = s.settingsHomeMovieChannels,
+                        modifier = Modifier.jumpTarget(searchTargets["home.movie_channels"]),
+                        subtitle = if (movieChannels.isEmpty()) s.settingsHomeChannelsEmpty else s.settingsHomeChannelsDetail(movieChannels.size),
+                        icon = TmIcons.Grid,
+                        onClick = { com.tmplayer.ui.browse.ChannelPickRequest.ask(com.tmplayer.ui.browse.ChannelPickTarget.Movies) },
+                    )
+                }
+                item(key = "home_show_channels") {
+                    ActionRow(
+                        title = s.settingsHomeShowChannels,
+                        modifier = Modifier.jumpTarget(searchTargets["home.show_channels"]),
+                        subtitle = if (showChannels.isEmpty()) s.settingsHomeChannelsEmpty else s.settingsHomeChannelsDetail(showChannels.size),
+                        icon = TmIcons.Grid,
+                        onClick = { com.tmplayer.ui.browse.ChannelPickRequest.ask(com.tmplayer.ui.browse.ChannelPickTarget.Shows) },
                     )
                 }
                 settingsNote { SettingsNoteText(s.settingsHomeFollowsAddedChosen) }

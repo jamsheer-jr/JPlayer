@@ -1105,6 +1105,8 @@ private fun Root() {
     // not come back with its old ticks, while a rotation in the middle of one keeps them.
     var addChatsCameFrom by rememberSaveable(stateSaver = ScreenSaver) { mutableStateOf<Screen>(Screen.Chats) }
     var addChatsRun by rememberSaveable { mutableStateOf(0) }
+    /** Which channel assignment the picker screen is for (item 3, v1.0.16), by name; null is the chats choice itself. */
+    var addChatsTarget by rememberSaveable { mutableStateOf<String?>(null) }
     // The Settings page open, kept here because Settings itself is gone while About or the cached
     // videos are showing, and coming back from either should land on the page that led there.
     var settingsPage by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
@@ -1993,6 +1995,7 @@ private fun Root() {
         // the picker over whatever asked, which Back returns to.
         val openAddChats: () -> Unit = {
             if (screen !is Screen.AddChats) {
+                addChatsTarget = null
                 addChatsCameFrom = screen
                 addChatsRun++
                 screen = Screen.AddChats
@@ -2001,6 +2004,18 @@ private fun Root() {
         val addChatsAsked by com.tmplayer.ui.browse.AddChatsRequest.pending.collectAsStateWithLifecycle()
         LaunchedEffect(addChatsAsked) {
             if (com.tmplayer.ui.browse.AddChatsRequest.take()) openAddChats()
+        }
+        // Settings' Movie channels and Show channels (item 3, v1.0.16): the same picker
+        // screen, its view model aimed at the assignment asked for.
+        val channelPickAsked by com.tmplayer.ui.browse.ChannelPickRequest.pending.collectAsStateWithLifecycle()
+        LaunchedEffect(channelPickAsked) {
+            val target = com.tmplayer.ui.browse.ChannelPickRequest.take() ?: return@LaunchedEffect
+            if (screen !is Screen.AddChats) {
+                addChatsTarget = target.name
+                addChatsCameFrom = screen
+                addChatsRun++
+                screen = Screen.AddChats
+            }
         }
         val reducedMotion = rememberReducedMotion() || Motion.reduced
         // A page of the browser, from Settings or Downloads: the browser comes back on it.
@@ -2371,12 +2386,23 @@ private fun Root() {
 
             is Screen.AddChats -> {
                 // No floating bar: the picker is a screen of its own, and answers Back itself.
-                com.tmplayer.ui.browse.AddChatsPage(
-                    settings = settings,
-                    chatsViewModel = chatsViewModel,
-                    run = addChatsRun,
-                    onClose = { screen = addChatsCameFrom },
-                )
+                val target = com.tmplayer.ui.browse.ChannelPickTarget.entries.firstOrNull { it.name == addChatsTarget }
+                if (target != null) {
+                    com.tmplayer.ui.browse.ChannelPickPage(
+                        settings = settings,
+                        chatsViewModel = chatsViewModel,
+                        run = addChatsRun,
+                        target = target,
+                        onClose = { screen = addChatsCameFrom },
+                    )
+                } else {
+                    com.tmplayer.ui.browse.AddChatsPage(
+                        settings = settings,
+                        chatsViewModel = chatsViewModel,
+                        run = addChatsRun,
+                        onClose = { screen = addChatsCameFrom },
+                    )
+                }
             }
         }
         }

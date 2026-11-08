@@ -204,6 +204,7 @@ object Backups {
         "link_history" to Kind.TEXT,
         "max_size_bytes" to Kind.LONG,
         "min_size_bytes" to Kind.LONG,
+        "movie_channels" to Kind.TEXT,
         "new_video_alerts" to Kind.BOOL,
         "night_mode" to Kind.BOOL,
         // Night downloads (item 7c, v1.0.15): the switch and the window's two ends, each a
@@ -239,6 +240,7 @@ object Backups {
         "series_status" to Kind.TEXT,
         // The channel streams already opened, by post (SeenStreams): Home marks the rest new.
         "seen_streams" to Kind.TEXT,
+        "show_channels" to Kind.TEXT,
         "show_remaining_time" to Kind.BOOL,
         "skip_silence" to Kind.BOOL,
         "sponsor_reminders" to Kind.BOOL,

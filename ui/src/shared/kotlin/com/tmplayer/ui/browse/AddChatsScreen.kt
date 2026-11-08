@@ -197,6 +197,13 @@ fun AddChatsScreen(
     searchField: (@Composable (value: String, onValueChange: (String) -> Unit, placeholder: String, modifier: Modifier, onSubmit: () -> Unit) -> Unit)? = null,
     required: Boolean = false,
     onLeave: () -> Unit = onClose,
+    /**
+     * The stored list the picker is working over, where it is not the AddedChats
+     * choice: the Movie channels and Show channels pickers (item 3, v1.0.16) pass
+     * their own lists, and only the names of chats the list no longer holds are read
+     * from it here. Null reads the choice, as the picker always has.
+     */
+    baseChats: List<AddedChat>? = null,
 ) {
     val s = LocalStrings.current
     val countWords = remember(s) { CountWords(s) }
@@ -215,11 +222,11 @@ fun AddChatsScreen(
     // chat that is there does not rebuild the rows.
     val everyId = remember(chats) { chats.mapTo(HashSet()) { it.id } }
     val strays by remember(everyId) { derivedStateOf { state.ticked.filterTo(LinkedHashSet()) { it !in everyId } } }
-    val rows = remember(chats, state.query, state.scope, state.recommended, starred, listComplete, strays, choice.chats) {
+    val rows = remember(chats, state.query, state.scope, state.recommended, starred, listComplete, strays, baseChats ?: choice.chats) {
         ChatPicking.rows(
             chats = chats,
             added = strays,
-            addedNames = choice.chats,
+            addedNames = baseChats ?: choice.chats,
             starred = starred,
             recommended = state.recommended,
             query = state.query,
@@ -1407,6 +1414,8 @@ fun AddChatsFed(
     searchField: (@Composable (value: String, onValueChange: (String) -> Unit, placeholder: String, modifier: Modifier, onSubmit: () -> Unit) -> Unit)? = null,
     required: Boolean = false,
     onLeave: () -> Unit = onClose,
+    /** The picker's own stored list, where it is not the choice: see [AddChatsScreen]. */
+    baseChats: List<AddedChat>? = null,
 ) {
     val everything by chatsViewModel.everything.collectAsState()
     val paging by chatsViewModel.paging.collectAsState()
@@ -1431,6 +1440,7 @@ fun AddChatsFed(
         searchField = searchField,
         required = required,
         onLeave = onLeave,
+        baseChats = baseChats,
     )
 }
 
@@ -1454,6 +1464,18 @@ private class LiveCounts : ChatCountCalls {
  */
 fun newAddChatsViewModel(settings: SettingsStore): AddChatsViewModel =
     AddChatsViewModel(settings, LiveCounts()).also { it.open() }
+
+/**
+ * A picker's view model over another stored list than the choice (item 3, v1.0.16):
+ * Settings' Movie channels and Show channels pickers, reading and writing their own
+ * keys through the same picker. Made once per opening, like [newAddChatsViewModel].
+ */
+fun newChannelListViewModel(
+    settings: SettingsStore,
+    read: suspend () -> List<com.tmplayer.data.AddedChat>,
+    write: suspend (List<com.tmplayer.data.AddedChat>) -> Unit,
+): AddChatsViewModel =
+    AddChatsViewModel(settings, LiveCounts(), write = write, initial = read).also { it.open() }
 
 /**
  * What Settings' "Chosen chats" row says under its name, the same on every platform: how many

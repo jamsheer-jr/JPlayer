@@ -26,3 +26,26 @@ object AddChatsRequest {
     /** True once for an asked-for picker, false after: the shell opens it and takes it. */
     fun take(): Boolean = _pending.value.also { _pending.value = false }
 }
+
+/** Which channel assignment a [ChannelPickRequest] is for. */
+enum class ChannelPickTarget { Movies, Shows }
+
+/**
+ * "Movie channels" or "Show channels" from Settings' Home page (item 3, v1.0.16):
+ * the same ask-and-take shape as [AddChatsRequest], carrying which assignment the
+ * picker is for, so the shell opens the one picker screen with its view model aimed
+ * at that assignment's stored list.
+ */
+object ChannelPickRequest {
+    private val _pending = MutableStateFlow<ChannelPickTarget?>(null)
+
+    /** The assignment the picker has been asked for and not yet opened for. */
+    val pending: StateFlow<ChannelPickTarget?> = _pending.asStateFlow()
+
+    fun ask(target: ChannelPickTarget) {
+        _pending.value = target
+    }
+
+    /** The asked-for target, once; null after: the shell opens the picker and takes it. */
+    fun take(): ChannelPickTarget? = _pending.value.also { _pending.value = null }
+}

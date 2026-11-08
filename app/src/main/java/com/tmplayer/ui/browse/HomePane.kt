@@ -282,7 +282,20 @@ internal fun HomePane(
     // The rows in the chip's shape: the banner, the rows and the surprise pick all
     // read these, so a Movies home is movies from its banner to its last row. The
     // full rows stay for what a See all page and a show's page read.
-    val chipRows = remember(rows, homeChip) { com.tmplayer.data.HomeChipFilter.apply(rows, homeChip) }
+    val chipContext = LocalContext.current
+    val chipSettings = remember { SettingsStore(chipContext) }
+    // The channels assigned to each kind in Settings (item 3, v1.0.16): a non-empty
+    // assignment is the chip's pool; empty is the kind reading as it always was.
+    val movieChannels by remember(chipSettings) { chipSettings.movieChannels }.collectAsState(initial = emptyList())
+    val showChannels by remember(chipSettings) { chipSettings.showChannels }.collectAsState(initial = emptyList())
+    val chipRows = remember(rows, homeChip, movieChannels, showChannels) {
+        com.tmplayer.data.HomeChipFilter.apply(
+            rows,
+            homeChip,
+            movieChats = movieChannels.mapTo(HashSet()) { it.id },
+            showChats = showChannels.mapTo(HashSet()) { it.id },
+        )
+    }
     // Recently added is the featured carousel at the top as well as a row, on a phone and a
     // television alike: its frame is held from the first frame whenever the row is, so nothing
     // below it moves when it fills, and given up (the rows moving up) once its fill finds no

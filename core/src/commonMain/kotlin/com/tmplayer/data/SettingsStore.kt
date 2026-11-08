@@ -28,6 +28,8 @@ private val FAVORITES = stringSetPreferencesKey("favorite_chats")
 // The retired hidden chats (AddedChats.HIDDEN_KEY): read once to fold them into the added chats, then deleted.
 private val HIDDEN_CHATS = stringPreferencesKey("hidden_chats")
 private val ADDED_CHATS = stringPreferencesKey("added_chats") // AddedChats.KEY
+private val MOVIE_CHANNELS = stringPreferencesKey("movie_channels")
+private val SHOW_CHANNELS = stringPreferencesKey("show_channels")
 private val ADDED_CHATS_MODE = stringPreferencesKey("added_chats_mode") // AddedChats.MODE_KEY
 private val PLAYER_HINT_SEEN = booleanPreferencesKey("player_hint_seen")
 private val FIRST_VIDEO_TIP_DISMISSED = booleanPreferencesKey("first_video_tip_dismissed")
@@ -471,6 +473,25 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             prefs[ADDED_CHATS] = AddedChats.encode(chats)
             prefs[ADDED_CHATS_MODE] = AddedChats.MODE_PICKED
         }
+    }
+
+    /**
+     * The channels the Home Movies chip draws from (Settings, Home; item 3, v1.0.16),
+     * in the picker's own stored form ([AddedChats.encode]): an empty list is no
+     * assignment, and the chip falls back to telling films from shows by their names
+     * and matches, as it did before the assignment existed.
+     */
+    val movieChannels: Flow<List<AddedChat>> = read { prefs -> AddedChats.decode(prefs[MOVIE_CHANNELS]) }
+
+    suspend fun setMovieChannels(chats: List<AddedChat>) {
+        prefs.edit { it[MOVIE_CHANNELS] = AddedChats.encode(chats) }
+    }
+
+    /** The channels the Home Shows chip draws from: [movieChannels]' counterpart. */
+    val showChannels: Flow<List<AddedChat>> = read { prefs -> AddedChats.decode(prefs[SHOW_CHANNELS]) }
+
+    suspend fun setShowChannels(chats: List<AddedChat>) {
+        prefs.edit { it[SHOW_CHANNELS] = AddedChats.encode(chats) }
     }
 
     /**

@@ -91,6 +91,42 @@ class HomeNetflixShapeTest {
     }
 
     @Test
+    fun `an assigned channel pool cuts the chip before the kind reading`() {
+        // Item 3, v1.0.16: chat 2 is assigned to Movies, chat 3 to Shows. A film in
+        // the shows channel is out of the Shows pool, and an episode in the movies
+        // channel is out of the Movies pool; with no assignment the kind reading
+        // alone decides, as the test above pins.
+        val filmHome = video(1, "Night Train 2024.mp4")
+        val filmMovies = video(2, "Day Train 2024.mp4")
+        val episodeShows = video(3, "Harbour Notes S01E01.mkv")
+        val episodeElsewhere = video(1, "Harbour Notes S01E02.mkv")
+        val filmShows = video(3, "Slow River 2024.mp4")
+        val rows = listOf(
+            HomeRow.Chat(1, "Chat 1", listOf(ShelfEntry.File(filmHome), ShelfEntry.File(episodeElsewhere)), loaded = true),
+            HomeRow.Chat(2, "Chat 2", listOf(ShelfEntry.File(filmMovies)), loaded = true),
+            HomeRow.Chat(3, "Chat 3", listOf(ShelfEntry.File(episodeShows), ShelfEntry.File(filmShows)), loaded = true),
+            HomeRow.Catalog("mixed", "", listOf(ShelfEntry.File(filmHome), ShelfEntry.File(filmMovies), ShelfEntry.File(episodeShows)), all = listOf(ShelfEntry.File(filmHome), ShelfEntry.File(filmMovies), ShelfEntry.File(episodeShows))),
+        )
+
+        val movies = HomeChipFilter.apply(rows, HomeChip.Movies, movieChats = setOf(2L))
+        // Only chat 2's row stands, and the catalog shelf keeps only its film.
+        assertEquals(listOf("chat-2", "catalog-mixed"), keys(movies))
+        val catalog = movies.filterIsInstance<HomeRow.Catalog>().single()
+        assertEquals(listOf(filmMovies.messageId), catalog.all.map { (it as ShelfEntry.File).item.messageId })
+
+        val shows = HomeChipFilter.apply(rows, HomeChip.Shows, showChats = setOf(3L))
+        assertEquals(listOf("chat-3", "catalog-mixed"), keys(shows))
+        val showCatalog = shows.filterIsInstance<HomeRow.Catalog>().single()
+        assertEquals(listOf(episodeShows.messageId), showCatalog.all.map { (it as ShelfEntry.File).item.messageId })
+
+        // An empty assignment is the kind reading alone.
+        assertEquals(
+            HomeChipFilter.apply(rows, HomeChip.Movies),
+            HomeChipFilter.apply(rows, HomeChip.Movies, movieChats = emptySet()),
+        )
+    }
+
+    @Test
     fun `the New and Hot chip keeps only new arrivals`() {
         val film = video(1, "Night Train 2024.mp4")
         val episode = video(1, "Harbour Notes S01E02.mkv")

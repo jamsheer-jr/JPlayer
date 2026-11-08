@@ -215,6 +215,8 @@ fun settingsSearchEntries(s: Strings): List<SettingsSearchEntry> = buildList {
         "home.catalog", SettingsPage.Home, s.settingsHomeCatalog,
         s.settingsHomeCatalogOn + " " + s.settingsHomeCatalogOff,
     )
+    add("home.movie_channels", SettingsPage.Home, s.settingsHomeMovieChannels, s.settingsHomeChannelsEmpty)
+    add("home.show_channels", SettingsPage.Home, s.settingsHomeShowChannels, s.settingsHomeChannelsEmpty)
 
     // ---- TV home --------------------------------------------------------------------------
     add(
@@ -309,6 +311,7 @@ val settingsSearchAnchors: Set<String> = setOf(
     "library.metadata_toggle", "library.metadata_skip_times", "library.metadata_key",
     "library.metadata_omdb_key", "library.metadata_clear_cache",
     "home.carousel", "home.continue", "home.recent", "home.starred_rows", "home.catalog",
+    "home.movie_channels", "home.show_channels",
     "tvhome.watch_next", "tvhome.channels",
     "notice.downloads", "notice.new_episodes", "notice.new_videos", "notice.missing_pieces",
     "notice.resume", "notice.update_ready", "notice.low_storage",

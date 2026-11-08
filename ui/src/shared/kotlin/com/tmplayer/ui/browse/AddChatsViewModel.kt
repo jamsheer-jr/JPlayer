@@ -43,6 +43,13 @@ class AddChatsViewModel(
     private val settings: SettingsStore? = null,
     private val counts: ChatCountCalls? = null,
     private val write: (suspend (List<AddedChat>) -> Unit)? = settings?.let { store -> store::setAddedChats },
+    /**
+     * The chats ticked when the picker opens, read from somewhere other than the
+     * AddedChats choice: the Movie channels and Show channels pickers in Settings
+     * (item 3, v1.0.16) reuse this picker over their own stored lists, with [write]
+     * aimed at their own keys. Null reads the choice, as the picker always has.
+     */
+    private val initial: (suspend () -> List<AddedChat>)? = null,
     /** Whether [countRest] counts the whole account in the background; a test of the row counts turns it off. */
     private val countsRest: Boolean = true,
 ) : ViewModel(com.tmplayer.platform.JobFailures.viewModelScope("AddChats")) {
@@ -103,6 +110,15 @@ class AddChatsViewModel(
     fun open() {
         val store = settings ?: return
         viewModelScope.launch {
+            // Another stored list than the choice (see [initial]): tick exactly those.
+            initial?.let { read ->
+                val chats = runCatching { read() }.getOrDefault(emptyList())
+                addedNames = chats
+                val ids = chats.mapTo(LinkedHashSet()) { it.id }
+                opened = ids
+                _state.update { it.copy(ticked = ids) }
+                return@launch
+            }
             val choice = store.addedChats.first()
             addedNames = choice.chats
             if (choice.mode == AddedMode.Picked) {
