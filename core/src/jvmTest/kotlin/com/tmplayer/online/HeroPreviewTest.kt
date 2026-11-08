@@ -48,6 +48,30 @@ class HeroPreviewTest {
         assertFalse(autoplay(inAppPlayer = false))
     }
 
+    // ---- the TV Home banner preview (item 11b, v1.0.15) --------------------------------------
+
+    private fun banner(
+        switchOn: Boolean = true,
+        trailer: MetaTrailer? = this.trailer,
+        metered: Boolean = false,
+        inAppPlayer: Boolean = true,
+        reducedMotion: Boolean = false,
+    ) = HeroPreview.bannerPreview(switchOn, trailer, metered, inAppPlayer, reducedMotion)
+
+    @Test
+    fun theBannerPlaysOnATelevisionWithTheSwitchOn() {
+        assertTrue(banner())
+    }
+
+    @Test
+    fun theBannerFollowsTheSameSwitchMeteredAndMotionRules() {
+        assertFalse(banner(switchOn = false))
+        assertFalse(banner(trailer = null))
+        assertFalse(banner(metered = true))
+        assertFalse(banner(inAppPlayer = false))
+        assertFalse(banner(reducedMotion = true))
+    }
+
     @Test
     fun reducedMotionKeepsTheArtwork() {
         assertFalse(autoplay(reducedMotion = true))

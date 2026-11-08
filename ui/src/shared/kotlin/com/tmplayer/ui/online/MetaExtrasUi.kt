@@ -449,6 +449,30 @@ fun DetailHeroPreview(trailer: MetaTrailer?, switchOn: Boolean, modifier: Modifi
     }
 }
 
+/**
+ * The TV Home banner's trailer preview (owner, v1.0.15, item 11b): the focused card's
+ * trailer playing muted in the banner area, while [HeroPreview.bannerPreview] allows it.
+ * The focus-safety is the host's shape, not this composable's: the caller draws it inside
+ * the banner while the remote rests on the carousel's own buttons, shows it only after
+ * the focus has dwelt, and stops composing it the moment focus leaves, which disposes of
+ * the embed. The embed itself takes no focus and no keys (see TrailerPlayer), it has no
+ * sound button here (a banner is not a page), and a trailer that cannot play on the stick
+ * hands the banner back to its artwork through the failure path.
+ */
+@Composable
+fun TvBannerTrailerPreview(trailer: MetaTrailer?, switchOn: Boolean, modifier: Modifier = Modifier) {
+    trailer ?: return
+    val inApp = rememberInAppTrailers()
+    val metered = rememberMeteredConnection()
+    val reduced = com.tmplayer.ui.theme.rememberReducedMotion()
+    if (!HeroPreview.bannerPreview(switchOn, trailer, metered, inAppPlayer = inApp, reducedMotion = reduced)) return
+    val claim = remember { HeroPreviewClaims.claim() }
+    if (HeroPreviewClaims.latest != claim) return
+    var failed by remember(trailer.key) { mutableStateOf(false) }
+    if (failed) return
+    HeroTrailerPlayer(trailer, muted = true, onFailed = { failed = true }, modifier = modifier)
+}
+
 /** The trailer's YouTube link as a QR code on a white plate, with a sentence saying what it is for. */
 @Composable
 fun TrailerQr(trailer: MetaTrailer, modifier: Modifier = Modifier, text: String? = null) {

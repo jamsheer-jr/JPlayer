@@ -29,4 +29,23 @@ object HeroPreview {
         inAppPlayer: Boolean,
         reducedMotion: Boolean,
     ): Boolean = switchOn && trailer != null && !metered && !television && inAppPlayer && !reducedMotion
+
+    /**
+     * Whether the TV Home banner may play the focused card's trailer in place (owner,
+     * v1.0.15, item 11b), Netflix style. The same switch, the same metered rule and the
+     * same reduced-motion rule as [autoplay]; the television itself is the point here, so
+     * it is not an exclusion. What keeps it safe on a television is not this rule but the
+     * shape of the surface: the preview is drawn inside the banner the focus already
+     * rests on, takes no focus and no keys, and is disposed of the moment focus leaves
+     * the carousel, so the D-pad order is the carousel's own throughout. A stick too weak
+     * for the embed answers through the player's failure callback, and the banner falls
+     * back to its artwork.
+     */
+    fun bannerPreview(
+        switchOn: Boolean,
+        trailer: MetaTrailer?,
+        metered: Boolean,
+        inAppPlayer: Boolean,
+        reducedMotion: Boolean,
+    ): Boolean = switchOn && trailer != null && !metered && inAppPlayer && !reducedMotion
 }

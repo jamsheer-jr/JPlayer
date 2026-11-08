@@ -293,6 +293,8 @@ internal fun HomePane(
     val bannerContext = LocalContext.current
     val bannerSettings = remember(bannerContext) { SettingsStore(bannerContext) }
     val bannerMode by remember(bannerSettings) { bannerSettings.homeBannerMode }.collectAsState(initial = "auto")
+    // The trailer autoplay switch, for the TV banner's preview (item 11b, v1.0.15).
+    val trailerSwitch by remember(bannerSettings) { bannerSettings.heroTrailerAutoplay }.collectAsState(initial = true)
     val bannerPins by remember(bannerSettings) { bannerSettings.homeBannerPins }.collectAsState(initial = emptyList())
     // The catalog's hidden groups and their order, for the Categories picker on Home
     // itself (owner, v1.0.14, item 23): the same store Settings writes, read through the
@@ -785,6 +787,7 @@ internal fun HomePane(
                             header = tvHeader?.let { heading -> { heading(true) } },
                             playFocus = tvPlayFocus,
                             idle = homeIdle,
+                            trailerSwitch = trailerSwitch,
                             modifier = Modifier.onFocusChanged { state ->
                                 if (state.hasFocus) {
                                     // Up from the first row, which moved Home up to stand whole,

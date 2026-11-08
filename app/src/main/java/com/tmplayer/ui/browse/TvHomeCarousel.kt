@@ -122,6 +122,8 @@ internal fun TvFeaturedCarousel(
     playFocus: androidx.compose.ui.focus.FocusRequester? = null,
     /** When the remote was last pressed on Home; null keeps the pages moving for as long as [active]. */
     idle: HomeIdle? = null,
+    /** The viewer's trailer autoplay switch, for the banner preview (item 11b, v1.0.15). */
+    trailerSwitch: Boolean = true,
 ) {
     var headerPx by remember { mutableIntStateOf(0) }
     // Home gives the carousel the whole width to the screen's edge, as a backdrop should have;
@@ -186,6 +188,9 @@ internal fun TvFeaturedCarousel(
             // under the page's own words.
             TvFeaturedArt(shown, chatTitle, start = start, headerFade = headerFade)
         }
+        // The banner trailer preview (item 11b, v1.0.15): over the artwork, under the
+        // buttons, only while the remote rests on this carousel.
+        TvBannerPreview(pick, focusedIn, trailerSwitch, Modifier.matchParentSize())
 
         // What Play starts, worked out as the phone's page does.
         val series = pick.series
@@ -492,6 +497,40 @@ private val PAGE_PAD = 24.dp
  * Home's grid still lines up.
  */
 private val HERO_START_EXTRA = 10.dp
+
+/**
+ * The banner trailer preview (item 11b, v1.0.15), a composable of its own so the remote
+ * coming and going recomposes only this, never the carousel (the rule [CarouselTurns]
+ * already follows). It reads the focus state the carousel keeps, dwells a moment so a
+ * remote walking past never starts a trailer, then draws the preview over the artwork.
+ * Focus leaving, or the page turning, stops the composition, which disposes of the
+ * embed: the preview never holds focus, never takes a key, and never outlives the
+ * remote's stay on the row.
+ */
+@Composable
+private fun TvBannerPreview(
+    pick: FeaturedPick,
+    focusedIn: androidx.compose.runtime.State<Boolean>,
+    switchOn: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val meta = rememberMeta(pick.item, showOnly = pick.isShow)
+    val extras = com.tmplayer.ui.online.rememberMetaExtras(meta)
+    var dwell by remember(pick.key) { mutableStateOf(false) }
+    val focused = focusedIn.value
+    LaunchedEffect(pick.key, focused) {
+        dwell = false
+        if (focused) {
+            kotlinx.coroutines.delay(BANNER_DWELL_MS)
+            dwell = true
+        }
+    }
+    if (!focused || !dwell) return
+    com.tmplayer.ui.online.TvBannerTrailerPreview(extras?.trailer, switchOn, modifier)
+}
+
+/** How long the remote rests on the carousel before its trailer starts (item 11b). */
+private const val BANNER_DWELL_MS = 1200L
 
 /** The share of the width the name and facts may take, over the start's fade. */
 private const val TEXT_SHARE = 0.6f
