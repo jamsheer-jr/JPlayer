@@ -260,6 +260,13 @@ object TmSchemes {
         primaryContainer = Color(0xFF5C0A10),
         onPrimaryContainer = Color(0xFFFFD9DB),
         inversePrimary = Color(0xFFFF6B74),
+        // The danger red is the same red (owner, 2026-11-08: "rose red"): the base
+        // scheme's error is the pale M3 pink (0xFFFFB4AB), which is what the Recently
+        // added ribbon and the Top 10 tag (both Tone.danger) were wearing.
+        error = Color(0xFFE50914),
+        onError = Color(0xFFFFFFFF),
+        errorContainer = Color(0xFF5C0A10),
+        onErrorContainer = Color(0xFFFFD9DB),
         background = Color(0xFF000000),
         surface = Color(0xFF000000),
         surfaceDim = Color(0xFF000000),
