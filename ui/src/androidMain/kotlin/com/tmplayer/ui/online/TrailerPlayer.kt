@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -263,7 +264,10 @@ internal fun HeroTrailerPlayer(
         }
         runCatching { view?.evaluateJavascript(script, null) }
     }
-    Box(modifier.background(Color.Black)) {
+    // Invisible until it plays: the artwork stands under the preview, and a slow or hung
+    // embed must read as the artwork standing, never as a black box the page looks stuck
+    // on (owner, 2026-11-08). Once it runs, the picture covers the artwork as before.
+    Box(modifier.alpha(if (phase == TrailerPhase.Playing) 1f else 0f)) {
         AndroidView(
             factory = { context ->
                 WebView(context).apply {
@@ -310,8 +314,12 @@ internal fun HeroTrailerPlayer(
     }
 }
 
-/** Long enough for a slow line to start a hero preview; past it the artwork stays. */
-private const val HERO_TIMEOUT_MS = 12_000L
+/**
+ * Long enough for a slow line to start a hero preview; past it the artwork stays. Six
+ * seconds, halved from twelve at the owner's word (2026-11-08): a hung embed held the
+ * hero for the whole twelve and the page read as stuck.
+ */
+private const val HERO_TIMEOUT_MS = 6_000L
 
 private enum class TrailerPhase { Loading, Playing, Failed }
 
