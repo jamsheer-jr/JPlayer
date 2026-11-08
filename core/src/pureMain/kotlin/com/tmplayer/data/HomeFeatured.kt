@@ -184,7 +184,17 @@ object HomeFeatured {
     fun bigEnough(pick: FeaturedPick): Boolean {
         val series = pick.series
         if (series != null) {
-            return series.episodes.any { episode -> episode.item.sizeBytes >= MIN_BYTES || episode.copies.any { it.sizeBytes >= MIN_BYTES } }
+            // A show also passes by its whole weight (owner, 2026-11-08): episodes are
+            // cut small, so the single file test alone kept nearly every series out
+            // of the banner, and the Shows home had no banner at all.
+            var total = 0L
+            for (episode in series.episodes) {
+                val biggest = maxOf(episode.item.sizeBytes, episode.copies.maxOfOrNull { it.sizeBytes } ?: 0L)
+                if (biggest >= MIN_BYTES) return true
+                total += biggest
+                if (total >= MIN_BYTES) return true
+            }
+            return false
         }
         val item = pick.item
         return item.sizeBytes >= MIN_BYTES || item.versions.any { it.sizeBytes >= MIN_BYTES }

@@ -125,7 +125,10 @@ class HomeFeaturedTest {
             ),
         ).single()
         assertEquals(1, HomeFeatured.pick(listOf(show(450 * SizeFilter.MB))).size)
-        assertTrue(HomeFeatured.pick(listOf(show(250 * SizeFilter.MB))).isEmpty())
+        // By the whole weight since v1.0.17 (owner): two 250 MB episodes are 500 MB of show.
+        assertEquals(1, HomeFeatured.pick(listOf(show(250 * SizeFilter.MB))).size)
+        // Two 150 MB episodes are under the floor however they are counted.
+        assertTrue(HomeFeatured.pick(listOf(show(150 * SizeFilter.MB))).isEmpty())
         // A lone episode by its own file.
         val lone = video("Harbour.Notes.S01E03.720p.mkv", date = 15, durationSec = 2_600).copy(sizeBytes = 300 * SizeFilter.MB)
         assertTrue(HomeFeatured.pick(listOf(file(lone))).isEmpty())
