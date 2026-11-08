@@ -48,6 +48,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -211,7 +212,7 @@ private fun themeDetail(s: Strings, theme: ThemeChoice, form: DeviceForm): Strin
 @Composable
 private fun Section(title: String, detail: String, choices: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = Tone.text)
+        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = Tone.text)
         choices()
         Text(detail, style = MaterialTheme.typography.bodySmall, color = Tone.muted)
     }
@@ -301,7 +302,12 @@ private fun Preview(modifier: Modifier) {
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(s.homeRowContinue, style = MaterialTheme.typography.titleSmall, color = Tone.text, maxLines = 1)
+        // The mock Home carries the mark itself (owner, v1.0.17): the preview is
+        // J Player's Home, not a generic shelf.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.tmplayer.ui.components.LogoMark(20.dp)
+            Text(s.homeRowContinue, style = MaterialTheme.typography.titleSmall, color = Tone.text, maxLines = 1)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             for (watched in listOf(0.7f, 0.35f, 0.9f)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {

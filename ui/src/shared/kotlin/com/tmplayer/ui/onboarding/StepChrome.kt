@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,6 +46,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -114,37 +116,51 @@ internal fun StepFrame(
             val brand: @Composable () -> Unit = {
                 com.tmplayer.ui.components.BrandLockup(layout = com.tmplayer.ui.components.BrandLayout.Row)
             }
-            if (!wide) {
-                brand()
-                Spacer(Modifier.height(12.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (wide) {
+            // The head of the wizard in J Player's own form (owner, v1.0.17): on a
+            // phone the brand, the step line and the progress stand together on one
+            // card, so the first run opens as the app's own front door and not a
+            // borrowed form. Wide screens and the television keep the plain head
+            // they have always had; the choices under it never change.
+            val head: @Composable () -> Unit = {
+                if (!wide) {
                     brand()
-                    Spacer(Modifier.width(24.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
-                Row(
-                    Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(group, style = MaterialTheme.typography.labelLarge, color = Tone.accent, maxLines = 1)
-                    Text(
-                        s.setupStep(position.index + 1, position.total),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Tone.muted,
-                        maxLines = 1,
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (wide) {
+                        brand()
+                        Spacer(Modifier.width(24.dp))
+                    }
+                    Row(
+                        Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(group, style = MaterialTheme.typography.labelLarge, color = Tone.accent, maxLines = 1)
+                        Text(
+                            s.setupStep(position.index + 1, position.total),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Tone.muted,
+                            maxLines = 1,
+                        )
+                    }
+                    if (onSkipAll != null) {
+                        QuietButton(s.setupSkipAll, modifier = Modifier.arrowsMoveFocus(), onClick = onSkipAll)
+                    } else {
+                        // As tall as Skip all, so the bar under it does not move on the last step.
+                        Spacer(Modifier.height(QUIET_HEIGHT))
+                    }
                 }
-                if (onSkipAll != null) {
-                    QuietButton(s.setupSkipAll, modifier = Modifier.arrowsMoveFocus(), onClick = onSkipAll)
-                } else {
-                    // As tall as Skip all, so the bar under it does not move on the last step.
-                    Spacer(Modifier.height(QUIET_HEIGHT))
-                }
+                Spacer(Modifier.height(6.dp))
+                StepBar(position)
             }
-            Spacer(Modifier.height(6.dp))
-            StepBar(position)
+            if (form == DeviceForm.Phone && !wide) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Tone.surface).padding(14.dp),
+                ) { head() }
+            } else {
+                head()
+            }
             Spacer(Modifier.height(if (wide) 20.dp else 16.dp))
             Box(Modifier.weight(1f).fillMaxWidth()) { content(wide) }
             Spacer(Modifier.height(12.dp))
@@ -187,7 +203,9 @@ private fun StepBar(position: FlowPosition) {
                     },
                     label = "stepBar",
                 )
-                Box(Modifier.weight(1f).height(BAR).clip(CircleShape).background(color))
+                // The step standing is a longer pill (owner, v1.0.17): where the
+                // wizard is, read at a glance.
+                Box(Modifier.weight(if (at == position.index) 2f else 1f).height(BAR).clip(CircleShape).background(color))
             }
         }
     }
@@ -259,7 +277,10 @@ internal fun QuietButton(label: String, icon: Boolean = false, modifier: Modifie
 @Composable
 internal fun StepHeading(title: String, body: String?, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, color = Tone.text)
+        // The wizard's own heading mark (owner, v1.0.17): a short accent bar over
+        // the step's name, the same on every step.
+        Box(Modifier.width(36.dp).height(4.dp).clip(CircleShape).background(Tone.accent))
+        Text(title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold), color = Tone.text)
         if (body != null) Text(body, style = MaterialTheme.typography.bodyMedium, color = Tone.muted)
     }
 }
@@ -268,7 +289,7 @@ private val WIDE_FROM = 560.dp
 private val NARROW_MAX = 600.dp
 private val WIDE_MAX = 1200.dp
 private val QUIET_HEIGHT: Dp = 40.dp
-private val BAR = 4.dp
+private val BAR = 6.dp
 private val STEP_GAP = 3.dp
 private val GROUP_GAP = 12.dp
 
