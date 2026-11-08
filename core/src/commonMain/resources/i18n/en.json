@@ -1070,6 +1070,7 @@
   },
   "home": {
     "categories": "Categories",
+    "categories_note": "Every category in your chats. Tap one to open its page.",
     "channel_join_failed": "Could not join that channel. Try again.",
     "channel_new_videos": "{count, plural, one {# new video} other {# new videos}}",
     "channel_recent": "Recently added",

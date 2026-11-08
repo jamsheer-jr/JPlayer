@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -76,6 +77,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -336,7 +338,6 @@ internal fun HomePane(
     // itself (owner, v1.0.14, item 23): the same store Settings writes, read through the
     // one SettingsStore this page already keeps, so a change in either place is the
     // change in both.
-    val homeLayout by remember(bannerSettings) { bannerSettings.homeLayout }.collectAsState(initial = com.tmplayer.data.HomeLayout())
     // Home's own update card (owner, v1.0.15, item 13): stands while the feed's newer
     // version stands, until the viewer updates or puts it away for the day (its
     // memory is [com.tmplayer.data.HomeUpdateNotice], kept in the same store).
@@ -432,6 +433,23 @@ internal fun HomePane(
     // The Categories index sheet (phone, v1.0.13): opened from the category row's last pill.
     var categoriesOpen by remember { mutableStateOf(false) }
     val catalogRow = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
+    // A category page opened from the Categories list (owner, v1.0.17): the row's key
+    // in the chip's shape, so a Shows home opens the shows' cut of the category. A
+    // language's page ("langpage-<code>", from the language tiles) merges that
+    // language's film and series rows into the one page.
+    var categoryKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val categoryRow = categoryKey?.let { key ->
+        if (key.startsWith("langpage-")) {
+            val code = key.removePrefix("langpage-")
+            val films = chipRows.firstOrNull { it.key == "catalog-lang-$code" } as? HomeRow.Catalog
+            val shows = chipRows.firstOrNull { it.key == "catalog-series-lang-$code" } as? HomeRow.Catalog
+            val merged = (films?.all.orEmpty() + shows?.all.orEmpty()).distinctBy { it.key }
+            if (merged.isEmpty()) null
+            else HomeRow.Catalog(key, com.tmplayer.data.HomeRows.languageName(code) ?: code, merged.take(com.tmplayer.data.HomeRows.LIMIT), all = merged)
+        } else {
+            chipRows.firstOrNull { it.key == key } as? HomeRow.Catalog
+        }
+    }
     // Open link (v1.0.11): an address pasted on Home, played through the same stream mode
     // the built-in channel's posts use.
     var openLink by remember { mutableStateOf(false) }
@@ -1218,59 +1236,29 @@ internal fun HomePane(
         FastScroller(listState)
     }
 
-    // The Categories picker on Home itself (phone, owner, v1.0.14, item 23): the same
-    // sheet Settings, Home, Categories offers, over the same store, so the two stay in
-    // sync: every catalog group with its shown or hidden state, a tap turning it over,
-    // and the move buttons writing the order whole, exactly as the Settings sheet does.
-    // It replaces the index this chip opened before (v1.0.13), which only jumped to a
-    // shelf; the Shows, Movies and Anime chips still jump, and a hidden shelf leaves
-    // Home on the next build, as it does from Settings.
+    // The Categories list on Home itself (phone, owner, v1.0.17): every category the
+    // chats actually hold, in the shape of
+    // the chip standing (the Shows home lists the shows' categories, the Movies home
+    // the movies'), and a tap opens that category's own page, banner first, the way
+    // the streaming apps do it. Which shelves Home builds and their order stay in
+    // Settings, Home, Categories, exactly as they were.
     if (categoriesOpen) {
-        val ordered = (homeLayout.catalogOrder + com.tmplayer.data.HomeLayout.CATALOG_GROUPS).distinct()
+        val navRows = chipRows.filterIsInstance<HomeRow.Catalog>()
         ChoiceSheet(
-            title = s.settingsHomeCategories,
-            note = s.settingsHomeCategoriesDetail,
+            title = s.homeCategories,
+            note = s.homeCategoriesNote,
             onDismiss = { categoriesOpen = false },
             onClose = { categoriesOpen = false },
         ) {
             ChoiceList {
-                ordered.forEachIndexed { index, group ->
-                    val shown = group !in homeLayout.hiddenCatalog
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChoiceLine(
-                            title = com.tmplayer.ui.settings.homeCategoryLabel(group, s),
-                            detail = if (shown) s.settingsHomeCategoryShown else s.settingsHomeCategoryHidden,
-                            selected = null,
-                            icon = if (shown) TmIcons.Check else null,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            val next = if (shown) homeLayout.hiddenCatalog + group else homeLayout.hiddenCatalog - group
-                            scope.launch { bannerSettings.setHomeHiddenCatalog(next) }
-                        }
-                        androidx.compose.material3.IconButton(
-                            enabled = index > 0,
-                            onClick = {
-                                val next = ordered.toMutableList()
-                                val other = next[index - 1]
-                                next[index - 1] = group
-                                next[index] = other
-                                scope.launch { bannerSettings.setHomeCatalogOrder(next) }
-                            },
-                        ) {
-                            androidx.compose.material3.Icon(TmIcons.ChevronUp, contentDescription = s.settingsMoveUp)
-                        }
-                        androidx.compose.material3.IconButton(
-                            enabled = index < ordered.lastIndex,
-                            onClick = {
-                                val next = ordered.toMutableList()
-                                val other = next[index + 1]
-                                next[index + 1] = group
-                                next[index] = other
-                                scope.launch { bannerSettings.setHomeCatalogOrder(next) }
-                            },
-                        ) {
-                            androidx.compose.material3.Icon(TmIcons.ChevronDown, contentDescription = s.settingsMoveDown)
-                        }
+                navRows.forEach { row ->
+                    ChoiceLine(
+                        title = homeRowTitle(row, s),
+                        detail = s.homeSeeAllCount(row.all.size),
+                        selected = null,
+                    ) {
+                        categoriesOpen = false
+                        categoryKey = row.key
                     }
                 }
             }
@@ -1510,6 +1498,23 @@ internal fun HomePane(
             },
         )
     }
+    categoryRow?.let { row ->
+        CatalogSeeAll(
+            row = row,
+            title = if (row.kind.startsWith("langpage-")) row.label else homeRowTitle(row, LocalStrings.current),
+            watch = watch,
+            start = start,
+            end = end,
+            bottom = bottom,
+            chatTitle = chatTitle,
+            onPlay = onPlay,
+            onHold = onHoldMedia,
+            onOpenSeries = { opened.open(it) },
+            onClose = { categoryKey = null },
+            hero = true,
+            onDetails = onDetails,
+        )
+    }
     opened.series?.let { series ->
         SeriesOpened(
             series = series,
@@ -1739,6 +1744,120 @@ private fun RowSeeAll(
 }
 
 /**
+ * A category page's banner (owner, v1.0.17): the category's first title standing wide
+ * over its grid, with Play and My List, the way the streaming apps head a category.
+ * The whole surface opens the title, as a Home banner page's tap does. My List reads
+ * and writes the one Watch later store, as the Home banner's pill does.
+ */
+@Composable
+private fun CategoryHero(
+    entry: ShelfEntry,
+    watch: SeriesWatch,
+    chatTitle: (Long) -> String,
+    onPlay: (MediaItem, String) -> Unit,
+    onOpenSeries: (Series) -> Unit,
+    onDetails: (MediaItem, String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val s = LocalStrings.current
+    val context = LocalContext.current
+    val series = (entry as? ShelfEntry.Show)?.series
+    val item = when (entry) {
+        is ShelfEntry.File -> entry.item
+        is ShelfEntry.Show -> entry.series.cover
+    }
+    val chat = chatTitle(item.chatId)
+    val meta = com.tmplayer.ui.online.rememberMeta(item, showOnly = series != null)
+    val cover = com.tmplayer.ui.components.rememberCover(item, chat)
+    val source = remember(item, meta?.wideUrl, meta?.posterUrl, cover) {
+        com.tmplayer.ui.components.BackdropSource(item.miniThumbnail, item.thumbnailFileId, cover, meta?.wideUrl, meta?.posterUrl)
+    }
+    val title = series?.title?.ifBlank { null } ?: SeriesShelf.tileTitle(item)
+    val laterStore = remember(context) { com.tmplayer.data.WatchLaterStore(context) }
+    val laterKeys by remember(laterStore) { laterStore.keys }.collectAsStateWithLifecycle(initialValue = emptySet())
+    val laterShows by remember(laterStore) { laterStore.showIds }.collectAsStateWithLifecycle(initialValue = emptySet())
+    val listed = if (series != null) {
+        WatchLaterRecord.showId(item.chatId, series.key) in laterShows
+    } else {
+        SettingsStore.progressKey(item.chatId, item.messageId) in laterKeys
+    }
+    val showProgress = remember(series, watch) { series?.let { watch.progress(it) } }
+    val episode = series?.let { showProgress?.next ?: it.episodes.firstOrNull() }
+    val playItem = if (series != null && episode != null && showProgress != null) watch.pick(episode, showProgress) else item
+    val playLabel = if (series != null && episode != null && showProgress != null) {
+        seriesPlayLabel(episode.code, watch.pointOf(episode), showProgress.watched > 0)
+    } else if ((watch.point(item)?.positionMs ?: 0L) > 0L) {
+        s.commonResume
+    } else {
+        s.commonPlay
+    }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+            ) { if (series != null) onOpenSeries(series) else onDetails(item, chat) },
+    ) {
+        com.tmplayer.ui.components.EdgeBackdrop(source, Modifier.fillMaxSize())
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)), startY = 120f),
+            ),
+        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            com.tmplayer.ui.online.TitleArt(meta, maxWidth = 220.dp, maxHeight = 64.dp, alignment = Alignment.BottomCenter) {
+                M3Text(
+                    title,
+                    style = M3MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                HeroPill(
+                    label = playLabel,
+                    onClick = { onPlay(playItem, chatTitle(playItem.chatId)) },
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                MyListPill(
+                    listed = listed,
+                    onClick = {
+                        com.tmplayer.App.backgroundScope.launch {
+                            runCatching {
+                                when {
+                                    series != null && !listed -> laterStore.add(WatchLaterRecord.ofShow(series, chat, System.currentTimeMillis()))
+                                    series != null -> laterStore.removeShow(item.chatId, series.key)
+                                    !listed -> laterStore.add(WatchLaterRecord.of(item, chat, System.currentTimeMillis()))
+                                    else -> laterStore.remove(item.chatId, item.messageId)
+                                }
+                            }
+                        }
+                        com.tmplayer.ui.components.showMessage(
+                            context,
+                            if (listed) s.detailWatchLaterRemoved(series?.title ?: item.title) else s.detailWatchLaterAdded(series?.title ?: item.title),
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
  * A catalog shelf's See all page (owner, 2026-11-06): the shelf's whole list as a grid,
  * the same shell as Recently added's page, with nothing to read on for: the shelf's list
  * is already whole in memory ([HomeRow.Catalog.all]).
@@ -1756,6 +1875,9 @@ private fun CatalogSeeAll(
     onHold: (MediaItem, String) -> Unit,
     onOpenSeries: (Series) -> Unit,
     onClose: () -> Unit,
+    /** Opened as a category (owner, v1.0.17): the first title heads the page as a banner. */
+    hero: Boolean = false,
+    onDetails: (MediaItem, String) -> Unit = { _, _ -> },
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
@@ -1815,6 +1937,23 @@ private fun CatalogSeeAll(
             horizontalArrangement = Arrangement.spacedBy(gap),
             verticalArrangement = Arrangement.spacedBy(if (touch) 16.dp else gap + Tv.FocusClearance),
         ) {
+            // A category page's banner (owner, v1.0.17): the first title wide over
+            // the grid. A See all page keeps the plain grid it always had.
+            if (hero && touch && entries.isNotEmpty()) {
+                item(
+                    key = "category-hero",
+                    span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
+                ) {
+                    CategoryHero(
+                        entry = entries.first(),
+                        watch = watch,
+                        chatTitle = chatTitle,
+                        onPlay = onPlay,
+                        onOpenSeries = onOpenSeries,
+                        onDetails = onDetails,
+                    )
+                }
+            }
             items(
                 entries.size,
                 key = { entries[it].key },
