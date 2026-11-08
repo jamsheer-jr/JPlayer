@@ -1567,6 +1567,8 @@
     "release_page": "Release page",
     "search": "Malayalam subtitles from MSone",
     "search_detail": "Search MSone for this video",
+    "search_hint": "Title and year",
+    "search_manual": "Search by name",
     "searching": "Searching MSone…",
     "state_off": "MSone subtitles aren't available yet. You can still pick a subtitle file.",
     "state_on": "Malayalam subtitles made by MSone's volunteers",

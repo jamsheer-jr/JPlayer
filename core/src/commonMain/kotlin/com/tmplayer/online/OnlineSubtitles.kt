@@ -671,14 +671,21 @@ class OnlineSubtitles(
      * Searches are cached like the gateway's; an empty answer is not kept, since the site's
      * catalogue grows.
      */
-    suspend fun searchMsoneSite(target: SubtitleTarget): SearchResult {
+    /**
+     * The site's releases for [target], ranked with this title's match first. [terms]
+     * is the viewer's own typed ask (owner, v1.0.17: the manual search on the MSone
+     * page), for the videos whose own names read wrong; the ranking still follows the
+     * video's parsed name, so the episode's release keeps its place at the head.
+     */
+    suspend fun searchMsoneSite(target: SubtitleTarget, terms: String? = null): SearchResult {
         val parsed = MediaName.parse(target.fileName, target.caption)
         val title = parsed.title.trim()
-        if (title.length < MIN_QUERY) return SearchResult(emptyList(), SubtitleNotice.MsoneTooShort)
-        val key = msoneSiteKey(parsed)
+        val typed = terms?.trim()?.takeIf { it.isNotEmpty() }
+        if (title.length < MIN_QUERY && typed == null) return SearchResult(emptyList(), SubtitleNotice.MsoneTooShort)
+        val key = msoneSiteKey(parsed) + (typed?.let { "|q:${it.lowercase(Locale.ROOT)}" } ?: "")
         cache.search(key)?.takeIf { it.isNotEmpty() }?.let { return SearchResult(rankMsoneSite(it, parsed), fromCache = true) }
-        val terms = if (parsed.year != null) "$title ${parsed.year}" else title
-        val releases = msoneSite.search(terms) ?: return SearchResult(emptyList(), SubtitleNotice.Offline)
+        val ask = typed ?: if (parsed.year != null) "$title ${parsed.year}" else title
+        val releases = msoneSite.search(ask) ?: return SearchResult(emptyList(), SubtitleNotice.Offline)
         val hits = releases.map(::msoneSiteHit)
         if (hits.isNotEmpty()) cache.putSearch(key, hits)
         return SearchResult(rankMsoneSite(hits, parsed))

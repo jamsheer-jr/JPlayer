@@ -514,6 +514,11 @@ class TrackPickerFragment : Fragment() {
         // The MSone site hit whose download failed (item 5, v1.0.16): its release page can
         // be opened in the browser, where the download and the Open row remain the way on.
         var failedHit by remember { mutableStateOf<SubtitleHit?>(null) }
+        // A typed ask of the viewer's own (item 15, v1.0.17): the MSone page's manual
+        // search, for a video whose own name reads wrong.
+        var manualQuery by remember { mutableStateOf<String?>(null) }
+        var editingQuery by remember { mutableStateOf(false) }
+        var queryText by remember { mutableStateOf("") }
         val pageContext = LocalContext.current
 
         LaunchedEffect(attempt) {
@@ -527,7 +532,7 @@ class TrackPickerFragment : Fragment() {
             result = when {
                 wanted == null -> SearchResult(emptyList())
                 // The gateway where the build carries its key; MSone's public site where it does not.
-                msone -> if (online.msoneInBuild) online.searchMsone(wanted) else online.searchMsoneSite(wanted)
+                msone -> if (online.msoneInBuild) online.searchMsone(wanted) else online.searchMsoneSite(wanted, manualQuery)
                 else -> online.search(wanted)
             }
         }
@@ -553,6 +558,54 @@ class TrackPickerFragment : Fragment() {
                 FocusOnOpen(closeFocus)
                 return@ChoiceSheet
             }
+            if (msone && !online.msoneInBuild && editingQuery) {
+                // The manual search's editor (item 15, v1.0.17): type the title (and
+                // year) the site should be asked for, and the list under it is the
+                // typed ask's, ranked by this video as before.
+                Column {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .heightIn(min = 52.dp)
+                            .background(Tone.surfaceHigh, RoundedCornerShape(Corner.Medium))
+                            .border(1.dp, Tone.outline, RoundedCornerShape(Corner.Medium))
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (queryText.isEmpty()) {
+                            Text(L.msoneSearchHint, style = MaterialTheme.typography.bodyLarge, color = Tone.muted)
+                        }
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = queryText,
+                            onValueChange = { queryText = it.take(80) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = Tone.text),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Tone.accent),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
+                                manualQuery = queryText
+                                editingQuery = false
+                                attempt++
+                            }),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Lines(
+                        listOf(
+                            Line("msone-manual-go", L.commonSearch, icon = TmIcons.Search, group = Group.Online) {
+                                manualQuery = queryText
+                                editingQuery = false
+                                attempt++
+                            },
+                            Line("msone-manual-cancel", L.commonCancel, group = Group.Online) { editingQuery = false },
+                        ),
+                        firstFocus,
+                        "msone-manual-go",
+                    )
+                }
+                return@ChoiceSheet
+            }
             val notice = override ?: shown.notice
             if (notice != null) {
                 Column(
@@ -572,6 +625,15 @@ class TrackPickerFragment : Fragment() {
                 Text(if (msone) L.msoneNoResults else L.onlineNoResults, style = MaterialTheme.typography.bodyMedium, color = Tone.muted)
             }
             val lines = buildList {
+                // The manual search stands at the head of the MSone list (item 15,
+                // v1.0.17): the options are all here to pick from, and a wrong name
+                // is the viewer's to correct.
+                if (msone && !online.msoneInBuild) {
+                    add(Line("msone-manual", L.msoneSearchManual, detail = manualQuery, icon = TmIcons.Search, group = Group.Online) {
+                        queryText = manualQuery ?: ""
+                        editingQuery = true
+                    })
+                }
                 shown.hits.forEach { hit ->
                     add(
                         Line(
