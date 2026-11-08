@@ -659,6 +659,7 @@ private fun Actions(
                 MyListPill(
                     listed = myListRow.action == DetailAction.RemoveWatchLater,
                     onClick = myListRow.onSelect,
+                    plus = false,
                 )
             }
         }
@@ -700,20 +701,24 @@ private fun Actions(
 }
 
 /**
- * "+ My List" beside Play (owner, v1.0.13, the streaming apps' placement): a pill of Play's
+ * "My List" beside Play (owner, v1.0.13, the streaming apps' placement): a pill of Play's
  * own height in Play's own colours (owner, v1.0.14: [Tone.hero] under [Tone.onHero], the
- * pair [HeroPill] itself wears, where v1.0.13 drew it in the quiet surface fill), a plus
- * while the title is unlisted and a tick with plain "My List" once it stands in Watch
- * later. It presses the Watch later row's own action, so it and the round Watch later
- * button are two faces of the one store and neither can disagree with the other. Focus
- * takes the focus fill on a television, as [HeroPill] does; under a finger it presses in
- * a little, as every button here does. A show's page draws the same pill beside its own
- * Play, wired to the show's Watch later switch, which writes the same store. The Home
- * banner draws it beside its own Play too (owner, v1.0.15), wired to the same store, so
- * the pill is public: the app module's carousel composes it.
+ * pair [HeroPill] itself wears, where v1.0.13 drew it in the quiet surface fill). It
+ * presses the Watch later row's own action, so it and the round Watch later button are
+ * two faces of the one store and neither can disagree with the other. Focus takes the
+ * focus fill on a television, as [HeroPill] does; under a finger it presses in a little,
+ * as every button here does. A show's page draws the same pill beside its own Play,
+ * wired to the show's Watch later switch, which writes the same store. The Home banner
+ * draws it beside its own Play too (owner, v1.0.15), wired to the same store, so the
+ * pill is public: the app module's carousel composes it.
+ *
+ * Two faces for the unlisted state (owner, v1.0.16): on a title's own page (the detail
+ * page and a show's page, [plus] false) the pill says plain "My List" with no sign,
+ * while the Home banner keeps its plus and the "+ My List" words. Listed, both draw
+ * the tick and "My List", as they always have.
  */
 @Composable
-fun MyListPill(listed: Boolean, onClick: () -> Unit) {
+fun MyListPill(listed: Boolean, onClick: () -> Unit, plus: Boolean = true) {
     val s = LocalStrings.current
     val tv = !isTouch()
     val interactions = remember { MutableInteractionSource() }
@@ -730,9 +735,13 @@ fun MyListPill(listed: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
-        Icon(if (listed) TmIcons.Check else TmIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        if (listed) {
+            Icon(TmIcons.Check, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        } else if (plus) {
+            Icon(TmIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        }
         Text(
-            if (listed) s.detailMyList else s.detailMyListAdd,
+            if (listed || !plus) s.detailMyList else s.detailMyListAdd,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
             color = ink,

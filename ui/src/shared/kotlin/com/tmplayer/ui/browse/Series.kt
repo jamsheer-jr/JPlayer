@@ -1302,7 +1302,7 @@ fun SeriesPanel(
                 val listed = showActions?.watchLater
                 if (listed != null) {
                     androidx.compose.runtime.key("seriesMyList") {
-                        MyListPill(listed = listed, onClick = { showActions?.onWatchLater(!listed) })
+                        MyListPill(listed = listed, onClick = { showActions?.onWatchLater(!listed) }, plus = false)
                     }
                 }
             }
