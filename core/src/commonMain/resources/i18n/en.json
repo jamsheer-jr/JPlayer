@@ -2320,6 +2320,7 @@
   "search": {
     "all_chats": "Search all chats",
     "and_more": "{count, plural, one {and # more} other {and # more}}",
+    "browse_genres": "Genres",
     "chats_heading": "Chats",
     "clear_filters": "Clear filters",
     "clear_recent": "Clear all",
@@ -2327,6 +2328,7 @@
     "copies": "{count, plural, one {# copy} other {# copies}}",
     "episodes": "{count, plural, one {# episode} other {# episodes}}",
     "failed": "The search did not work. {reason}",
+    "featured_collections": "Featured collections",
     "field_hint": "Search videos and chats",
     "fill_in": "Put “{query}” in the search box",
     "filter_any_quality": "Any quality",

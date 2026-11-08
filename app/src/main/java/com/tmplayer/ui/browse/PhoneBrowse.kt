@@ -109,6 +109,8 @@ internal fun PhoneBrowse(
     onUpdate: () -> Unit,
     search: GlobalSearchViewModel,
     chats: List<ChatSummary>,
+    /** Home's catalog rows, for the search page's browse sections (owner, v1.0.17). */
+    categoryRows: List<com.tmplayer.data.HomeRow.Catalog> = emptyList(),
     continueWatching: List<ResumeRecord>,
     watchLater: List<WatchLaterRecord>,
     homeArt: Map<String, MediaItem>,
@@ -303,6 +305,12 @@ internal fun PhoneBrowse(
                 onRestoreRecent = { before -> scope.launch { settings.restoreRecentSearches(before) } },
                 onVoice = voice,
                 listState = searchList,
+                categoryRows = categoryRows,
+                onOpenCategory = { key ->
+                    CategoryOpenRequest.ask(key)
+                    searchOpen = false
+                    onPickTab(BrowseSection.of(BrowseTab.Home))
+                },
             )
         },
         actions = actions,

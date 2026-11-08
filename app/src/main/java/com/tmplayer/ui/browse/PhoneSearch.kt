@@ -109,6 +109,7 @@ import com.tmplayer.ui.online.rememberMeta
 import com.tmplayer.ui.components.secondaryPress
 import com.tmplayer.ui.components.TmSecondaryButton
 import com.tmplayer.ui.i18n.LocalStrings
+import com.tmplayer.data.HomeRow
 import com.tmplayer.ui.icons.TmIcons
 import com.tmplayer.ui.nav.BackHandler
 import com.tmplayer.ui.theme.FloatingTone
@@ -181,6 +182,10 @@ internal fun PhoneSearchScreen(
     onRestoreRecent: (List<String>) -> Unit,
     onVoice: (() -> Unit)?,
     listState: LazyListState,
+    /** The categories Home's chats hold, for the browse sections before typing (owner, v1.0.17). */
+    categoryRows: List<HomeRow.Catalog> = emptyList(),
+    /** Opens a category's page on Home: a row key, or "langpage-<code>" for a language. */
+    onOpenCategory: (String) -> Unit = {},
 ) {
     val s = LocalStrings.current
     val scope = rememberCoroutineScope()
@@ -286,6 +291,7 @@ internal fun PhoneSearchScreen(
                         onResume = onResume,
                         onPlayItem = onPlayItem,
                     )
+                    browseCategories(rows = categoryRows, onOpenCategory = onOpenCategory)
                 } else {
                     // The scope the search is looking in (owner, v1.0.16): the line says
                     // which, and tapping it goes to where that is decided, the picker for
@@ -915,3 +921,105 @@ private const val PAGE_LEAD = 6
 private const val ANIMATED_RESULTS_MAX = 300
 
 private val SKELETONS = List(5) { it }
+
+/**
+ * Browse before typing (owner, v1.0.17), in the streaming apps' shape: the genres
+ * the chats hold as two column tiles, then the featured collections as a list,
+ * languages first. Every tap opens that category's page on Home.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.browseCategories(
+    rows: List<HomeRow.Catalog>,
+    onOpenCategory: (String) -> Unit,
+) {
+    val genres = rows.filter { it.kind.startsWith("genre-") || it.kind.startsWith("series-genre-") }
+        .distinctBy { it.label }
+        .take(8)
+    if (genres.isNotEmpty()) {
+        item(key = "browse-genres-head") {
+            val s = LocalStrings.current
+            Text(
+                s.searchBrowseGenres,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = Tone.text,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp),
+            )
+        }
+        item(key = "browse-genres") {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                genres.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        pair.forEach { row ->
+                            Box(
+                                Modifier.weight(1f).height(54.dp).clip(RoundedCornerShape(12.dp)).background(Tone.surfaceHigh)
+                                    .clickable(role = Role.Button) { onOpenCategory(row.key) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    row.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = Tone.text,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                )
+                            }
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+    val codes = LinkedHashSet<String>()
+    rows.forEach { row ->
+        when {
+            row.kind.startsWith("series-lang-") -> codes += row.kind.removePrefix("series-lang-")
+            row.kind.startsWith("lang-") -> codes += row.kind.removePrefix("lang-")
+        }
+    }
+    val specials = listOf("uhd", "hdr", "remastered", "best-quality", "top-rated", "foreign", "binge", "ml-audio")
+        .mapNotNull { kind -> rows.firstOrNull { it.kind == kind } }
+    if (codes.isNotEmpty() || specials.isNotEmpty()) {
+        item(key = "browse-collections-head") {
+            val s = LocalStrings.current
+            Text(
+                s.searchFeaturedCollections,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = Tone.text,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+            )
+        }
+        items(
+            codes.size + specials.size,
+            key = { index -> if (index < codes.size) "browse-lang-${codes.elementAt(index)}" else "browse-col-${specials[index - codes.size].kind}" },
+        ) { index ->
+            val s = LocalStrings.current
+            if (index < codes.size) {
+                val code = codes.elementAt(index)
+                BrowseCollectionLine(com.tmplayer.data.HomeRows.languageName(code) ?: code) { onOpenCategory("langpage-$code") }
+            } else {
+                val row = specials[index - codes.size]
+                BrowseCollectionLine(homeRowTitle(row, s)) { onOpenCategory(row.key) }
+            }
+        }
+    }
+}
+
+/** One featured collection line: the name and a chevron, the whole line a tap. */
+@Composable
+private fun BrowseCollectionLine(title: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = Tone.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        androidx.compose.material3.Icon(TmIcons.ChevronRight, contentDescription = null, tint = Tone.muted, modifier = Modifier.size(20.dp))
+    }
+}

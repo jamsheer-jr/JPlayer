@@ -2305,6 +2305,7 @@
   "search": {
     "all_chats": "എല്ലാ ചാറ്റുകളിലും തിരയുക",
     "and_more": "{count, plural, one {# എണ്ണം കൂടി} other {# എണ്ണം കൂടി}}",
+    "browse_genres": "ജോണറുകൾ",
     "chats_heading": "ചാറ്റുകൾ",
     "clear_filters": "ഫിൽട്ടറുകൾ മായ്ക്കുക",
     "clear_recent": "എല്ലാം മായ്ക്കുക",
@@ -2312,6 +2313,7 @@
     "copies": "{count, plural, one {# പകർപ്പ്} other {# പകർപ്പുകൾ}}",
     "episodes": "{count, plural, one {# എപ്പിസോഡ്} other {# എപ്പിസോഡുകൾ}}",
     "failed": "തിരയൽ പ്രവർത്തിച്ചില്ല. {reason}",
+    "featured_collections": "ഫീച്ചർ ചെയ്ത കളക്ഷനുകൾ",
     "field_hint": "വീഡിയോകളും ചാറ്റുകളും തിരയുക",
     "fill_in": "“{query}” തിരയൽ ബോക്സിൽ ഇടുക",
     "filter_any_quality": "ഏത് ക്വാളിറ്റിയും",

@@ -450,6 +450,11 @@ internal fun HomePane(
             chipRows.firstOrNull { it.key == key } as? HomeRow.Catalog
         }
     }
+    // A category asked for from the search page's browse sections (owner, v1.0.17).
+    val categoryAsked by CategoryOpenRequest.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(categoryAsked) {
+        CategoryOpenRequest.take()?.let { categoryKey = it }
+    }
     // Open link (v1.0.11): an address pasted on Home, played through the same stream mode
     // the built-in channel's posts use.
     var openLink by remember { mutableStateOf(false) }

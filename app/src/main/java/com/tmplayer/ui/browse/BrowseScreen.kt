@@ -1099,6 +1099,7 @@ internal fun BrowseScreen(
             onUpdate = onUpdate,
             search = search,
             chats = (state as? UiState.Content)?.value?.chats.orEmpty(),
+            categoryRows = homeRows.filterIsInstance<HomeRow.Catalog>(),
             continueWatching = continuing,
             watchLater = watchLater,
             homeArt = homeArt,
