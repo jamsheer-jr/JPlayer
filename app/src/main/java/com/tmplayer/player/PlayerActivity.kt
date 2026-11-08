@@ -4512,11 +4512,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
-     * The next episode with the player out of sight, where [playEpisode]'s new activity is not
-     * allowed to start: played in this activity instead, through the same opening as any video
-     * ([openItem]) and into the same media session, so the notification carries on with the new
-     * title and the player shows this episode when the viewer comes back. What the last video
-     * had (its place, its stream, its searches) is put away first, the way leaving it would.
+     * The next episode played in this activity instead of a new one (item 12, v1.0.16:
+     * every episode step comes here, seen or unseen, same chat or another): through the
+     * same opening as any video ([openItem]) and into the same media session, so the
+     * notification carries on with the new title and the player shows this episode when
+     * the viewer comes back. What the last video had (its place, its stream, its
+     * searches) is put away first, the way leaving it would.
      */
     private fun continueUnseen(next: MediaItem) {
         if (handingOver) return
@@ -4531,7 +4532,11 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         letGoOfStreamBounds()
         trimCache()
         val outside = intent.getBooleanExtra(EXTRA_OUTSIDE_APP_TASK, false)
-        intent = intent(this, next, chatTitle).putExtra(EXTRA_OUTSIDE_APP_TASK, outside)
+        // A step into another chat (item 12, v1.0.16) names that chat where it is known,
+        // as the fresh player a copy step opens names it; a step inside this chat keeps
+        // this chat's name, as it always has.
+        val title = if (next.chatId == chatId) chatTitle else copyChatTitle(next).ifBlank { chatTitle }
+        intent = intent(this, next, title).putExtra(EXTRA_OUTSIDE_APP_TASK, outside)
         readItem(intent)
         forgetTheLastVideo()
         openItem()
@@ -5758,39 +5763,39 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
-     * Switches to another episode of the same series.
+     * Opens another video in a fresh player: what a copy step that cannot swap in
+     * place falls back to ([switchCopy]).
      *
      * Done by starting the activity again rather than swapping the file under the player: opening
      * the stream, the resume position, the download meter and the title are all set up in
      * [onCreate] against one file, and a second path through that is a second place to go wrong.
-     * The position in the episode being left is saved on the way out.
+     * The position in the episode being left is saved on the way out. Episode steps never
+     * come here (item 12, v1.0.16): [stepToEpisode] swaps every one of them in place.
      */
     fun playEpisode(item: MediaItem) = playEpisode(item, chatTitle)
 
     /**
      * Steps to another episode of the series being watched: the transport's next and
-     * previous, a row of the episodes list, the next-up card, "Still watching?" answered
-     * with Keep watching, and the end of an episode all land here.
+     * previous, a row of the episodes list, the next-up card, the end rail, the Up Next
+     * queue, "Still watching?" answered with Keep watching, and the end of an episode
+     * all land here.
      *
-     * An episode in the same chat changes in this player, by the swap [continueUnseen]
-     * already makes when the player is out of sight (owner, v1.0.14: the next episode
-     * plays directly, and no page under the player, the series title page least of all,
-     * shows in between). The swap opens the episode by the same [openItem] the fresh
-     * player would, so the saved place and the usual copy pick apply as they did across
-     * activities. An episode held in another chat, and any step out of the corner
-     * window, still opens a fresh player by [playEpisode]: the chat a cross-chat copy
-     * names, and the window's own task, are that path's to set up. [byAutoplay] sets
-     * [openedByAutoplay] on that fresh player only, as before: swapped in place, the
-     * "Still watching?" counts simply carry on in this activity.
+     * Every step changes the media inside this player, by the swap [continueUnseen]
+     * makes (item 12, v1.0.16: no loading or profile screen between episodes, ever).
+     * The same-chat step has swapped in place since v1.0.14; the steps that still
+     * opened a fresh player, an episode held in another chat (the Up Next queue
+     * walks across chats by design) and any step out of the corner window, swap the
+     * same way now: the swap re-aims the intent, the chat and the episodes list at
+     * the new video and opens it by the same [openItem] a fresh player would, so the
+     * saved place and the usual copy pick apply, and the only thing the viewer sees
+     * change is the picture, under the player's own buffering spinner. [byAutoplay]
+     * needs no carrying across activities any more: swapped in place, the "Still
+     * watching?" counts simply carry on in this activity, as they already did for a
+     * same-chat step.
      */
     private fun stepToEpisode(item: MediaItem, byAutoplay: Boolean = false) {
         if (item.id == currentItem().id) return
-        if (item.chatId == chatId && !inPictureInPicture) {
-            continueUnseen(item)
-        } else {
-            if (byAutoplay) openedByAutoplay = true
-            playEpisode(item)
-        }
+        continueUnseen(item)
     }
 
     /** [playEpisode] for a video in another chat, a copy found by a search across chats. */
@@ -10219,10 +10224,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         private var lastOrientation = ScreenOrientation.DEFAULT
 
         /**
-         * What "Still watching?" counts, for the length of the process: autoplay starts a new
-         * activity per episode, and a count that began again with each one would never reach the
-         * limit. [openedByAutoplay] tells the next activity it is one of those hops; any other way
-         * into the player is somebody choosing a video, which starts both counts again.
+         * What "Still watching?" counts, for the length of the process: a count that began
+         * again with each episode would never reach the limit. Episode steps swap in place
+         * (item 12, v1.0.16), so the counts simply carry on inside the one activity;
+         * [openedByAutoplay] stands from when a fresh player could still be one of those
+         * hops, and nothing sets it now. Any other way into the player is somebody choosing
+         * a video, which starts both counts again.
          */
         private var autoplayedInARow = 0
         private var lastInputAt = 0L
