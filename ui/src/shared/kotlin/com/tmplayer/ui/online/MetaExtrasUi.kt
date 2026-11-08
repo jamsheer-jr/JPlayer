@@ -682,9 +682,12 @@ private fun PersonEnlarged(person: MetaPerson, onClose: () -> Unit) {
             }
             val interactions = remember { MutableInteractionSource() }
             val focused by interactions.collectIsFocusVisibleAsState()
+            // The corner is this plain box's, not the tip's (owner's phone, v1.0.17):
+            // on a phone the tip is Material's TooltipBox, whose own layout centred
+            // the button over the middle instead of holding the corner it was given.
+            Box(Modifier.align(Alignment.TopEnd).padding(if (tv) 32.dp else 16.dp)) {
             com.tmplayer.ui.components.IconTip(
                 LocalStrings.current.commonClose,
-                Modifier.align(Alignment.TopEnd).padding(if (tv) 32.dp else 16.dp),
                 side = com.tmplayer.ui.components.TipSide.Below,
             ) {
                 Box(
@@ -703,6 +706,7 @@ private fun PersonEnlarged(person: MetaPerson, onClose: () -> Unit) {
                         modifier = Modifier.size(24.dp),
                     )
                 }
+            }
             }
         }
         if (tv) LaunchedEffect(Unit) { runCatching { close.requestFocus() } }
@@ -837,9 +841,12 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
             }
             val interactions = remember { MutableInteractionSource() }
             val focused by interactions.collectIsFocusVisibleAsState()
+            // The corner is this plain box's, not the tip's (owner's phone, v1.0.17):
+            // on a phone the tip is Material's TooltipBox, whose own layout centred
+            // the button over the middle instead of holding the corner it was given.
+            Box(Modifier.align(Alignment.TopEnd).padding(if (tv) 32.dp else 16.dp)) {
             com.tmplayer.ui.components.IconTip(
                 LocalStrings.current.commonClose,
-                Modifier.align(Alignment.TopEnd).padding(if (tv) 32.dp else 16.dp),
                 side = com.tmplayer.ui.components.TipSide.Below,
             ) {
                 Box(
@@ -858,6 +865,7 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                         modifier = Modifier.size(24.dp),
                     )
                 }
+            }
             }
         }
         if (tv) LaunchedEffect(Unit) { runCatching { close.requestFocus() } }
