@@ -324,6 +324,16 @@ object HomeRows {
          */
         hideShortVideos: Boolean = false,
         /**
+         * Cam family copies left out of the rows and shelves (the Playback switch, on by
+         * default: see [MediaFacts.isCam] for the family), screened from the same pools
+         * as [hideShortVideos], and out of Continue watching's records too (owner,
+         * v1.0.16: the hide reaches every surface, this row named). A title whose copies
+         * are all cam family forms no tile anywhere in the build. Watch later stays
+         * unscreened, as it is for short videos: it is the viewer's own list, and its
+         * cards open the detail page, whose own Versions list does the screening there.
+         */
+        hideCamCopies: Boolean = false,
+        /**
          * Extra videos for the Series row alone, past what [loaded] and [recent] hold:
          * the bounded deeper read of the chats that feed the series shelves (see
          * [SeriesDeepening]). They feed only the Series row and its language rows,
@@ -341,12 +351,22 @@ object HomeRows {
         val seen = HashSet<String>()
         // Continue watching off: nothing is in progress as far as Home goes, so a film part way
         // through still shows in its chat's row rather than vanishing from Home altogether.
-        val continueWatching = if (layout.continueWatching) continueWatching else emptyList()
-        // The under 5 minute screening (see the parameter): the chats' videos and the
-        // search across chats, screened once here so every row and shelf below agrees.
-        val loaded = if (hideShortVideos) loaded.mapValues { (_, items) -> ShortVideos.kept(items) } else loaded
-        val recent = if (hideShortVideos) recent?.let(ShortVideos::kept) else recent
-        val seriesPool = if (hideShortVideos) ShortVideos.kept(seriesPool) else seriesPool
+        // The cam screening reaches this row too (see [hideCamCopies]): a record whose own
+        // copy is cam family leaves the row, and a folded title stands on a visible copy
+        // where it has one.
+        val continueWatching = (if (layout.continueWatching) continueWatching else emptyList())
+            .let { records -> if (hideCamCopies) records.filterNot { MediaFacts.isCam(it.toMediaItem()) } else records }
+        // The pool screenings (see the parameters): the chats' videos and the search
+        // across chats, screened once here so every row and shelf below agrees.
+        fun screened(items: List<MediaItem>): List<MediaItem> {
+            var kept = items
+            if (hideShortVideos) kept = ShortVideos.kept(kept)
+            if (hideCamCopies) kept = kept.filterNot { MediaFacts.isCam(it) }
+            return kept
+        }
+        val loaded = loaded.mapValues { (_, items) -> screened(items) }
+        val recent = recent?.let(::screened)
+        val seriesPool = screened(seriesPool)
 
         val distinct = continueWatching.distinctBy { keyOf(it.chatId, it.messageId) }
         val everyResume = foldCopies(distinct)
@@ -407,7 +427,7 @@ object HomeRows {
         later.forEach { if (!it.isShow) seen += it.key }
         val watchLaterRow =
             if (later.isNotEmpty() && (!autoFill || phoneOrder)) HomeRow.WatchLater(later, everyLater.drop(LIMIT)) else null
-        val newEpisodesRow = fresh.filterNot { keyOf(it.item.chatId, it.item.messageId) in seen }
+        val newEpisodesRow = fresh.filterNot { keyOf(it.item.chatId, it.item.messageId) in seen || (hideCamCopies && MediaFacts.isCam(it.item)) }
             .take(LIMIT)
             .takeIf { it.isNotEmpty() && !autoFill }
             ?.let { HomeRow.NewEpisodes(it) }
@@ -927,7 +947,7 @@ object HomeRows {
      * them, each show with every episode read since, then everything else, newest first. A page that grows only at its foot, so nothing on screen moves when a page
      * lands. Null for a row that reads no chats (Continue watching, Watch later, New episodes).
      */
-    fun seeAll(row: HomeRow, items: List<MediaItem>, hideShortVideos: Boolean = false): List<ShelfEntry>? {
+    fun seeAll(row: HomeRow, items: List<MediaItem>, hideShortVideos: Boolean = false, hideCamCopies: Boolean = false): List<ShelfEntry>? {
         val entries = when (row) {
             is HomeRow.Chat -> row.entries
             is HomeRow.Recent -> row.entries
@@ -935,7 +955,8 @@ object HomeRows {
         }
         // The pages read on are screened as the row was ([build]'s screening): the
         // row's own tiles already were, so only what is read past them needs it.
-        val read = if (hideShortVideos) ShortVideos.kept(items) else items
+        var read = if (hideShortVideos) ShortVideos.kept(items) else items
+        if (hideCamCopies) read = read.filterNot { MediaFacts.isCam(it) }
         val own = entries.flatMap { entry ->
             when (entry) {
                 is ShelfEntry.File -> listOf(entry.item)

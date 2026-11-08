@@ -90,12 +90,14 @@ fun copySound(copy: MediaItem, locale: java.util.Locale = java.util.Locale.getDe
 }
 
 /**
- * Whether [copy] is a cam family copy (PreDVD, HDTS, TS, CAM: see [MediaFacts.CAM_SOURCES]),
- * the copies the Playback switch "Hide cam and PreDVD copies" leaves out of the lists.
- * HDRip is not a cam source and is never one of these.
+ * Whether [copy] is a cam family copy (the owner's full list: PreDVD, DVDcam, DVDScr,
+ * HDTS, HDTC, HDcam, TS, CAM, and a "clean audio" tag on any source: see
+ * [MediaFacts.CAM_SOURCES] and [MediaFacts.isCam]), the copies the Playback switch
+ * "Hide cam and PreDVD copies" leaves out of the lists. Read from the raw file name's
+ * tags ([MediaFacts.isCam]), so a copy counts even where a surface never shows its
+ * name. HDRip is not a cam source and is never one of these.
  */
-fun isCamCopy(copy: MediaItem): Boolean =
-    MediaFacts.isCamSource(MediaFacts.read(copy.fileName.ifBlank { copy.title }, copy.width, copy.height).source)
+fun isCamCopy(copy: MediaItem): Boolean = MediaFacts.isCam(copy)
 
 /**
  * Whether [copy] is a short video (its stated length under 5 minutes: see

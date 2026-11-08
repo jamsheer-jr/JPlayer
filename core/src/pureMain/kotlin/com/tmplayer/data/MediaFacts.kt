@@ -36,8 +36,15 @@ data class MediaFacts(
     val audio: String? = null,
     /** What the name says about the tracks inside, beyond the first audio. */
     val tracks: List<Track> = emptyList(),
-    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "HDTS", "TS", "CAM", "DVD". */
+    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "HDTS", "HDTC", "TS", "HDcam", "CAM", "DVDcam", "DVDScr", "DVD". */
     val source: String? = null,
+    /**
+     * The name carries the "clean audio" tag: a cam family copy whose sound was replaced
+     * or cleaned, named as its own tag by uploaders ("HDTS Clean Audio"). The tag alone
+     * marks the copy as cam family, whatever source the name otherwise reads (owner,
+     * v1.0.16). See [isCam].
+     */
+    val cleanAudio: Boolean = false,
     /** "MKV", "MP4": the extension, upper case. */
     val container: String? = null,
     /**
@@ -65,6 +72,7 @@ data class MediaFacts(
                 audio = audioOf(name),
                 tracks = TRACKS.filter { (_, pattern) -> pattern.containsMatchIn(name) }.map { it.first },
                 source = first(name, SOURCES),
+                cleanAudio = CLEAN_AUDIO.containsMatchIn(name),
                 container = containerOf(fileName),
                 languages = MediaName.languages(fileName),
             )
@@ -199,10 +207,12 @@ data class MediaFacts(
 
         /**
          * First match wins. BDRip and BRRip read as what the file says, before the wider
-         * Blu-ray label. The cam family (PreDVD, HDTS, TS, CAM) sits before DVD, so the
-         * DVD inside PreDVD is never read on its own, and HDTS sits before TS, so its
-         * TS is never read on its own. None of them overlaps HDRip or HDTV: their patterns
-         * need rip or tv after hd, which no cam spelling carries.
+         * Blu-ray label. The cam family sits before DVD, so the DVD inside PreDVD, DVDcam
+         * and DVDScr is never read on its own, and HDTS and HDTC sit before TS, so a TS
+         * inside them is never read on its own. None of them overlaps HDRip or HDTV: their
+         * patterns need rip or tv after hd, which no cam spelling carries. Every pattern
+         * is a whole token by [word], so a tag inside a longer word never fires ("Camera"
+         * is not CAM, "Scr" in a title is not DVDScr: the DVD must stand right before it).
          */
         private val SOURCES = listOf(
             "WEB-DL" to word("""web[ ._-]?dl"""),
@@ -214,16 +224,43 @@ data class MediaFacts(
             "HDRip" to word("""hd[ ._-]?rip"""),
             "PreDVD" to word("""pre[ ._-]?dvd|predvd"""),
             "HDTS" to word("""hd[ ._-]?ts"""),
+            "HDTC" to word("""hd[ ._-]?tc|telecine"""),
             "TS" to word("""telesync|ts"""),
-            "CAM" to word("""cam[ ._-]?rip|hd[ ._-]?cam|cam"""),
+            "HDcam" to word("""hd[ ._-]?cam"""),
+            "CAM" to word("""cam[ ._-]?rip|cam"""),
+            "DVDcam" to word("""dvd[ ._-]?cam"""),
+            "DVDScr" to word("""dvd[ ._-]?scr(?:eener)?"""),
             "DVD" to word("""dvd[ ._-]?rip|dvd"""),
         )
 
-        /** The cam family sources: copies filmed or captured before a retail disc exists. */
-        val CAM_SOURCES: Set<String> = setOf("PreDVD", "HDTS", "TS", "CAM")
+        /**
+         * The cam family sources: copies filmed or captured before a retail disc exists.
+         * The owner's full list (v1.0.16): PreDVD, DVDcam, DVDScr, HDTS, HDTC, HDcam, and
+         * the TS and CAM the family started with. HDRip is not here and never joins: it
+         * is a rip of a broadcast, not a camera copy.
+         */
+        val CAM_SOURCES: Set<String> = setOf("PreDVD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM")
 
         /** Whether [source] is one of the cam family labels in [CAM_SOURCES]. */
         fun isCamSource(source: String?): Boolean = source != null && source in CAM_SOURCES
+
+        /** The "clean audio" tag, standing on its own as tags do: see [MediaFacts.cleanAudio]. */
+        private val CLEAN_AUDIO = word("""clean[ ._-]?audio""")
+
+        /**
+         * Whether [facts] mark a cam family copy: a cam source, or the "clean audio" tag
+         * on any source. Read from the file name's own tags, so a copy counts even where
+         * a surface never shows its name.
+         */
+        fun isCam(facts: MediaFacts): Boolean = isCamSource(facts.source) || facts.cleanAudio
+
+        /**
+         * Whether [item] is a cam family copy, by its raw file name (the title only where
+         * the file name is blank, which is all a surface would have): the one reading
+         * every surface's cam hiding shares (Copies, Versions, chat lists, Search, Home).
+         */
+        fun isCam(item: MediaItem): Boolean =
+            isCam(read(item.fileName.ifBlank { item.title }, item.width, item.height))
 
         private val TRACKS = listOf(
             Track.DualAudio to word("""dual[ ._-]?audio"""),

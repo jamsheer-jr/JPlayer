@@ -1005,4 +1005,36 @@ class HomeRowsTest {
         assertEquals(listOf(1L), HomeRows.rowChats(chats, setOf(1L), pinnedChat = 99L).map { it.id })
         assertEquals(emptyList<Long>(), HomeRows.rowChats(chats, emptySet(), pinnedChat = 0L).map { it.id })
     }
+
+    @Test
+    fun `cam copies leave the shelves and continue watching while the switch is on`() {
+        val cam = video(1, "Alpha 2024 PreDVD.mp4")
+        val cleanAudio = video(1, "Beta 2024 HDTS Clean Audio.mp4")
+        val plain = video(1, "Gamma 2024.mp4")
+        val inProgressCam = resume(video(1, "Delta 2024 DVDScr.mp4"))
+        val inProgressPlain = resume(plain)
+        val rows = HomeRows.build(
+            continueWatching = listOf(inProgressCam, inProgressPlain),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to listOf(cam, cleanAudio, plain)),
+            recent = emptyList(),
+            hideCamCopies = true,
+        )
+        val shown = rows.flatMap(::ids)
+        assertFalse(cam.messageId in shown)
+        assertFalse(cleanAudio.messageId in shown)
+        assertFalse(inProgressCam.messageId in shown)
+        assertTrue(plain.messageId in shown)
+        // Off, everything stands as it did before the switch reached Home.
+        val unhidden = HomeRows.build(
+            continueWatching = listOf(inProgressCam, inProgressPlain),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to listOf(cam, cleanAudio, plain)),
+            recent = emptyList(),
+            hideCamCopies = false,
+        )
+        val all = unhidden.flatMap(::ids)
+        assertTrue(cam.messageId in all)
+        assertTrue(inProgressCam.messageId in all)
+    }
 }

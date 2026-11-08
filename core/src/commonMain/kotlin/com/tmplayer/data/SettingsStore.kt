@@ -812,7 +812,9 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     }
 
     /**
-     * Whether cam family copies (PreDVD, HDTS, TS, CAM: see [MediaFacts.CAM_SOURCES]) are
+     * Whether cam family copies (the owner's full list: PreDVD, DVDcam, DVDScr, HDTS,
+     * HDTC, HDcam, TS, CAM, and a "clean audio" tag: see [MediaFacts.CAM_SOURCES] and
+     * [MediaFacts.isCam]) are
      * hidden from copies lists, channel lists and search. On by default, so a fresh install
      * hides them unless the viewer turns the switch off in Settings; HDRip is not a cam
      * source and is never hidden by this.
@@ -3020,22 +3022,34 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     suspend fun copyToPlay(item: MediaItem): MediaItem {
         // Never a copy in a chat the kids lock hides.
         val copies = VideoCopies.visible(item.versions).takeIf { it.size > 1 } ?: return item
+        // Never a copy the lists hide either (owner, v1.0.16): the copies the cam family
+        // and short switches and the viewer's own hiding leave out of Copies, Versions
+        // and the rest are screened out of the presented pool too, so a detail page
+        // never opens on a copy its own Versions list does not show (a PreDVD copy
+        // owning the resume point was still the presented one, its facts in the version
+        // box, over twelve hidden versions). The resume position is the player's and
+        // carries across copies as it always has; only the presented copy changes.
+        // Where every copy is hidden there is nothing visible to present, and the pick
+        // below decides over all of them as before: such a page is the viewer's own
+        // record of the title, and playback under way is never interrupted by this.
+        val pool = presentedCopies(copies).takeIf { it.isNotEmpty() } ?: copies
         // A resume opens the copy that was being watched (J Player, 2026-11-06): the newest
         // resume record names its copy by chat and message, and that copy plays, ahead of the
         // device and habit rules in the pick below, which would otherwise hand back the lead
         // copy or a downloaded one and lose the place's own file. An explicit pick in the
         // copies list still wins: choosing a copy is a decision, resuming is a memory. With no
         // record, a record at the very start, or a record whose copy is gone from the versions,
-        // the pick below decides as before.
+        // the pick below decides as before. A record naming a hidden copy is passed over with
+        // it (see above): the pool is what is searched, not every version.
         if (copyPickFor(item) == null) {
             resumeRecordFor(item)?.takeIf { it.positionMs > 0 }?.let { record ->
-                copies.firstOrNull { it.chatId == record.chatId && it.messageId == record.messageId }
+                pool.firstOrNull { it.chatId == record.chatId && it.messageId == record.messageId }
                     ?.let { return it.asVersion(item) }
             }
         }
         val started = continueWatching.first().mapTo(HashSet()) { progressKey(it.chatId, it.messageId) }
         val picked = VideoCopies.pick(
-            copies,
+            pool,
             chosen = copyPickFor(item),
             started = { progressKey(it.chatId, it.messageId) in started },
             habit = qualityHabitNow(),
@@ -3044,6 +3058,24 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             saveData = VideoCopies.saveDataHere,
         ) ?: return item
         return picked.asVersion(item)
+    }
+
+    /**
+     * [copies] without the ones the lists hide (the cam family and the videos under
+     * 5 minutes under their Playback switches, and the copies the viewer hid
+     * themselves): the pool a page may present from, see [copyToPlay].
+     */
+    private suspend fun presentedCopies(copies: List<MediaItem>): List<MediaItem> {
+        val stored = prefs.data.first()
+        val hideCam = stored[HIDE_CAM_COPIES] ?: true
+        val hideShort = stored[HIDE_SHORT_VIDEOS] ?: true
+        val own = HiddenCopies.decode(stored[HIDDEN_COPIES])
+        if (!hideCam && !hideShort && own.isEmpty()) return copies
+        return copies.filterNot { copy ->
+            (hideCam && MediaFacts.isCam(copy)) ||
+                (hideShort && ShortVideos.isShort(copy)) ||
+                HiddenCopies.hides(own, copy)
+        }
     }
 
     /**

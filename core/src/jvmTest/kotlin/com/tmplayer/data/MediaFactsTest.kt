@@ -157,11 +157,45 @@ class MediaFactsTest {
         assertEquals("TS", MediaFacts.read("Film 2026 Telesync x264.mkv").source)
         assertEquals("CAM", MediaFacts.read("Film.2026.CAM.x264.mkv").source)
         assertEquals("CAM", MediaFacts.read("Film.2026.CamRip.x264.mkv").source)
-        assertEquals("CAM", MediaFacts.read("Film.2026.HDCAM.x264.mkv").source)
         for (label in listOf("PreDVD", "HDTS", "TS", "CAM")) {
             assertTrue(label, MediaFacts.isCamSource(label))
         }
-        assertEquals(setOf("PreDVD", "HDTS", "TS", "CAM"), MediaFacts.CAM_SOURCES)
+    }
+
+    @Test
+    fun `the rest of the owner's cam family reads its own labels`() {
+        // HDcam read as CAM before v1.0.16; the owner's tag list names it as its own
+        // tag, so it reads as its own label now and stands in the family beside CAM.
+        assertEquals("HDcam", MediaFacts.read("Film.2026.HDCAM.x264.mkv").source)
+        assertEquals("HDcam", MediaFacts.read("Film 2026 HD Cam x264.mkv").source)
+        assertEquals("DVDcam", MediaFacts.read("Film.2026.DVDcam.x264.mkv").source)
+        assertEquals("DVDcam", MediaFacts.read("Film 2026 DVD Cam x264.mkv").source)
+        assertEquals("DVDScr", MediaFacts.read("Film.2026.DVDScr.x264.mkv").source)
+        assertEquals("DVDScr", MediaFacts.read("Film.2026.DVDScreener.x264.mkv").source)
+        assertEquals("HDTC", MediaFacts.read("Film.2026.HDTC.x264.mkv").source)
+        assertEquals("HDTC", MediaFacts.read("Film 2026 Telecine x264.mkv").source)
+        for (label in listOf("DVDcam", "DVDScr", "HDTC", "HDcam")) {
+            assertTrue(label, MediaFacts.isCamSource(label))
+        }
+        assertEquals(
+            setOf("PreDVD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM"),
+            MediaFacts.CAM_SOURCES,
+        )
+    }
+
+    @Test
+    fun `a clean audio tag marks any copy as cam family`() {
+        val tagged = MediaFacts.read("Film.2026.HDTS.Clean.Audio.x264.mkv")
+        assertTrue(tagged.cleanAudio)
+        assertTrue(MediaFacts.isCam(tagged))
+        // The tag alone, on a source that is no cam source, still marks the copy.
+        val onWeb = MediaFacts.read("Film.2026.1080p.WEB-DL.CleanAudio.x265.mkv")
+        assertEquals("WEB-DL", onWeb.source)
+        assertTrue(onWeb.cleanAudio)
+        assertTrue(MediaFacts.isCam(onWeb))
+        // A word that merely starts alike is not the tag.
+        assertFalse(MediaFacts.read("Cleaning Day 2026 1080p.mkv").cleanAudio)
+        assertFalse(MediaFacts.read("Film.2026.1080p.WEB-DL.DDP5.1.x265.mkv").cleanAudio)
     }
 
     @Test

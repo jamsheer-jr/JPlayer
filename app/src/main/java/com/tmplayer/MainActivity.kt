@@ -921,6 +921,7 @@ private fun Root() {
                 HomeViewModel(
                     sizeLimits = { settings.minSizeBytes.first() to settings.maxSizeBytes.first() },
                     hideShortVideos = { settings.hideShortVideos.first() },
+                    hideCamCopies = { settings.hideCamCopies.first() },
                     cached = true,
                     // Home's refetches wait while a video plays (see HomeViewModel's busy).
                     busy = { com.tmplayer.data.WatchCache.anyPlaying() },
@@ -1897,6 +1898,7 @@ private fun Root() {
         val activeProfile by remember { settings.activeProfile }.collectAsStateWithLifecycle(initialValue = null)
         val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
         val hideShortVideos by remember { settings.hideShortVideos }.collectAsStateWithLifecycle(initialValue = true)
+        val hideCamCopies by remember { settings.hideCamCopies }.collectAsStateWithLifecycle(initialValue = true)
         val homePinnedChat by remember { settings.homePinnedChat }.collectAsStateWithLifecycle(initialValue = 0L)
         // Last-visit marks for the chat rows' new-video counts (item 11e, v1.0.15).
         val visitMarks by remember { settings.chatVisitMarks }.collectAsStateWithLifecycle(initialValue = emptyMap())
@@ -1906,6 +1908,7 @@ private fun Root() {
             layout = homeLayout,
             collections = collections,
             hideShortVideos = hideShortVideos,
+            hideCamCopies = hideCamCopies,
             pinnedChat = homePinnedChat,
         )
         val tvChannelsOn by settings.tvChannels.collectAsStateWithLifecycle(initialValue = null)

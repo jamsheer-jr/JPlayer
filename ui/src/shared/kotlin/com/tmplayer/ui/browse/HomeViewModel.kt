@@ -267,6 +267,8 @@ class HomeViewModel(
     private val sizeLimits: suspend () -> Pair<Long, Long> = { SizeFilter.DEFAULT_MIN to SizeFilter.DEFAULT_MAX },
     /** Whether videos under 5 minutes are hidden (the Playback switch); read per fetch like [sizeLimits]. */
     private val hideShortVideos: suspend () -> Boolean = { true },
+    /** Whether cam family copies are hidden (the Playback switch); read per fetch like [sizeLimits]. */
+    private val hideCamCopies: suspend () -> Boolean = { true },
     /** Where the shows in progress and their new episodes are worked out: off the main thread. */
     private val work: kotlin.coroutines.CoroutineContext = Dispatchers.Default,
     /**
@@ -961,7 +963,7 @@ class HomeViewModel(
             is HomeRow.Chat -> listOf(row.chatId)
             else -> return null
         }
-        HomeRows.seeAll(row, emptyList(), shortHiddenCached) ?: return null
+        HomeRows.seeAll(row, emptyList(), shortHiddenCached, camHiddenCached) ?: return null
         val key = row.key
         feeds[key]?.let { return it.also { feed -> feed.reshape(row) } }
         val held = _loaded.value.filterKeys { it in chats }
@@ -974,11 +976,14 @@ class HomeViewModel(
             row = row,
             read = { chatId, cursors -> source.chatMediaFrom(chatId, cursors) },
             keep = { items ->
-                val base = withinLimits(items)
-                if (shortHidden()) com.tmplayer.data.ShortVideos.kept(base) else base
+                var base = withinLimits(items)
+                if (shortHidden()) base = com.tmplayer.data.ShortVideos.kept(base)
+                if (camHidden()) base = base.filterNot { com.tmplayer.data.MediaFacts.isCam(it) }
+                base
             },
             work = work,
             hideShortVideos = shortHiddenCached,
+            hideCamCopies = camHiddenCached,
         )
         feeds[key] = feed
         return feed
@@ -997,6 +1002,17 @@ class HomeViewModel(
     private suspend fun shortHidden(): Boolean {
         val on = runCatching { hideShortVideos() }.getOrDefault(true)
         shortHiddenCached = on
+        return on
+    }
+
+    /** The cam family switch as last read, for the places that cannot suspend ([seeAll]). */
+    @Volatile
+    private var camHiddenCached: Boolean = true
+
+    /** The cam family switch, read fresh and remembered for [camHiddenCached]. */
+    private suspend fun camHidden(): Boolean {
+        val on = runCatching { hideCamCopies() }.getOrDefault(true)
+        camHiddenCached = on
         return on
     }
 
@@ -1142,6 +1158,8 @@ fun rememberHomeRows(
     collections: List<com.tmplayer.data.VideoCollection> = emptyList(),
     /** Videos under 5 minutes hidden from the rows and shelves (the Playback switch): see [HomeRows.build]. */
     hideShortVideos: Boolean = false,
+    /** Cam family copies hidden from the rows and shelves (the Playback switch): see [HomeRows.build]. */
+    hideCamCopies: Boolean = false,
     /** The one chat pinned to Home (item 8c, v1.0.15): its row leads the chat rows; 0 is none. */
     pinnedChat: Long = 0L,
 ): List<HomeRow> {
@@ -1212,7 +1230,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, seriesPool, pinnedChat) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, pinnedChat) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1269,7 +1287,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, seriesPool)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         // The first build on a cold start (owner, v1.0.14): the full build below waits on
@@ -1296,6 +1314,7 @@ fun rememberHomeRows(
                     phoneOrder = phoneOrder,
                     nowMs = System.currentTimeMillis(),
                     hideShortVideos = hideShortVideos,
+                    hideCamCopies = hideCamCopies,
                     seriesPool = seriesPool,
                 )
             }
@@ -1320,6 +1339,7 @@ fun rememberHomeRows(
                 phoneOrder = phoneOrder,
                 nowMs = System.currentTimeMillis(),
                 hideShortVideos = hideShortVideos,
+                hideCamCopies = hideCamCopies,
                 seriesPool = seriesPool,
             )
         }
