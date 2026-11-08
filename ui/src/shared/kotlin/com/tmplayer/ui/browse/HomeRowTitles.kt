@@ -18,8 +18,14 @@ fun homeRowTitle(row: HomeRow, s: Messages): String = when (row) {
         "series" -> s.homeRowShows
         "anime" -> s.homeRowAnime
         "uhd" -> s.homeRowUhd
+        "hdr" -> s.homeRowHdr
+        "remastered" -> s.homeRowRemastered
+        "foreign" -> s.homeRowForeign
+        "series-ongoing" -> s.homeRowSeriesOngoing
+        "series-completed" -> s.homeRowSeriesCompleted
         "series-lang-ko" -> s.homeRowKdrama
         "series-lang-zh" -> s.homeRowCdrama
+        "series-lang-ja" -> s.homeRowJdrama
         "top-rated" -> s.homeRowTopRated
         "trending" -> s.homeRowTrending
         "because" -> s.homeRowBecause

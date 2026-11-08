@@ -3807,8 +3807,13 @@ internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): St
     "series" -> s.settingsCatSeries
     "anime" -> s.homeRowAnime
     "uhd" -> s.homeRowUhd
+    "hdr" -> s.settingsCatHdr
+    "remastered" -> s.settingsCatRemastered
     "lang" -> s.settingsCatLang
+    "foreign" -> s.settingsCatForeign
     "genre" -> s.settingsCatGenre
+    "series-genre" -> s.settingsCatSeriesGenre
+    "series-status" -> s.settingsCatSeriesStatus
     "top-rated" -> s.settingsCatTopRated
     "ott" -> s.settingsCatOtt
     "multi" -> s.settingsCatMulti

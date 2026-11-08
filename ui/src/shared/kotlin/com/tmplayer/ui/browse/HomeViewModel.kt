@@ -1517,13 +1517,14 @@ private fun homeTitleMeta(
             val found = extras
                 ?.takeIf {
                     it.genres.isNotEmpty() || it.rating != null || it.originalLanguage != null ||
-                        it.year != null || it.providers.isNotEmpty() ||
+                        it.year != null || it.providers.isNotEmpty() || it.ended ||
                         info?.provider == com.tmplayer.online.MetaProvider.AniList
                 }
                 ?.let {
                     com.tmplayer.data.TitleMeta(
                         it.genres, it.rating, it.originalLanguage, it.year, it.providers,
                         anime = info?.provider == com.tmplayer.online.MetaProvider.AniList,
+                        ended = it.ended,
                     )
                 }
                 // An anime catalogue's match settles the one fact Home needs of it even

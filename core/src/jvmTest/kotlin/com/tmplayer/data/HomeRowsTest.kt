@@ -237,6 +237,74 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `the hdr shelf holds the hdr family and the remastered shelf the remasters`() {
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(
+                1L to listOf(
+                    video(1, "Alpha.Film.2026.2160p.HDR.mkv"),
+                    video(1, "Beta.Film.2026.1080p.Dolby.Vision.mkv"),
+                    video(1, "Delta.Film.2026.1080p.HDR.DV.mkv"),
+                    video(1, "Epsilon.Film.2026.1080p.SDR.mkv"),
+                    video(1, "Zeta.Film.2026.1080p.mkv"),
+                    video(1, "Old.One.1999.Remastered.mkv"),
+                    video(1, "Old.Two.2001.Remastered.mkv"),
+                    video(1, "Old.Three.2003.Reamster.mkv"),
+                ),
+            ),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        // HDR, Dolby Vision and the combined HDR DV stand; SDR and the unstated do not.
+        assertEquals(3, catalogs.single { it.kind == "hdr" }.entries.size)
+        // The misspelt remaster counts with the straight ones.
+        assertEquals(3, catalogs.single { it.kind == "remastered" }.entries.size)
+    }
+
+    @Test
+    fun `shows stand in genre, standing and foreign rows by their matches`() {
+        fun episodes(chatId: Long, title: String) = (1..2).map { video(chatId, "$title.S01E%02d.mkv".format(it)) }
+        val running = listOf("Seoul.Diary", "Busan.Diary", "Jeju.Diary")
+        val ended = listOf("Harbour.Notes", "River.Notes", "Valley.Notes")
+        val tokyo = episodes(5, "Tokyo.Diary")
+        val loaded = HashMap<Long, List<MediaItem>>()
+        val meta = HashMap<String, TitleMeta>()
+        running.forEachIndexed { i, title ->
+            val eps = episodes(2L + i, title)
+            loaded[2L + i] = eps
+            eps.forEach { meta[it.id] = TitleMeta(listOf("Drama"), 8.0, originalLanguage = "ko") }
+        }
+        ended.forEachIndexed { i, title ->
+            val eps = episodes(6L + i, title)
+            loaded[6L + i] = eps
+            eps.forEach { meta[it.id] = TitleMeta(listOf("Comedy"), 8.0, originalLanguage = "en", ended = true) }
+        }
+        loaded[5] = tokyo
+        tokyo.forEach { meta[it.id] = TitleMeta(listOf("Drama"), 8.0, originalLanguage = "ja") }
+        loaded[1] = listOf(video(1))
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = loaded,
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        // The three running Korean shows and the Japanese one; the ended stand apart.
+        assertEquals(4, catalogs.single { it.kind == "series-ongoing" }.entries.size)
+        assertEquals(3, catalogs.single { it.kind == "series-completed" }.entries.size)
+        // The running Korean shows and the Japanese one are foreign; the English ended are not.
+        assertEquals(4, catalogs.single { it.kind == "foreign" }.entries.size)
+        val drama = catalogs.single { it.kind == "series-genre-drama" }
+        assertEquals("Drama Series", drama.label)
+        assertEquals(4, drama.entries.size)
+        assertEquals("J-Drama", catalogs.single { it.kind == "series-lang-ja" }.label)
+    }
+
+    @Test
     fun `series stand in language rows by their drama tags alone`() {
         // No online match hands these a language: the names' own catalogue tags are the
         // only signal, as most of the owner's drama files carry them (owner, v1.0.14).

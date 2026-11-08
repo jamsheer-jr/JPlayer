@@ -165,6 +165,12 @@ data class TitleMeta(
      * the genre test can read. The caller sets this from the match's provider.
      */
     val anime: Boolean = false,
+    /**
+     * A show the provider says has ended or been cancelled (item 26, v1.0.17), from the
+     * same extras the genres come from. Only read where a [TitleMeta] stands at all, so
+     * false here means the fetched extras said the show has not ended.
+     */
+    val ended: Boolean = false,
 )
 
 /**
@@ -544,6 +550,8 @@ object HomeRows {
      * "lang", every OTT row "ott"), so hiding and ordering speak in groups.
      */
     fun catalogGroupOf(kind: String): String = when {
+        kind.startsWith("series-genre-") -> "series-genre"
+        kind == "series-ongoing" || kind == "series-completed" -> "series-status"
         kind == "series" || kind.startsWith("series-lang-") -> "series"
         kind == "anime" -> "anime"
         kind.startsWith("dub-") -> "lang"
@@ -613,6 +621,9 @@ object HomeRows {
 
     /** Genre shelves at most, the fullest first, capped the way the language shelves are. */
     const val CATALOG_GENRES = 4
+
+    /** Series genre rows Home builds at most: the owner asked for more show categories (v1.0.17). */
+    const val CATALOG_SERIES_GENRES = 6
 
     /** The lowest rating, out of ten, that earns a tile a place on the Top Rated shelf. */
     const val TOP_RATED_MIN = 7.5
@@ -795,6 +806,30 @@ object HomeRows {
             // heading comes from the catalog too, so the label is empty.
             val uhd = all.filter { entry -> isUhd(entry) }
             if (uhd.size >= CATALOG_MIN) add(HomeRow.Catalog("uhd", "", uhd.take(LIMIT), all = uhd))
+            // HDR (owner, v1.0.17): the titles carrying an HDR family copy, by the
+            // dynamic range the copies list itself reads, in his own set (2026-11-06:
+            // HDR, HDR10, HDR10+, Dolby Vision and the combined HDR DV; SDR never
+            // counts, and neither does a name stating no range).
+            val hdr = all.filter { entry -> isHdr(entry) }
+            if (hdr.size >= CATALOG_MIN) add(HomeRow.Catalog("hdr", "", hdr.take(LIMIT), all = hdr))
+            // Remastered (owner, v1.0.17): a copy whose name says the release is a
+            // remaster, misspellings included, as the copies list reads it.
+            val remastered = all.filter { entry -> isRemastered(entry) }
+            if (remastered.size >= CATALOG_MIN) add(HomeRow.Catalog("remastered", "", remastered.take(LIMIT), all = remastered))
+            // Foreign (owner, v1.0.17): the titles whose own language is known and
+            // is neither English nor an Indian language, by the match's language.
+            val foreign = all.filter { entry -> isForeign(entry, titleMeta) }
+            if (foreign.size >= CATALOG_MIN) add(HomeRow.Catalog("foreign", "", foreign.take(LIMIT), all = foreign))
+            // The shows' own genres and standings (owner, v1.0.17): more categories
+            // for the Shows home, as the series language rows already stand there.
+            addAll(seriesGenreRows(all.filterIsInstance<ShelfEntry.Show>(), titleMeta))
+            val ongoing = all.filterIsInstance<ShelfEntry.Show>().filter { entry ->
+                val meta = metaOf(entry, titleMeta)
+                meta != null && !meta.anime && !meta.ended
+            }
+            if (ongoing.size >= CATALOG_MIN) add(HomeRow.Catalog("series-ongoing", "", ongoing.take(LIMIT), all = ongoing))
+            val completed = all.filterIsInstance<ShelfEntry.Show>().filter { entry -> metaOf(entry, titleMeta)?.ended == true }
+            if (completed.size >= CATALOG_MIN) add(HomeRow.Catalog("series-completed", "", completed.take(LIMIT), all = completed))
             val byLanguage = all.filterNot { entry -> isAnime(entry, titleMeta) }.groupBy { languageOf(it, titleMeta) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }
@@ -938,6 +973,7 @@ object HomeRows {
     private fun seriesLanguageTitle(code: String): String = when (code) {
         "ko" -> "K-Drama"
         "zh" -> "C-Drama"
+        "ja" -> "J-Drama"
         else -> LANGUAGE_NAMES[code]?.let { "$it Series" } ?: code
     }
 
@@ -998,6 +1034,49 @@ object HomeRows {
      */
     private fun isUhd(entry: ShelfEntry): Boolean =
         itemsOf(entry).any { VideoCopies.qualityLabel(it) == "4K" }
+
+    /** The dynamic ranges the HDR shelf gathers: the owner's own set (2026-11-06). */
+    private val HDR_RANGES = setOf("HDR", "HDR10", "HDR10+", "Dolby Vision", "HDR DV")
+
+    /** A title with an HDR family copy, by the range facts the copies list itself shows. */
+    private fun isHdr(entry: ShelfEntry): Boolean =
+        itemsOf(entry).any { MediaFacts.of(it).dynamicRange in HDR_RANGES }
+
+    /** A title with a remaster copy, by the name fact the copies list itself shows. */
+    private fun isRemastered(entry: ShelfEntry): Boolean =
+        itemsOf(entry).any { MediaFacts.of(it).remastered }
+
+    /** The Indian languages, which are never "foreign" to this app's viewer (owner, v1.0.17). */
+    private val INDIAN_LANGUAGES = setOf("ml", "hi", "ta", "te", "kn", "bn", "mr", "pa", "gu", "or", "as", "ur")
+
+    /** A title whose own language is known, and is neither English nor an Indian language. */
+    private fun isForeign(entry: ShelfEntry, titleMeta: Map<String, TitleMeta>): Boolean {
+        val code = metaOf(entry, titleMeta)?.originalLanguage ?: return false
+        return code != "en" && code !in INDIAN_LANGUAGES
+    }
+
+    /**
+     * The series genre rows (owner, v1.0.17): the shows grouped by the genres their
+     * matches carry, the fullest row first, a row standing at the same count every
+     * catalog row asks. Headed "<Genre> Series", apart from the mixed genre shelf of
+     * the same name, as the series language rows are headed apart.
+     */
+    private fun seriesGenreRows(shows: List<ShelfEntry.Show>, titleMeta: Map<String, TitleMeta>): List<HomeRow.Catalog> {
+        if (shows.isEmpty()) return emptyList()
+        val byGenre = LinkedHashMap<String, MutableList<ShelfEntry>>()
+        shows.forEach { entry ->
+            metaOf(entry, titleMeta)?.genres.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                .forEach { genre -> byGenre.getOrPut(genre) { ArrayList() } += entry }
+        }
+        return byGenre.entries
+            .filter { it.value.size >= CATALOG_MIN }
+            .sortedWith(compareByDescending<Map.Entry<String, List<ShelfEntry>>> { it.value.size }.thenBy { it.key })
+            .take(CATALOG_SERIES_GENRES)
+            .map { (genre, entries) -> HomeRow.Catalog(seriesGenreKind(genre), "$genre Series", entries.take(LIMIT), all = entries) }
+    }
+
+    /** A series genre row's kind: "series-genre-<slug>", so its group is its own. */
+    private fun seriesGenreKind(genre: String): String = "series-" + genreKind(genre)
 
     private fun row(
         items: List<MediaItem>,

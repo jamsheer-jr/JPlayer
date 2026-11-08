@@ -75,7 +75,8 @@ data class HomeLayout(
 
         /** The catalog groups, in the built in order the Categories picker lists. */
         val CATALOG_GROUPS = listOf(
-            "trending", "top10", "movies", "series", "anime", "uhd", "lang", "genre", "top-rated",
+            "trending", "top10", "movies", "series", "anime", "uhd", "hdr", "remastered", "lang", "foreign",
+            "genre", "series-genre", "series-status", "top-rated",
             "ott", "multi", "weekly", "because", "collections",
         )
 
