@@ -63,11 +63,11 @@ class SetupTest {
     }
 
     @Test
-    fun `Performance is pictured with shots, Mobile data is drawn`() {
+    fun `Performance and Mobile data answers are both drawn`() {
         assertEquals(listOf(SetupChoice.FullQuality, SetupChoice.Lighter), SetupStep.Performance.choices)
-        assertTrue(SetupChoice.FullQuality.screenshot && SetupChoice.Lighter.screenshot)
+        assertTrue(SetupChoice.FullQuality.drawn && SetupChoice.Lighter.drawn)
         assertEquals(listOf(SetupChoice.SaveData, SetupChoice.NoLimits), SetupStep.MobileData.choices)
-        assertFalse(SetupChoice.SaveData.screenshot || SetupChoice.NoLimits.screenshot)
+        assertTrue(SetupChoice.SaveData.drawn && SetupChoice.NoLimits.drawn)
     }
 
     @Test
@@ -82,7 +82,7 @@ class SetupTest {
     fun `the Device step starts on Apply, and has no pictures`() {
         assertEquals(listOf(SetupChoice.ApplyRecommended, SetupChoice.NotNow), SetupStep.Device.choices)
         assertEquals(SetupChoice.ApplyRecommended, SetupValues(posters = false, lowStorage = true).current(SetupStep.Device))
-        assertFalse(SetupChoice.ApplyRecommended.screenshot)
+        assertFalse(SetupChoice.ApplyRecommended.drawn)
     }
 
     @Test
@@ -269,7 +269,7 @@ class SetupTest {
         assertEquals(SetupChoice.CrashReportsOff, SetupValues(posters = true, lowStorage = false).current(SetupStep.CrashReports))
         assertEquals(SetupChoice.CrashReportsOff, SetupValues(posters = true, lowStorage = false).chosen(SetupStep.CrashReports))
         assertTrue(SetupStep.CrashReports.choices.none { it.recommended })
-        assertTrue(SetupStep.CrashReports.choices.none { it.screenshot })
+        assertTrue(SetupStep.CrashReports.choices.none { it.drawn })
         // Run again from Settings with the switch on, the question shows it on.
         val on = SetupValues(posters = true, lowStorage = false, crashReports = true)
         assertEquals(SetupChoice.CrashReportsOn, on.current(SetupStep.CrashReports))
@@ -303,13 +303,15 @@ class SetupTest {
     }
 
     @Test
-    fun `screenshots for posters and performance, drawings for storage and mobile data`() {
+    fun `drawings for posters, storage, performance and mobile data, none for the rest`() {
         assertEquals(
             setOf(
                 SetupChoice.PostersOn, SetupChoice.PostersOff,
+                SetupChoice.KeepWhilePlaying, SetupChoice.LowStorage,
                 SetupChoice.FullQuality, SetupChoice.Lighter,
+                SetupChoice.SaveData, SetupChoice.NoLimits,
             ),
-            SetupChoice.entries.filter { it.screenshot }.toSet(),
+            SetupChoice.entries.filter { it.drawn }.toSet(),
         )
     }
 

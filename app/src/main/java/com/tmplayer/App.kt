@@ -24,8 +24,6 @@ import com.tmplayer.data.configureForAndroid
 import com.tmplayer.data.WatchCache
 import com.tmplayer.data.WatchedStore
 import com.tmplayer.i18n.Translator
-import com.tmplayer.ui.onboarding.SetupChoice
-import com.tmplayer.ui.onboarding.SetupImages
 import com.tmplayer.online.MetadataCache
 import com.tmplayer.online.MetadataStore
 import com.tmplayer.online.OnlineMetadata
@@ -152,8 +150,7 @@ class App : Application() {
             // The viewer's own title words ride on that same switch.
             launch { store.hiddenTitleWords.collect { com.tmplayer.data.TitleCleaning.customWords = it } }
         }
-        // The setup's pictures are this app's drawables, which the shared :ui code cannot name.
-        SetupImages.drawable = ::setupDrawable
+        // The setup draws its own pictures (item 12), so no drawable lookup is handed over here.
         // The PIN's waits run on time since boot, deep sleep included, which no date setting moves.
         com.tmplayer.data.PinClock.source = { android.os.SystemClock.elapsedRealtime() }
         // Before anything else that could throw: a crash reporter that starts after the crash is
@@ -330,35 +327,5 @@ class App : Application() {
 
         /** Long enough to be past the first screen and whatever it wanted off the disk. */
         private const val CACHE_TRIM_DELAY_MS = 20_000L
-    }
-}
-
-/**
- * The picture of a setup answer: a cropped, marked shot of the part of the app it changes. A
- * television gets its own (dark, as a television mostly is); a phone gets light or dark to match
- * the theme. The storage step draws its own picture, so it has none.
- */
-private fun setupDrawable(choice: SetupChoice, tv: Boolean, dark: Boolean): Int = when (choice) {
-    SetupChoice.PostersOn -> when {
-        tv -> R.drawable.setup_posters_on_tv
-        dark -> R.drawable.setup_posters_on_dark
-        else -> R.drawable.setup_posters_on
-    }
-    SetupChoice.PostersOff -> when {
-        tv -> R.drawable.setup_posters_off_tv
-        dark -> R.drawable.setup_posters_off_dark
-        else -> R.drawable.setup_posters_off
-    }
-    SetupChoice.KeepWhilePlaying, SetupChoice.LowStorage, SetupChoice.SaveData, SetupChoice.NoLimits,
-    SetupChoice.ApplyRecommended, SetupChoice.NotNow, SetupChoice.CrashReportsOff, SetupChoice.CrashReportsOn -> 0
-    SetupChoice.FullQuality -> when {
-        tv -> R.drawable.setup_performance_full_tv
-        dark -> R.drawable.setup_performance_full_dark
-        else -> R.drawable.setup_performance_full
-    }
-    SetupChoice.Lighter -> when {
-        tv -> R.drawable.setup_performance_lighter_tv
-        dark -> R.drawable.setup_performance_lighter_dark
-        else -> R.drawable.setup_performance_lighter
     }
 }

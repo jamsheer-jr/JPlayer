@@ -45,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -485,10 +484,8 @@ private fun ChoiceCard(choice: SetupChoice, selected: Boolean, side: Dp?, modifi
                     TmIcons.CheckCircle,
                     contentDescription = null,
                     tint = Tone.accent,
-                    // On the picture's right whatever the reading direction: the shots are of the
-                    // app as it is, and on their left sits what the answer is about.
                     modifier = Modifier
-                        .align(if (choice.screenshot) AbsoluteAlignment.TopRight else Alignment.TopEnd)
+                        .align(Alignment.TopEnd)
                         .padding(6.dp)
                         .size(26.dp)
                         .background(Tone.background, CircleShape),
@@ -516,15 +513,128 @@ private fun ChoiceCard(choice: SetupChoice, selected: Boolean, side: Dp?, modifi
 }
 
 /**
- * An answer's picture, filling [modifier]'s square: the marked shot, or the drawing for the storage
- * and mobile data steps. The setup's cards and Settings' Setup choices show the same one.
+ * An answer's picture, filling [modifier]'s square: a drawing made for J Player, one per step
+ * (item 12). No screenshot ships in the setup: the posters and performance steps draw theirs the
+ * same way the storage and mobile data steps always drew theirs. The setup's cards and Settings'
+ * Setup choices show the same one.
  */
 @Composable
 internal fun ChoicePicture(choice: SetupChoice, modifier: Modifier) {
-    when {
-        choice.screenshot -> SetupShot(choice, modifier)
-        choice.step == SetupStep.MobileData -> MobileDataArt(choice, modifier)
+    when (choice.step) {
+        SetupStep.Posters -> PostersArt(choice, modifier)
+        SetupStep.Performance -> PerformanceArt(choice, modifier)
+        SetupStep.MobileData -> MobileDataArt(choice, modifier)
         else -> StorageArt(choice, modifier)
+    }
+}
+
+/**
+ * The posters step's picture, drawn for J Player: a row of poster tiles over the lines of an
+ * overview. With posters on, the tiles are filled, the first carries the play mark, and the
+ * overview's first line is the accent; with posters off the tiles are bare outlines and every
+ * line is quiet, which is what a plain tile looks like.
+ */
+@Composable
+private fun PostersArt(choice: SetupChoice, modifier: Modifier) {
+    val on = choice == SetupChoice.PostersOn
+    val accent = Tone.accent
+    val track = Tone.outline
+    val tileShape = RoundedCornerShape(Corner.Small)
+    Column(
+        modifier.padding(14.dp),
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (tile in 0..2) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .aspectRatio(0.72f)
+                        .clip(tileShape)
+                        .background(if (on) Tone.surfaceHigh else Color.Transparent)
+                        .then(if (on) Modifier else Modifier.border(1.dp, track, tileShape)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (on && tile == 0) TmIcons.PlaySolid else TmIcons.Image,
+                        contentDescription = null,
+                        tint = if (on) accent else Tone.muted,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            for ((fraction, tint) in listOf(1f to if (on) accent else track, 0.8f to track, 0.55f to track)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(fraction)
+                        .height(6.dp)
+                        .clip(CircleShape)
+                        .background(tint),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The performance step's picture, drawn like the storage step's. Over a video's length, the seek
+ * bar: at full quality it carries the thumbnail marks seeking shows and its fill runs in the
+ * accent; lighter, the marks are gone and the fill is short and quiet. Under it, how much picture
+ * is drawn: a full bar at full quality, a short one when lighter.
+ */
+@Composable
+private fun PerformanceArt(choice: SetupChoice, modifier: Modifier) {
+    val full = choice == SetupChoice.FullQuality
+    val accent = Tone.accent
+    val track = Tone.outline
+    val ground = Tone.background
+    val text = Tone.muted
+    Column(
+        modifier.padding(14.dp),
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(TmIcons.Play, contentDescription = null, tint = text, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Canvas(Modifier.weight(1f).height(26.dp).mirrored()) {
+                val h = size.height * 0.42f
+                val y = (size.height - h) / 2
+                val r = CornerRadius(h / 2, h / 2)
+                drawRoundRect(track, Offset(0f, y), Size(size.width, h), r)
+                drawRoundRect(accent, Offset(0f, y), Size(size.width * 0.62f, h), r)
+                if (full) {
+                    // The thumbnails seeking shows at full quality, as ticks over the bar.
+                    for (tick in 1..4) {
+                        val x = size.width * (tick / 5f)
+                        drawRoundRect(
+                            ground,
+                            Offset(x, y - 3.dp.toPx()),
+                            Size(2.dp.toPx(), h + 6.dp.toPx()),
+                            CornerRadius(1.dp.toPx(), 1.dp.toPx()),
+                        )
+                    }
+                }
+                val head = Offset(size.width * 0.48f, size.height / 2)
+                drawCircle(ground, radius = size.height * 0.42f, center = head)
+                drawCircle(accent, radius = size.height * 0.30f, center = head)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(TmIcons.Image, contentDescription = null, tint = text, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Canvas(Modifier.weight(1f).height(14.dp).mirrored()) {
+                val r = CornerRadius(size.height / 2, size.height / 2)
+                drawRoundRect(track, Offset.Zero, size, r)
+                drawRoundRect(
+                    if (full) accent else track,
+                    Offset.Zero,
+                    Size(size.width * if (full) 1f else 0.45f, size.height),
+                    r,
+                )
+            }
+        }
     }
 }
 

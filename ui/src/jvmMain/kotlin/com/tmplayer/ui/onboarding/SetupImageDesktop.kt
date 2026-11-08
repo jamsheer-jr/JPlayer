@@ -10,24 +10,12 @@ import com.tmplayer.data.decodeImage
 import com.tmplayer.ui.theme.LocalDarkTheme
 
 /**
- * The picture of an answer on the desktop: a WebP on the classpath, `onboarding/<name>`, cropped
- * and marked by `scripts/annotate-shot.py` from the desktop promo fixture's shots
- * (`TMPLAYER_PROMO=<dir> ./gradlew :desktop:test --tests '*PromoShots*'`), so the setup shows the
- * window the viewer is about to use.
+ * The setup's answers carry no picture file on the desktop any more (item 12): the shared setup
+ * draws every step's picture itself (see ChoicePicture in SetupScreen.kt), the same drawings the
+ * phone and the television show. The tour pages below still read their WebPs from the classpath.
  */
-@Composable
-internal fun SetupShot(choice: SetupChoice, modifier: Modifier = Modifier) {
-    val dark = LocalDarkTheme.current
-    val image = remember(choice, dark) { load(choice, dark) } ?: return
-    Image(
-        bitmap = image,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = modifier,
-    )
-}
 
-/** The file name of an answer's picture, for the fixture that writes it and the setup that reads it. */
+/** The file name an answer's picture had, kept for the annotation specs and the promo fixture. */
 fun setupImageName(choice: SetupChoice, dark: Boolean): String? {
     val shot = when (choice) {
         SetupChoice.PostersOn -> "posters-on"
@@ -38,12 +26,6 @@ fun setupImageName(choice: SetupChoice, dark: Boolean): String? {
         SetupChoice.ApplyRecommended, SetupChoice.NotNow, SetupChoice.CrashReportsOff, SetupChoice.CrashReportsOn -> return null
     }
     return "$shot-${if (dark) "dark" else "light"}.webp"
-}
-
-private fun load(choice: SetupChoice, dark: Boolean): ImageBitmap? {
-    val name = setupImageName(choice, dark) ?: return null
-    val bytes = SetupChoice::class.java.getResourceAsStream("/onboarding/$name")?.use { it.readBytes() } ?: return null
-    return decodeImage(bytes)
 }
 
 /**

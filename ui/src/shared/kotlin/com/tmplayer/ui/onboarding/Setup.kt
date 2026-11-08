@@ -79,11 +79,13 @@ enum class SetupChoice(val step: SetupStep) {
         get() = step != SetupStep.CrashReports && step.choices.first() == this
 
     /**
-     * Whether this answer is pictured with a screenshot. The storage and mobile data steps draw
-     * theirs, since a frame of the app says nothing about what is kept or fetched.
+     * Whether this answer carries a picture at all. Every picture in the setup is a drawing made
+     * for J Player (item 12): no screenshot of the app, upstream's or anyone's, ships in the flow.
+     * The Device step's answers and the crash report switch carry none: their words say it all.
      */
-    val screenshot: Boolean
-        get() = step == SetupStep.Posters || step == SetupStep.Performance
+    val drawn: Boolean
+        get() = step == SetupStep.Posters || step == SetupStep.Storage ||
+            step == SetupStep.Performance || step == SetupStep.MobileData
 }
 
 /** The settings the setup reads and writes, as they are now. */
@@ -172,7 +174,7 @@ object Setup {
 
     /**
      * [steps] as the pages the setup shows, in order. Posters, Device and Performance keep a page
-     * each (their answers are pictured, and the annotated shots of them stay valid). Two or more
+     * each (their answers stand alone, pictured or listed). Two or more
      * of the [SWITCHES] share one page at the end, a row each, so a phone's three switch steps
      * take one page rather than three; a lone one keeps its own page where it was.
      */
@@ -303,8 +305,8 @@ class CrashReporting(val available: Boolean, val onChange: (Boolean) -> Unit = {
  * last page; Back goes to the page before, and from the first leaves the setup as Skip all does.
  * Snapshot state, so a screen that reads [index] recomposes when it moves.
  *
- * Built from steps, each step is a page of its own (Settings' shots, the promo captures and most
- * tests walk them that way); [paged] takes the setup's real pages ([Setup.pages]), where the
+ * Built from steps, each step is a page of its own (Settings' Setup choices and most tests walk
+ * them that way); [paged] takes the setup's real pages ([Setup.pages]), where the
  * switch steps can share one.
  */
 class SetupState private constructor(val pages: List<List<SetupStep>>, start: Int, @Suppress("UNUSED_PARAMETER") paged: Unit) {
