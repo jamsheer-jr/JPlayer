@@ -1078,7 +1078,35 @@ object Td {
             it.complete(Unit)
             return
         }
-        runCatching { current?.logOut() }
+        val td = current ?: return
+        runCatching { td.logOut() }
+        // The logout above is what TDLib acts on, but leaving the QR wait can hold it: TDLib is
+        // sitting on a pending confirmation and the logout has to be carried over a line it is
+        // not using for anything else. Without a watcher the screen then sits on Connecting for
+        // good (owner's phone, 2026-11-08: QR pane, back to the number entry, loader forever).
+        // The signed in logout has the same shape of hang and its own watcher ([watchLogOut]);
+        // this one stands guard over a restart the same way.
+        scope.launch { watchSignInRestart(td) }
+    }
+
+    /**
+     * A sign in restart that hangs on: after [restartSignIn] asked TDLib to log out, the client
+     * is still the current one and the screen is still on Connecting past the nudge point. First
+     * the connections are reopened, which lets the logout through; if it still has not closed,
+     * the client is replaced as the stall retry does, keeping the method the restart chose
+     * ([replaceClient] carries [method] over, and the restart set it). A restart that lands
+     * normally moves the state off Connecting or replaces the client first, and the watcher
+     * stands down at either check.
+     */
+    private suspend fun watchSignInRestart(td: TdlClient) {
+        delay(LOG_OUT_NUDGE_MS)
+        if (td !== current || _auth.value !is AuthState.Connecting) return
+        Logger.i(TAG, "sign in restart is slow; reopening connections")
+        runCatching { tellNetworkType(td, force = true) }
+        delay(LOG_OUT_GIVE_UP_MS)
+        if (td !== current || _auth.value !is AuthState.Connecting) return
+        Logger.i(TAG, "sign in restart did not finish; starting a new client")
+        replaceClient(td)
     }
 
     /**
