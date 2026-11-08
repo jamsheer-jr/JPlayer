@@ -243,6 +243,34 @@ object TmSchemes {
         scrim = Color(0xFF000000),
     )
 
+    /**
+     * Home's Netflix scheme (item 18, v1.0.16): the dark scheme recoloured the way the
+     * owner asked Home alone to look. True black behind everything in place of the
+     * near-black, Netflix red (0xFFE50914, the player's own seekbar red) wherever the
+     * scheme's accent stands (the selected chips, See all, the badges, the focus
+     * fills), and the surface steps as dark greys over the black, so cards still read
+     * as cards. Home composes under this scheme and nothing else does: the rest of
+     * the app keeps [Dark] and [Light] untouched, and because the banner's fades are
+     * built from the background, the banner now melts into black. Focus stays loud:
+     * a red fill and the red focus edge on black cannot be missed.
+     */
+    val NetflixHome: ColorScheme = Dark.copy(
+        primary = Color(0xFFE50914),
+        onPrimary = Color(0xFFFFFFFF),
+        primaryContainer = Color(0xFF5C0A10),
+        onPrimaryContainer = Color(0xFFFFD9DB),
+        inversePrimary = Color(0xFFFF6B74),
+        background = Color(0xFF000000),
+        surface = Color(0xFF000000),
+        surfaceDim = Color(0xFF000000),
+        surfaceContainerLowest = Color(0xFF000000),
+        surfaceContainerLow = Color(0xFF141414),
+        surfaceContainer = Color(0xFF1A1A1A),
+        surfaceContainerHigh = Color(0xFF242424),
+        surfaceContainerHighest = Color(0xFF2E2E2E),
+        surfaceBright = Color(0xFF383838),
+    )
+
     /** The same scheme in daylight. */
     val Light: ColorScheme = lightColorScheme(
         primary = Color(0xFF00677F),

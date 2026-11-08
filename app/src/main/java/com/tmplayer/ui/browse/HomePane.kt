@@ -144,6 +144,16 @@ import androidx.compose.ui.draw.drawBehind
  * heading.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+/**
+ * Home under its own colour scheme (item 18, v1.0.16): everything composed inside
+ * takes [TmSchemes.NetflixHome] (black ground, Netflix red accent), and everything
+ * outside keeps the app's scheme. The one wrapper is the whole scope of the change.
+ */
+@Composable
+internal fun HomeThemed(content: @Composable () -> Unit) {
+    M3MaterialTheme(colorScheme = com.tmplayer.ui.theme.TmSchemes.NetflixHome, content = content)
+}
+
 @Composable
 internal fun HomePane(
     rows: List<HomeRow>,

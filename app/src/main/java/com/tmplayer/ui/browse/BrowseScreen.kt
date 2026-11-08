@@ -710,6 +710,7 @@ internal fun BrowseScreen(
                         // A show card held on Home opens its menu (HX20), drawn below with the other menus.
                         androidx.compose.runtime.CompositionLocalProvider(LocalSeriesHold provides { show -> heldShow = show to titles[show.cover.chatId].orEmpty() }) {
                         Box(Modifier.fillMaxSize()) {
+                            HomeThemed {
                             HomePane(
                                 rows = homeRows,
                                 rowsReady = homeRowsReady,
@@ -783,6 +784,7 @@ internal fun BrowseScreen(
                                 // Room for the television's top bar, which stands over the carousel's picture.
                                 tvHeader = if (touch) null else { _ -> Spacer(Modifier.fillMaxWidth().height(TV_BAR_HEIGHT)) },
                             )
+                            }
                         }
                         }
                     } else if (tab.listsVideos) {
