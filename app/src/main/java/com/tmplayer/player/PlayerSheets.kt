@@ -585,9 +585,9 @@ internal fun SubtitleSyncSheet(
 /**
  * "Translate subtitles": Off, or one of [SubtitleTranslator.LANGUAGES], Malayalam first. The
  * same page the subtitle picker's Online group opens; the More menu carries it too, because
- * that is where a viewer who just loaded a subtitle looks for it. Choosing writes the setting
- * and ends the errand; subtitles already playing are not reloaded, the choice counts from the
- * next one downloaded or loaded.
+ * that is where a viewer who just loaded a subtitle looks for it. Choosing keeps it for this
+ * video only and ends the errand; the choice kept in Settings is not touched. Subtitles
+ * already playing are not reloaded, the choice counts from the next one downloaded or loaded.
  */
 @Composable
 internal fun TranslateSheet(
@@ -597,16 +597,16 @@ internal fun TranslateSheet(
 ) {
     val s = LocalStrings.current
     val online = OnlineSubtitles.current
-    val current = online?.store?.now?.translateTo.orEmpty()
+    val current = online?.translateToNow().orEmpty()
     val focus = remember { FocusRequester() }
-    ChoiceSheet(title = s.onlineTranslateTitle, note = s.onlineTranslateDetail, onDismiss = onDismiss, onClose = onClose, fullScreen = true) {
+    ChoiceSheet(title = s.onlineTranslateTitle, note = s.onlineTranslateVideoDetail, onDismiss = onDismiss, onClose = onClose, fullScreen = true) {
         ChoiceList {
             ChoiceLine(
                 title = s.commonOff,
                 selected = current.isBlank(),
                 modifier = if (current.isBlank()) Modifier.focusRequester(focus) else Modifier,
             ) {
-                online?.setTranslateTo("")
+                online?.setPlayerTranslateTo("")
                 onDone()
             }
             SubtitleTranslator.LANGUAGES.forEach { code ->
@@ -616,7 +616,7 @@ internal fun TranslateSheet(
                     selected = selected,
                     modifier = if (selected) Modifier.focusRequester(focus) else Modifier,
                 ) {
-                    online?.setTranslateTo(code)
+                    online?.setPlayerTranslateTo(code)
                     onDone()
                 }
             }

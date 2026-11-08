@@ -264,6 +264,25 @@ class OnlineSubtitlesTest {
     }
 
     @Test
+    fun `a translate choice made in the player never becomes the kept setting`() {
+        val o = online()
+        o.setTranslateTo("ml")
+        assertEquals("ml", o.translateToNow())
+        // The player's own choice for this video wins while it stands...
+        o.setPlayerTranslateTo("ta")
+        assertEquals("ta", o.translateToNow())
+        // ...and the kept setting is exactly what it was.
+        assertEquals("ml", o.store.now.translateTo)
+        // Off in the player is a choice too: it beats a kept language for this video.
+        o.setPlayerTranslateTo("")
+        assertEquals("", o.translateToNow())
+        // Cleared, the kept setting is what counts again.
+        o.setPlayerTranslateTo(null)
+        assertEquals("ml", o.translateToNow())
+        assertEquals("ml", o.store.now.translateTo)
+    }
+
+    @Test
     fun `machine translations are left out unless switched on`() = runBlocking {
         val o = online()
         http.on("/subtitles", page(hit(1, machine = true), hit(2)))

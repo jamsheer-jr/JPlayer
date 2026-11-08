@@ -337,7 +337,7 @@ class TrackPickerFragment : Fragment() {
      */
     private fun translateLine(onTranslate: () -> Unit): Line? {
         val online = OnlineSubtitles.current ?: return null
-        val target = online.store.now.translateTo
+        val target = online.translateToNow()
         return Line(
             "translate",
             L.onlineTranslateTitle,
@@ -645,16 +645,17 @@ class TrackPickerFragment : Fragment() {
 
     /**
      * The translation's language: Off, or one of [SubtitleTranslator.LANGUAGES], Malayalam
-     * first. Choosing one writes the setting and steps back to the tracks; subtitles already
-     * playing are not reloaded, the choice counts from the next one downloaded or loaded.
+     * first. Choosing one keeps it for this video only and steps back to the tracks; the
+     * choice kept in Settings is not touched. Subtitles already playing are not reloaded,
+     * the choice counts from the next one downloaded or loaded.
      */
     @Composable
     private fun TranslatePage(closeFocus: FocusRequester, firstFocus: FocusRequester, onBack: () -> Unit) {
         val online = OnlineSubtitles.current ?: return close()
-        val current = online.store.now.translateTo
+        val current = online.translateToNow()
         ChoiceSheet(
             title = L.onlineTranslateTitle,
-            note = L.onlineTranslateDetail,
+            note = L.onlineTranslateVideoDetail,
             onDismiss = onBack,
             onClose = ::close,
             closeFocus = closeFocus,
@@ -662,12 +663,12 @@ class TrackPickerFragment : Fragment() {
         ) {
             val lines = buildList {
                 add(Line("off", L.commonOff, selected = current.isBlank()) {
-                    online.setTranslateTo("")
+                    online.setPlayerTranslateTo("")
                     onBack()
                 })
                 SubtitleTranslator.LANGUAGES.forEach { code ->
                     add(Line("lang:$code", OnlineSubtitles.languageName(code), selected = current == code) {
-                        online.setTranslateTo(code)
+                        online.setPlayerTranslateTo(code)
                         onBack()
                     })
                 }

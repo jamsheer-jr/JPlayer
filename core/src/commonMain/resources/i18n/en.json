@@ -1719,6 +1719,7 @@
     "translate_off": "Off. Subtitles are shown as they come",
     "translate_on": "Subtitles are translated to {language}",
     "translate_title": "Translate subtitles",
+    "translate_video_detail": "This video only. Subtitles downloaded or loaded for it, and the subtitles built into it as they play, are translated into this language. Your usual choice under Settings is not changed.",
     "unknown_language": "Unknown language",
     "username": "Username",
     "wrong_password": "OpenSubtitles didn't accept that username and password"

@@ -9,6 +9,7 @@ import com.tmplayer.i18n.TrackCodes
 import com.tmplayer.platform.Logger
 import dev.g000sha256.tdl.TdlClient
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -164,11 +165,29 @@ class OnlineSubtitles(
     fun setTranslateTo(code: String) = store.update { it.copy(translateTo = code.trim().lowercase(Locale.ROOT)) }
 
     /**
+     * The translate choice made in the player, for the video on screen only (owner,
+     * v1.0.17): held in memory and never written to the store, so turning translation
+     * on for one video does not make it the default for every other video. Null while
+     * the player has made no choice of its own; a blank code is a choice too, off for
+     * this video even where the kept setting names a language. The player clears it
+     * as it opens and as it closes, so it can never outlive its video.
+     */
+    private val playerTranslate = MutableStateFlow<String?>(null)
+
+    /** Keeps the player's own translate choice for this video: a language, blank for off, null for no choice. */
+    fun setPlayerTranslateTo(code: String?) {
+        playerTranslate.value = code?.trim()?.lowercase(Locale.ROOT)
+    }
+
+    /** The language subtitles are carried into now: the player's choice for this video first, the kept setting after it. */
+    fun translateToNow(): String = playerTranslate.value ?: store.now.translateTo
+
+    /**
      * The language [hit] is to be translated into, or null: translation off, or the subtitle is
      * already in that language (translating English into English only spends time).
      */
     private fun translateTarget(hit: SubtitleHit): String? {
-        val target = store.now.translateTo
+        val target = translateToNow()
         if (target.isBlank()) return null
         return target.takeUnless { SubtitleTranslator.sameLanguage(it, iso1(hit.language) ?: hit.language) }
     }

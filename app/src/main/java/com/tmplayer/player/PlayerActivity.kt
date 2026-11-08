@@ -1525,6 +1525,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         // An update that installs while this is open (picture in picture, the sound playing on)
         // ends the process: the place is written first (HX5).
         com.tmplayer.data.SelfInstaller.addBeforeInstall(saveBeforeInstall)
+        // A new screen, a new video: a translate choice made in the player belongs to the
+        // video it was made on (owner, v1.0.17), so any choice an earlier video's player
+        // left behind goes here, before anything can read it.
+        OnlineSubtitles.current?.setPlayerTranslateTo(null)
         // Before the first layout pass, on purpose: a window that turns after it has drawn is a
         // lurch the viewer sees. Almost every video is landscape, so landscape is what the loader
         // opens in, and a portrait clip turns once, later.
@@ -4983,7 +4987,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      */
     private fun liveSubtitleTarget(): String? {
         if (!textTrackEmbedded) return null
-        val target = OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() } ?: return null
+        val target = OnlineSubtitles.current?.translateToNow()?.takeIf { it.isNotBlank() } ?: return null
         if (TrackLanguages.same(textTrackLanguage, target)) return null
         return target
     }
@@ -9730,6 +9734,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     override fun onDestroy() {
+        // The player's own translate choice ends with the video it was made on (owner, v1.0.17).
+        OnlineSubtitles.current?.setPlayerTranslateTo(null)
         // The split's second player (item 11c, v1.0.15) goes with the screen.
         split?.stop()
         split = null

@@ -182,15 +182,16 @@ class SubtitleFiles(
     }
 
     /**
-     * The stored file carried into the viewer's chosen language (Settings, Translate
-     * subtitles), or itself when translation is off, the file is already in that language, or
+     * The stored file carried into the viewer's chosen language (the choice made in
+     * the player for this video, or the one kept in Settings), or itself when translation
+     * is off, the file is already in that language, or
      * its format is not one the translator takes. The translation is kept under a name made
      * from the file's own hash and the language, so loading the same file again finds it
      * instead of translating it again; the original file is never touched, and a failed
      * translation loads the original with a sentence saying so.
      */
     private suspend fun maybeTranslate(done: Copy.Done, name: String): Pair<Copy.Done, String> {
-        val target = OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() }
+        val target = OnlineSubtitles.current?.translateToNow()?.takeIf { it.isNotBlank() }
             ?: return done to name
         if (SubtitleTranslator.sameLanguage(ExternalSubtitle.languageOf(name), target)) return done to name
         val extension = ExternalSubtitle.extensionOf(done.file.name)

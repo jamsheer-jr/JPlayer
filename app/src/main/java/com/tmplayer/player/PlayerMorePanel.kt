@@ -583,7 +583,7 @@ class PlayerMorePanel(
                 kind,
                 s.onlineTranslateTitle,
                 TmIcons.Language,
-                OnlineSubtitles.current?.store?.now?.translateTo?.takeIf { it.isNotBlank() }
+                OnlineSubtitles.current?.translateToNow()?.takeIf { it.isNotBlank() }
                     ?.let { OnlineSubtitles.languageName(it) } ?: s.commonOff,
             )
             Kind.SubtitleSize -> Line(kind, s.tracksSubtitleSize, TmIcons.TextSize, host.subtitleSizeLabel())
