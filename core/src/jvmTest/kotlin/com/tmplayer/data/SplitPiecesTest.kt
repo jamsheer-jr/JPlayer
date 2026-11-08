@@ -85,6 +85,10 @@ class SplitPiecesTest {
             "Night.Train.2019.7z.001",
             "Night.Train.2019.zip.002",
             "Night.Train.2019.rar.part001",
+            // The same archive written with underscores, as uploaders post it: a
+            // split ZIP of a film is an archive's pieces, never a video's.
+            "Night_Train_2019_2160p_WEB_DL_mkv_zip.001",
+            "Night_Train_2019_mkv_7z.002",
         ).forEach { assertNull(it, SplitPieces.pieceOf(it)) }
     }
 
@@ -95,6 +99,13 @@ class SplitPiecesTest {
             assertFalse(it, MediaMapper.looksLikeVideo(it, "application/octet-stream"))
         }
         assertFalse(MediaMapper.looksLikeVideo("Film.7z.001", "video/x-matroska"))
+        // Underscore spellings read the same: the volume is an archive's, whatever
+        // the sender's client called it, and it never folds into a joined video.
+        listOf("Film_2026_2160p_WEB_DL_mkv_zip.001", "Film_mkv_7z.002").forEach {
+            assertTrue(it, SplitPieces.isArchiveVolume(it))
+            assertFalse(it, MediaMapper.looksLikeVideo(it, "application/octet-stream"))
+            assertFalse(it, MediaMapper.looksLikeVideo(it, "video/x-matroska"))
+        }
     }
 
     @Test

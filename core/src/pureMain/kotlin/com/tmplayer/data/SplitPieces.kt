@@ -81,7 +81,10 @@ object SplitPieces {
 
     /** Whether [fileName] is a volume of an archive, which no player opens: never listed as a video. */
     fun isArchiveVolume(fileName: String): Boolean {
-        val name = fileName.trim().lowercase()
+        // Uploaders write the same name with underscores ("Film_mkv_zip.001" for
+        // "Film.mkv.zip.001"), so the reading is made on the name with its
+        // separators all as dots: the volume patterns are written once, in dots.
+        val name = fileName.trim().lowercase().replace(SEPARATORS, ".")
         return ARCHIVE_VOLUME.containsMatchIn(name)
     }
 
@@ -294,7 +297,10 @@ object SplitPieces {
 
     private fun piece(base: String, digits: String, certain: Boolean): SplitPiece? {
         if (base.isBlank()) return null
-        if (base.substringAfterLast('.', "").lowercase() in ARCHIVES) return null
+        // The cut file's own last word, dots or underscores alike ("Film.mkv.zip",
+        // "Film_mkv_zip"): an archive was cut, not a video, and no piece of it is
+        // a piece of a video. Unpacking stays the archive tool's work, not a player's.
+        if (base.split(SEPARATORS).lastOrNull()?.lowercase() in ARCHIVES) return null
         val number = digits.toIntOrNull() ?: return null
         return SplitPiece(base = base, number = number, certain = certain)
     }
