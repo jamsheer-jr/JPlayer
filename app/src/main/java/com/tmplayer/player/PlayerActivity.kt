@@ -453,6 +453,16 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * and [downloadsHeldForTheCard] are the queued ones it paused, to carry on when somebody answers.
      */
     private var stillWatchingUp = false
+
+    // The daily time limit's own state (item 16, v1.0.16): the active profile's limit,
+    // the seconds its day already holds, and this activity's unflushed share of playing.
+    private var viewingLimitMinutes = 0
+    private var viewingProfileName = ""
+    private var viewingDay = ""
+    private var viewingBaseSec = 0L
+    private var viewingSessionSec = 0L
+    private var viewingLastTickAt = 0L
+    private var limitNoticeUp = false
     private var downloadsHeldForTheCard: List<Int> = emptyList()
 
     /**
@@ -1688,6 +1698,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         buildNextUpCard()
         startTrickplay()
         startStillWatchingCounts()
+        startDailyLimitCounts()
         // Followed rather than read once, so turning it on in Settings with a video open applies
         // the next time the player is left. A phone's setting: a television never plays on unseen.
         if (!FormFactor.isTv(this)) {
@@ -2018,6 +2029,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * runs in [itemScope], which a change of video cancels.
      */
     private fun openItem() {
+        // The daily limit stands over every open (item 16, v1.0.16): a profile whose
+        // day is spent gets the notice, never a stream.
+        if (com.tmplayer.data.DailyViewing.reached(viewingBaseSec + viewingSessionSec, viewingLimitMinutes)) {
+            showDailyLimitNotice()
+            return
+        }
         if (streamUrl != null) {
             openStream()
             return
@@ -7784,8 +7801,91 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 } else if (exo.isPlaying && StillWatching.askAfterIdle(now - lastInputAt)) {
                     askStillWatching(L.playerStillWatchingIdle, next = null)
                 }
+                // The daily limit's count rides the same tick (item 16, v1.0.16):
+                // real playing seconds accrue, are stored in small batches, and at
+                // the limit the notice stops the video where it stands.
+                if (!limitNoticeUp && viewingLimitMinutes > 0) {
+                    if (exo.isPlaying) {
+                        if (viewingLastTickAt > 0L) viewingSessionSec += (now - viewingLastTickAt) / 1000
+                        viewingLastTickAt = now
+                    } else {
+                        viewingLastTickAt = 0L
+                    }
+                    if (viewingSessionSec >= 20) {
+                        val add = viewingSessionSec
+                        viewingSessionSec = 0
+                        viewingBaseSec += add
+                        val day = viewingDay
+                        App.backgroundScope.launch { runCatching { settings.addViewingSeconds(day, add) } }
+                    }
+                    if (com.tmplayer.data.DailyViewing.reached(viewingBaseSec + viewingSessionSec, viewingLimitMinutes)) {
+                        showDailyLimitNotice()
+                    }
+                }
             }
         }
+    }
+
+    /** This device's calendar day as the viewing ledger names it: `yyyy-MM-dd`. */
+    private fun todayKey(): String {
+        val cal = java.util.Calendar.getInstance()
+        fun pad(n: Int) = if (n < 10) "0$n" else n.toString()
+        return "${cal.get(java.util.Calendar.YEAR)}-${pad(cal.get(java.util.Calendar.MONTH) + 1)}-${pad(cal.get(java.util.Calendar.DAY_OF_MONTH))}"
+    }
+
+    /**
+     * Loads the active profile's daily limit and its day's seconds (item 16, v1.0.16).
+     * A day already spent shows the notice at once, over whatever is starting; the tick
+     * loop above does the counting from there.
+     */
+    private fun startDailyLimitCounts() {
+        viewingDay = todayKey()
+        lifecycleScope.launch {
+            val profile = runCatching { settings.activeProfileNow() }.getOrNull()
+            viewingLimitMinutes = profile?.dailyLimitMinutes ?: 0
+            viewingProfileName = profile?.name.orEmpty()
+            viewingBaseSec = runCatching { settings.viewingSecondsToday(viewingDay) }.getOrDefault(0L)
+            if (com.tmplayer.data.DailyViewing.reached(viewingBaseSec, viewingLimitMinutes)) {
+                showDailyLimitNotice()
+            }
+        }
+    }
+
+    /**
+     * The daily limit's notice (item 16, v1.0.16): playback stops where it stands and a
+     * plain notice stands in its place, naming the profile and its limit. Its one way
+     * out is Back, which leaves the player; the profile starts again tomorrow, or when
+     * another profile is picked, whose own day is its own.
+     */
+    private fun showDailyLimitNotice() {
+        if (limitNoticeUp) return
+        limitNoticeUp = true
+        stillWatchingUp = true
+        hideNextUp()
+        controls?.hideAnimated()
+        player?.let {
+            it.pause()
+            it.stop()
+        }
+        val id = fileId
+        if (!downloadComplete && id > 0 && !OfflineDownloads.isDownloading(id)) {
+            App.backgroundScope.launch { runCatching { Td.cancelDownload(id) } }
+        }
+        keepScreenOn(false)
+        hideFailureActions()
+        statusOverlay.visibility = View.VISIBLE
+        statusIcon.visibility = View.GONE
+        rebufferChip.visibility = View.GONE
+        feedback?.buffering(false)
+        statusSpinner?.visibility = View.GONE
+        statusProgress.visibility = View.GONE
+        statusDetail.visibility = View.GONE
+        statusTitle.text = L.profileLimitReached
+        statusText.text = L.profileLimitReachedDetail(
+            viewingProfileName.ifBlank { L.profileDefaultName },
+            Translator.messages.formatter.duration(viewingLimitMinutes * 60L),
+        )
+        statusBack?.visibility = View.VISIBLE
     }
 
     /** Any key or touch is somebody watching. */

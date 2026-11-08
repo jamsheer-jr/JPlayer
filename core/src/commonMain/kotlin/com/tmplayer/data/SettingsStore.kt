@@ -392,6 +392,9 @@ private fun resumeKey(prefix: String, chatId: Long, messageId: Long) =
 private fun durationKey(prefix: String, chatId: Long, messageId: Long) =
     longPreferencesKey(prefix + "duration_${chatId}_$messageId")
 
+/** One day's viewing seconds for the profile the prefix names (item 16, v1.0.16). */
+private fun viewingDayKey(prefix: String) = stringPreferencesKey(prefix + "viewing_day")
+
 /** Title, chat and file id, so a half-watched video can be reopened without its chat loaded. */
 private fun metaKey(prefix: String, chatId: Long, messageId: Long) =
     stringPreferencesKey(prefix + "meta_${chatId}_$messageId")
@@ -725,6 +728,43 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
         setViewerProfiles(now.map { if (it.id == id) it.copy(simple = simple) else it })
     }
 
+    /**
+     * Sets a profile's daily time limit in minutes (item 16, v1.0.16); 0 clears it. The
+     * default profile may carry one before it has a line of its own: the line is added
+     * nameless, which [ViewerProfiles] keeps while the limit stands.
+     */
+    suspend fun setViewerProfileDailyLimit(id: String, minutes: Int) {
+        val limit = minutes.coerceIn(0, ViewerProfiles.MAX_DAILY_LIMIT_MINUTES)
+        val now = viewerProfilesNow()
+        setViewerProfiles(
+            if (now.any { it.id == id }) now.map { if (it.id == id) it.copy(dailyLimitMinutes = limit) else it }
+            else now + ViewerProfile(id, "", dailyLimitMinutes = limit),
+        )
+    }
+
+    /** The active profile itself, read off the disk: its line, or the unnamed default. */
+    suspend fun activeProfileNow(): ViewerProfile {
+        val snapshot = prefs.data.first()
+        val id = snapshot[ACTIVE_PROFILE] ?: ViewerProfiles.DEFAULT_ID
+        return ViewerProfiles.find(ViewerProfiles.decode(snapshot[VIEWER_PROFILES]), id)
+            ?: ViewerProfile(ViewerProfiles.DEFAULT_ID, "")
+    }
+
+    /** The active profile's viewing seconds on [day] (item 16, v1.0.16). */
+    suspend fun viewingSecondsToday(day: String): Long {
+        val snapshot = prefs.data.first()
+        return DailyViewing.secondsOn(snapshot[viewingDayKey(profilePrefixOf(snapshot))], day)
+    }
+
+    /** Adds [seconds] of playing to the active profile's total for [day]. */
+    suspend fun addViewingSeconds(day: String, seconds: Long) {
+        if (seconds <= 0L) return
+        prefs.edit { prefs ->
+            val key = viewingDayKey(profilePrefixOf(prefs))
+            prefs[key] = DailyViewing.added(prefs[key], day, seconds)
+        }
+    }
+
     private suspend fun setViewerProfiles(profiles: List<ViewerProfile>) {
         prefs.edit { it[VIEWER_PROFILES] = ViewerProfiles.encode(profiles) }
     }
@@ -749,6 +789,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             }
             for (key in doomed) prefs.remove(key)
             prefs.remove(stringPreferencesKey(prefix + "collections"))
+            prefs.remove(viewingDayKey(prefix))
             prefs.remove(profilePinKey(id))
             prefs.remove(profilePinFailuresKey(id))
             prefs.remove(profilePinWaitLeftKey(id))

@@ -170,6 +170,8 @@ internal fun ProfilePage(
     val profilePinIds by settings.profilePinIds.collectAsState(initial = emptySet())
     val watchedStore = remember(context) { com.tmplayer.data.WatchedStore(context) }
     var profileMenu by remember { mutableStateOf<ViewerProfile?>(null) }
+    // The profile whose daily limit is being chosen (item 16, v1.0.16).
+    var limitFor by remember { mutableStateOf<ViewerProfile?>(null) }
     // Manage mode for the switcher (item 4, v1.0.16): while on, a tile tap opens the
     // profile's own menu instead of switching, and every tile carries a pencil.
     var managingProfiles by remember { mutableStateOf(false) }
@@ -649,6 +651,22 @@ internal fun ProfilePage(
                         },
                     )
                 }
+                // The daily time limit (item 16, v1.0.16): the menu line carries the
+                // limit as it stands, and the choice itself is its own small menu.
+                add(
+                    MenuAction(
+                        label = s.profileDailyLimit,
+                        icon = TmIcons.Clock,
+                        detail = if (profile.dailyLimitMinutes > 0) {
+                            s.formatter.duration(profile.dailyLimitMinutes * 60L)
+                        } else {
+                            s.profileLimitOff
+                        },
+                    ) {
+                        profileMenu = null
+                        limitFor = profile
+                    },
+                )
                 if (profile.id in profilePinIds) {
                     add(MenuAction(s.lockChangePin, TmIcons.Lock) {
                         profileMenu = null
@@ -672,6 +690,30 @@ internal fun ProfilePage(
                         profileMenu = null
                         deletingProfile = profile
                     })
+                }
+            },
+        )
+    }
+
+    // The daily limit choices (item 16, v1.0.16): no limit, then steps up to the most
+    // the stored fact allows; the standing choice is marked Current.
+    limitFor?.let { profile ->
+        TvMenu(
+            title = s.profileDailyLimit,
+            subtitle = profile.name.ifBlank { s.profileDefaultName },
+            onDismiss = { limitFor = null },
+            actions = buildList {
+                for (minutes in listOf(0, 30, 60, 120, 180, 240, 360, 480, ViewerProfiles.MAX_DAILY_LIMIT_MINUTES)) {
+                    add(
+                        MenuAction(
+                            label = if (minutes == 0) s.profileLimitOff else s.formatter.duration(minutes * 60L),
+                            icon = TmIcons.Clock,
+                            detail = if (minutes == profile.dailyLimitMinutes) s.profileCurrent else null,
+                        ) {
+                            limitFor = null
+                            scope.launch { settings.setViewerProfileDailyLimit(profile.id, minutes) }
+                        },
+                    )
                 }
             },
         )

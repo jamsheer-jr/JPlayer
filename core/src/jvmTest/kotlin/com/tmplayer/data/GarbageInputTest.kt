@@ -237,6 +237,11 @@ class GarbageInputTest {
                 StreamManifest.classify(text, null)
             }
             survive("LinkHistory.decode", text) { LinkHistory.decode(text) }
+            survive("DailyViewing", text) {
+                DailyViewing.secondsOn(text, text)
+                DailyViewing.added(text, text, 30)
+                DailyViewing.reached(60, 60)
+            }
             survive("ViewerProfiles.decode", text) {
                 ViewerProfiles.decode(text)
                 ViewerProfiles.decode(null)

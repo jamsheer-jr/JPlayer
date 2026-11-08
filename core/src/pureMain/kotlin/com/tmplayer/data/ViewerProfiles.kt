@@ -20,6 +20,13 @@ data class ViewerProfile(
     val name: String,
     /** A Simple profile (item 7g): Settings is not reachable and Home shows its clean form. */
     val simple: Boolean = false,
+    /**
+     * The daily time limit in minutes (item 16, v1.0.16): how much watching this profile
+     * gets in a day before playback stops and the lock notice stands. 0 is no limit. It is
+     * a profile fact, so it rides this list's stored line (and its backup) the way the
+     * Simple mark does, as a fourth field written only while it is set.
+     */
+    val dailyLimitMinutes: Int = 0,
 ) {
     val isDefault: Boolean get() = id == ViewerProfiles.DEFAULT_ID
 }
@@ -45,6 +52,9 @@ object ViewerProfiles {
 
     /** A profile name's cap, as the collections cap theirs. */
     const val MAX_NAME = 24
+
+    /** The largest daily limit the chooser offers: twelve hours (item 16, v1.0.16). */
+    const val MAX_DAILY_LIMIT_MINUTES = 12 * 60
 
     private const val SEP = '\u001F'
     private const val SIMPLE = "s"
@@ -94,11 +104,17 @@ object ViewerProfiles {
         raw.replace(SEP, ' ').trim().replace(Regex("\\s+"), " ").take(MAX_NAME)
 
     fun encode(profiles: List<ViewerProfile>): String = profiles
-        .filter { !it.isDefault || it.name.isNotBlank() }
+        // A profile carrying only a fact (the unnamed default with a daily limit set)
+        // still earns its line; a wholly untouched default does not.
+        .filter { !it.isDefault || it.name.isNotBlank() || it.dailyLimitMinutes > 0 }
         .take(MAX_PROFILES)
         .joinToString("\n") { profile ->
-            listOf(profile.id, cleanName(profile.name), if (profile.simple) SIMPLE else FULL)
-                .joinToString(SEP.toString())
+            val fields = ArrayList<String>()
+            fields += profile.id
+            fields += cleanName(profile.name)
+            fields += if (profile.simple) SIMPLE else FULL
+            if (profile.dailyLimitMinutes > 0) fields += profile.dailyLimitMinutes.toString()
+            fields.joinToString(SEP.toString())
         }
 
     /**
@@ -114,14 +130,23 @@ object ViewerProfiles {
         for (line in raw.split('\n')) {
             if (out.size >= MAX_PROFILES) break
             val parts = line.split(SEP)
-            if (parts.size != 3) continue
+            // Three fields, or four while a daily limit rides the line (item 16, v1.0.16);
+            // a line written before the limit existed reads with no limit.
+            if (parts.size !in 3..4) continue
             val id = parts[0]
             if (id != DEFAULT_ID && !validId(id)) continue
             if (!seen.add(id)) continue
             val name = cleanName(parts[1])
-            if (name.isEmpty()) continue
+            val limit = parts.getOrNull(3)?.toIntOrNull()?.coerceIn(0, MAX_DAILY_LIMIT_MINUTES) ?: 0
+            // A nameless line survives only while it carries a fact worth keeping.
+            if (name.isEmpty() && limit <= 0) continue
             // The default profile is never Simple: it is the way back to Settings (item 7g).
-            out += ViewerProfile(id = id, name = name, simple = id != DEFAULT_ID && parts[2] == SIMPLE)
+            out += ViewerProfile(
+                id = id,
+                name = name,
+                simple = id != DEFAULT_ID && parts[2] == SIMPLE,
+                dailyLimitMinutes = limit,
+            )
         }
         return out.sortedBy { if (it.isDefault) 0 else 1 }
     }
