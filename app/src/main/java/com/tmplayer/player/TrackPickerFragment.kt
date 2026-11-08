@@ -63,6 +63,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -131,6 +132,8 @@ class TrackPickerFragment : Fragment() {
     private enum class Group(val heading: () -> String?) {
         Tracks({ null }),
         Online({ null }),
+        /** The second subtitle of a pair shown together (item 11a, v1.0.15). */
+        Second({ L.tracksSectionSecond }),
         Timing({ L.tracksSectionTiming }),
         Look({ L.tracksSectionLook }),
     }
@@ -213,10 +216,8 @@ class TrackPickerFragment : Fragment() {
 
     // ---- the tracks ---------------------------------------------------------------------------
 
-    private fun trackLines(onOnline: () -> Unit, onMsone: () -> Unit, onTranslate: () -> Unit, onInPlace: () -> Unit, lookIcon: ImageVector): List<Line> {
-        val host = host ?: return emptyList()
-        val player = host.player ?: return emptyList()
-        val options = buildList {
+    /** The choices for this panel's track type, Off first for subtitles, the file's own tracks before loaded ones. */
+    private fun optionsOf(player: Player): List<Option> = buildList {
             // Subtitles need an explicit "off"; audio always has at least one track playing.
             if (trackType == C.TRACK_TYPE_TEXT) add(Option(null, -1, L.commonOff))
             var number = 0
@@ -238,6 +239,11 @@ class TrackPickerFragment : Fragment() {
             val (off, tracks) = built.partition { it.group == null }
             off + tracks.sortedBy { option -> if (isLoadedTrack(option)) 1 else 0 }
         }.let(::numberNamesakes)
+
+    private fun trackLines(onOnline: () -> Unit, onMsone: () -> Unit, onTranslate: () -> Unit, onInPlace: () -> Unit, lookIcon: ImageVector): List<Line> {
+        val host = host ?: return emptyList()
+        val player = host.player ?: return emptyList()
+        val options = optionsOf(player)
         return buildList {
             val none = options.isEmpty() || (trackType == C.TRACK_TYPE_TEXT && options.size == 1)
             if (none) {
@@ -264,6 +270,32 @@ class TrackPickerFragment : Fragment() {
                         selected = selected,
                     ) { choose(option) },
                 )
+            }
+            // The second subtitle (item 11a, v1.0.15): the same tracks again under their
+            // own heading, for the one shown together with the main one. The main track is
+            // the first of the pair in this list's order; picking a new main track above
+            // clears the second, as choose() clears every override of the type.
+            if (trackType == C.TRACK_TYPE_TEXT) {
+                val chosen = options.filter { it.group != null && isSelected(player.currentTracks, it) }
+                val main = chosen.firstOrNull()
+                val second = chosen.getOrNull(1)
+                options.forEachIndexed { index, option ->
+                    if (option.group == null) return@forEachIndexed
+                    val isSecond = second != null && option.group === second.group && option.trackIndex == second.trackIndex
+                    add(
+                        Line(
+                            key = "second$index",
+                            title = option.label,
+                            detail = when {
+                                isSecond -> L.tracksSecondShowing
+                                main != null && option.group === main.group && option.trackIndex == main.trackIndex -> L.tracksPlayingNow
+                                else -> option.detail
+                            },
+                            selected = isSecond,
+                            group = Group.Second,
+                        ) { chooseSecond(option) },
+                    )
+                }
             }
             if (trackType == C.TRACK_TYPE_TEXT) {
                 addAll(openLines())
@@ -374,6 +406,50 @@ class TrackPickerFragment : Fragment() {
                 builder
                     .setTrackTypeDisabled(trackType, false)
                     .setOverrideForType(TrackSelectionOverride(option.group.mediaTrackGroup, option.trackIndex))
+            }
+            player.trackSelectionParameters = builder.build()
+        }
+        close()
+    }
+
+    /**
+     * Picks (or unpicks) the second subtitle (item 11a, v1.0.15): the pair is rebuilt as
+     * two overrides of the text type, the main track first, so both render together in the
+     * one subtitle view, the second's lines above the main one's as the view stacks them,
+     * with the panel's styling and lift applying to the pair as one. Picking the track
+     * that is already the second takes it off again; picking with nothing playing makes
+     * the pick the only track. Which of the pair is called the main one is the first in
+     * the panel's order, so after a pair is set the two may trade names here while the
+     * pair on screen is unchanged.
+     */
+    private fun chooseSecond(option: Option) {
+        val player = host?.player
+        val optionGroup = option.group
+        if (player != null && optionGroup != null) {
+            val chosen = optionsOf(player).filter { it.group != null && isSelected(player.currentTracks, it) }
+            val main = chosen.firstOrNull()
+            val isSecond = chosen.getOrNull(1)
+                ?.let { it.group === optionGroup && it.trackIndex == option.trackIndex } == true
+            val builder = player.trackSelectionParameters.buildUpon()
+                .clearOverridesOfType(trackType)
+                .setTrackTypeDisabled(trackType, false)
+            val mainGroup = main?.group
+            when {
+                main == null || mainGroup == null ->
+                    builder.setOverrideForType(TrackSelectionOverride(optionGroup.mediaTrackGroup, option.trackIndex))
+                mainGroup === optionGroup && main.trackIndex == option.trackIndex -> {
+                    // The main track picked as its own second: nothing changes.
+                    builder.setOverrideForType(TrackSelectionOverride(mainGroup.mediaTrackGroup, main.trackIndex))
+                    chosen.getOrNull(1)?.group?.let { secondGroup ->
+                        builder.addOverride(TrackSelectionOverride(secondGroup.mediaTrackGroup, chosen[1].trackIndex))
+                    }
+                }
+                isSecond ->
+                    builder.setOverrideForType(TrackSelectionOverride(mainGroup.mediaTrackGroup, main.trackIndex))
+                else -> {
+                    builder.setOverrideForType(TrackSelectionOverride(mainGroup.mediaTrackGroup, main.trackIndex))
+                    builder.addOverride(TrackSelectionOverride(optionGroup.mediaTrackGroup, option.trackIndex))
+                }
             }
             player.trackSelectionParameters = builder.build()
         }
@@ -573,7 +649,7 @@ class TrackPickerFragment : Fragment() {
         /** Bumped by every in-place change, so the touch controls redraw what they read from the host. */
         version: Int = 0,
     ) {
-        val (choose, adjust) = lines.partition { it.group == Group.Tracks || it.group == Group.Online }
+        val (choose, adjust) = lines.partition { it.group == Group.Tracks || it.group == Group.Online || it.group == Group.Second }
         // On a touch screen the timing and the look are controls rather than lines: one stepper
         // for Earlier and Later, the size and position as segments, the box as a switch. Six
         // look-alike lines that each nudged or cycled something read as a puzzle under a finger.
