@@ -464,27 +464,28 @@ class TrackPickerFragment : Fragment() {
             val main = chosen.firstOrNull()
             val isSecond = chosen.getOrNull(1)
                 ?.let { it.group === optionGroup && it.trackIndex == option.trackIndex } == true
+            // The pair that stands after this tap: the tapped track taken on as the
+            // companion (an older companion gives its place up), the companion taken
+            // off again, or the pair untouched when the main track itself was tapped.
+            val pair: List<Option> = when {
+                main == null -> listOf(option)
+                isSecond -> listOf(main)
+                main.group === optionGroup && main.trackIndex == option.trackIndex -> chosen.take(2)
+                else -> listOf(main, option)
+            }
+            // One override per track group, holding every picked track of that group.
+            // The player's parameters keep a single override for a group, so a second
+            // override naming the same group quietly replaced the first, and two
+            // subtitles out of one file (the common case: one embedded set) could
+            // never stand together (owner's phone, v1.0.17).
             val builder = player.trackSelectionParameters.buildUpon()
                 .clearOverridesOfType(trackType)
                 .setTrackTypeDisabled(trackType, false)
-            val mainGroup = main?.group
-            when {
-                main == null || mainGroup == null ->
-                    builder.setOverrideForType(TrackSelectionOverride(optionGroup.mediaTrackGroup, option.trackIndex))
-                mainGroup === optionGroup && main.trackIndex == option.trackIndex -> {
-                    // The main track picked as its own second: nothing changes.
-                    builder.setOverrideForType(TrackSelectionOverride(mainGroup.mediaTrackGroup, main.trackIndex))
-                    chosen.getOrNull(1)?.group?.let { secondGroup ->
-                        builder.addOverride(TrackSelectionOverride(secondGroup.mediaTrackGroup, chosen[1].trackIndex))
-                    }
+            pair.mapNotNull { pick -> pick.group?.let { it.mediaTrackGroup to pick.trackIndex } }
+                .groupBy({ it.first }, { it.second })
+                .forEach { (group, indices) ->
+                    builder.addOverride(TrackSelectionOverride(group, *indices.toIntArray()))
                 }
-                isSecond ->
-                    builder.setOverrideForType(TrackSelectionOverride(mainGroup.mediaTrackGroup, main.trackIndex))
-                else -> {
-                    builder.setOverrideForType(TrackSelectionOverride(mainGroup.mediaTrackGroup, main.trackIndex))
-                    builder.addOverride(TrackSelectionOverride(optionGroup.mediaTrackGroup, option.trackIndex))
-                }
-            }
             player.trackSelectionParameters = builder.build()
         }
         close()
