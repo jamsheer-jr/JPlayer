@@ -85,8 +85,12 @@ class BackupCoverageTest {
         File("core/src/commonMain/kotlin/com/tmplayer/data/SettingsStore.kt"),
     ).first { it.isFile }.readText()
 
-    /** Every name the store writes: a fixed name whole, a name built from ids by its prefix. */
-    private val keys: Set<String> = Regex("""PreferencesKey\("([^"]*)"""").findAll(source)
+    /**
+     * Every name the store writes: a fixed name whole, a name built from ids by its prefix,
+     * or a name built behind a viewer profile's prefix, where the key helpers take the prefix
+     * as an argument (`prefix + "duration_..."`) and the family is the literal after it.
+     */
+    private val keys: Set<String> = Regex("""PreferencesKey\(\s*(?:[A-Za-z0-9_.]+\s*\+\s*)?"([^"]*)"""").findAll(source)
         .map { it.groupValues[1] }
         .map { name -> if (name.startsWith("\$CACHED_PREFIX")) "wc_" else name.substringBefore('$') }
         .filter { it.isNotEmpty() }
