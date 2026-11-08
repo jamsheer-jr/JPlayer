@@ -361,11 +361,13 @@ class VideoCopiesTest {
     }
 
     @Test
-    fun `the badge skips a tier the copies do not have, and takes the tier's largest`() {
+    fun `the badge skips a tier the copies do not have, and takes the tier's best by the order`() {
         assertEquals(uhd.id, VideoCopies.nextTierCopy(listOf(sd, uhd), sd.id)?.id)
         assertEquals(sd.id, VideoCopies.nextTierCopy(listOf(sd, uhd), uhd.id)?.id)
         val hdBig = video(2, 60, "Night.Train.2019.1080p.BluRay.mkv", size = 2_000L shl 20)
-        assertEquals(hdBig.id, VideoCopies.nextTierCopy(listOf(sd, hd, hdBig), sd.id)?.id)
+        // The order is picture, then codec, then size (item 13, v1.0.16): the HEVC hd
+        // copy beats the bigger BluRay copy with no codec in its name.
+        assertEquals(hd.id, VideoCopies.nextTierCopy(listOf(sd, hd, hdBig), sd.id)?.id)
     }
 
     @Test
@@ -373,7 +375,7 @@ class VideoCopiesTest {
         val hdBig = video(2, 60, "Night.Train.2019.1080p.BluRay.mkv", size = 2_000L shl 20)
         val choices = VideoCopies.tierChoices(listOf(uhd, hd, sd, hdBig), hd.id)
         assertEquals(listOf("SD", "HD", "UHD"), choices.map { it.tier })
-        assertEquals(hdBig.id, choices[1].copy.id)
+        assertEquals(hd.id, choices[1].copy.id)
         assertEquals(listOf(false, true, false), choices.map { it.current })
         val unknown = video(1, 99, "Mystery.File.mkv")
         assertEquals(listOf("SD"), VideoCopies.tierChoices(listOf(sd, unknown), sd.id).map { it.tier })

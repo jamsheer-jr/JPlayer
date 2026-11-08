@@ -246,7 +246,11 @@ object VideoCopies {
             .firstOrNull { it in present } ?: return null
         return copies
             .filter { tierOf(it) == nextTier }
-            .maxWithOrNull(compareBy<MediaItem> { heightOf(it) ?: 0 }.thenBy { it.sizeBytes })
+            .maxWithOrNull(
+                compareBy<MediaItem> { heightOf(it) ?: 0 }
+                    .thenBy { MediaFacts.codecRank(MediaFacts.of(it).videoCodec) }
+                    .thenBy { it.sizeBytes },
+            )
     }
 
     /** One row of the quality chooser: a tier, the copy choosing it plays, and whether it is playing. */

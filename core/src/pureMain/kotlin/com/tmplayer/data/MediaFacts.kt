@@ -241,8 +241,8 @@ data class MediaFacts(
             "HDTC" to word("""hd[ ._-]?tc|telecine"""),
             "TS" to word("""telesync|ts"""),
             "HDcam" to word("""hd[ ._-]?cam"""),
-            "CAM" to word("""cam[ ._-]?rip|cam"""),
             "DVDcam" to word("""dvd[ ._-]?cam"""),
+            "CAM" to word("""cam[ ._-]?rip|cam"""),
             "DVDScr" to word("""dvd[ ._-]?scr(?:eener)?"""),
             "DVD" to word("""dvd[ ._-]?rip|dvd"""),
         )

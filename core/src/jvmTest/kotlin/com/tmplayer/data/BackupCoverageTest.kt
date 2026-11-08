@@ -27,6 +27,9 @@ class BackupCoverageTest {
         // Last-visit marks for the chat rows' new-video counts (v1.0.15, item 11e): this
         // device's reading history, meaningless on a new phone.
         "chat_visit",
+        // The per-profile daily viewing counter (v1.0.16, item 16): this device's count
+        // for today; a restore must not import it and lock a profile on a fresh phone.
+        "viewing_day",
         // Locks: a PIN's hash has no place in a mailed file, and a restore never undoes a lock.
         "app_lock_on_open", "app_pin", "app_pin_failures", "app_pin_wait_left_ms", "app_pin_wait_stamp",
         "kids_chats", "kids_lock",
