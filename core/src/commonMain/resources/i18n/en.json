@@ -1991,6 +1991,7 @@
     "mini_hint": "Mini player ({cmd}+P)",
     "mobile_data_body": "This video is {size}. Playing it now will use that much of your allowance.",
     "mobile_data_title": "You're on mobile data",
+    "more_from_chat": "More from this chat",
     "more_options": "More options",
     "mpv_audio_failed": "No sound output could be opened. Check this computer's sound device, then try again.",
     "mpv_loading_failed": "This video could not be read. Check the connection and try again, or download it first and play it from Downloads.",

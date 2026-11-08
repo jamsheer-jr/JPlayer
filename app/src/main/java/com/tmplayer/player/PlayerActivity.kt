@@ -315,6 +315,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** [episodesList] is up. */
     private var episodesOpen = false
 
+    /** The end screen rail (item 35, v1.0.15), opened over the finished sheet when a video ends. */
+    private var endRail: PlayerEndRail? = null
+
+    /** [endRail] is up. */
+    private var endRailOpen = false
+
     /** The autoplay setting as the episode list shows it, read when the list opens. */
     private var autoplayNext = true
 
@@ -1639,6 +1645,26 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 holdControls()
                 controls?.show()
                 controls?.focusEpisodes()
+            },
+        )
+        endRail = PlayerEndRail(
+            activity = this,
+            root = findViewById(R.id.player_root),
+            actions = PlayerEndRail.Actions(
+                replay = {
+                    quietly { player?.seekTo(0) }
+                    player?.playWhenReady = true
+                    hideStatus()
+                    keepScreenOn(true)
+                },
+                next = { _episodes.value.next?.let { autoplay(it) } },
+                open = { item -> stepToEpisode(item) },
+            ),
+            onClosed = {
+                endRailOpen = false
+                holdControls()
+                // Back to the finished sheet: its Watch again takes the remote again.
+                if (statusOverlay.visibility == View.VISIBLE) statusRetry?.requestFocus()
             },
         )
         buildNextUpCard()
@@ -5941,6 +5967,45 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             requestFocus()
         }
         updateDownloadChip()
+        openEndRail()
+    }
+
+    /**
+     * The end screen rail (item 35, v1.0.15): over the finished sheet, Replay and the next
+     * episode first, then more of this chat and more like this. Only for a video from a
+     * chat (a stream ends on the plain sheet), and only when there is something to offer
+     * beyond Replay: the sheet above stays the whole answer otherwise. The chat page and
+     * the title's match are read off the UI thread, the match from memory or the disk
+     * cache only, never the network, as the controls' genres line reads it.
+     */
+    private fun openEndRail() {
+        val rail = endRail ?: return
+        if (!hasMessage() || streamUrl != null) return
+        val here = currentItem()
+        val next = _episodes.value.next
+        lifecycleScope.launch {
+            val fromChat = runCatching {
+                val session = Td.awaitAuthorizedSession()
+                ChatRepository(session.client).mediaPage(chatId, pageSize = 24).items
+                    .filterNot { it.id == here.id }
+                    .take(12)
+            }.getOrDefault(emptyList())
+            val online = OnlineMetadata.current
+            val query = here.metaQuery
+            val self = query?.let { q ->
+                (online?.peek(q) as? MetaResult.Found)?.info
+                    ?: (online?.cachedAnswer(q) as? MetaResult.Found)?.info
+            }
+            val extras = self?.let { info -> online?.peekExtras(info) ?: online?.storedExtras(info) }
+            val state = PlayerEndRail.State(next = next, fromChat = fromChat, self = self, extras = extras)
+            // The viewer may have moved on while the chat was read: the rail belongs to
+            // the video that ended, not to whatever is playing now.
+            if (!state.hasMore || currentItem().id != here.id || player?.playWhenReady == true) return@launch
+            endRailOpen = true
+            holdControls()
+            statusOverlay.visibility = View.GONE
+            rail.open(state)
+        }
     }
 
     /** Skips [deltaMs], clamped so a burst of remote presses can't run off either end. */
@@ -8236,7 +8301,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     /** Keeps the row up while anything opened from it is still on screen; see [PlayerControls.held]. */
     private fun holdControls() {
-        controls?.held = menuOpen || detailsOpen || pickerOpen || episodesOpen
+        controls?.held = menuOpen || detailsOpen || pickerOpen || episodesOpen || endRailOpen
     }
 
     // ---- the episode list (CP40) -------------------------------------------------------------
@@ -9378,6 +9443,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         stalledMidPlay = false
         failedRetryable = false
         openingFilm = false
+        // A video starting takes the end rail (item 35, v1.0.15) down with the sheet.
+        if (endRailOpen) endRail?.close()
         statusOverlay.visibility = View.GONE
         wakeEndWatch()
         stopArtDrift()
