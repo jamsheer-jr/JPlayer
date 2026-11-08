@@ -2308,6 +2308,7 @@
     "continue": "{code} തുടരുക",
     "copy": "{label} പകർപ്പ് പ്ലേ ചെയ്യുക",
     "download_season": "സീസൺ ഡൗൺലോഡ് ചെയ്യുക",
+    "download_total": "{count, plural, one {# എപ്പിസോഡ്} other {# എപ്പിസോഡുകൾ}} · ആകെ {size}",
     "download_unwatched": "കാണാത്തവ ഡൗൺലോഡ് ചെയ്യുക",
     "dropped": "ഉപേക്ഷിച്ചു",
     "episode": "എപ്പിസോഡ് {number}",

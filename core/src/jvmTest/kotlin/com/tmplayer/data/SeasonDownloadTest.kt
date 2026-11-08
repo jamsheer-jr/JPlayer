@@ -179,4 +179,37 @@ class SeasonDownloadTest {
         assertEquals(SeasonDownload.State.Nothing, state(show))
         assertEquals(SeasonDownload.State.Done, state(show, downloaded = { true }))
     }
+
+    /** Two qualities of each of two episodes (item 11d, v1.0.15). */
+    private fun twoQualities(): Series = showOf(
+        (1..2).flatMap { n ->
+            listOf(
+                video("Harbour.Notes.S01E0$n.720p.mkv", size = 300_000_000),
+                video("Harbour.Notes.S01E0$n.1080p.mkv", size = 900_000_000),
+            )
+        },
+    )
+
+    @Test
+    fun `one quality for all picks that quality of every episode, and the total follows`() {
+        val show = twoQualities()
+        val season = show.seasons.single { it.number == 1 }
+        val at720 = SeasonDownload.copiesAtHeight(show, season, SeasonDownload.Which.Season, 720, { false }, { 0f })
+        assertEquals(2, at720.size)
+        assertTrue(at720.all { it.fileName.contains("720p") })
+        assertEquals(600_000_000L, SeasonDownload.totalBytes(at720))
+        val at1080 = SeasonDownload.copiesAtHeight(show, season, SeasonDownload.Which.Season, 1080, { false }, { 0f })
+        assertTrue(at1080.all { it.fileName.contains("1080p") })
+        assertEquals(1_800_000_000L, SeasonDownload.totalBytes(at1080))
+    }
+
+    @Test
+    fun `a quality between two posted ones takes the nearer, the lower on a tie`() {
+        val show = twoQualities()
+        val season = show.seasons.single { it.number == 1 }
+        // 900 stands exactly between 720 and 1080: the tie goes to the lower quality.
+        val at900 = SeasonDownload.copiesAtHeight(show, season, SeasonDownload.Which.Season, 900, { false }, { 0f })
+        assertTrue(at900.all { it.fileName.contains("720p") })
+        assertEquals(listOf(1080, 720), SeasonDownload.seasonHeights(season))
+    }
 }

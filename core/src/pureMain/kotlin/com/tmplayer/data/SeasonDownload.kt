@@ -51,6 +51,45 @@ object SeasonDownload {
     }
 
     /**
+     * The copies to queue when one quality is picked for the whole season (item 11d,
+     * v1.0.15): [copies]' choice, with each episode's copy swapped for its own copy nearest
+     * [height] among the ones that may be saved, the lower on a tie, exactly as the episode
+     * list's own quality pick reads it. An episode whose copies carry no height keeps the
+     * copy [copies] chose.
+     */
+    fun copiesAtHeight(
+        series: Series,
+        season: SeriesSeason,
+        which: Which,
+        height: Int,
+        finished: (MediaItem) -> Boolean,
+        position: (MediaItem) -> Float,
+        held: (MediaItem) -> Boolean = { false },
+    ): List<MediaItem> {
+        val base = copies(series, season, which, finished, position, held)
+        if (base.isEmpty()) return base
+        val byId = HashMap<String, SeriesEpisode>()
+        for (episode in season.episodes) for (copy in episode.copies) byId[copy.id] = episode
+        return base.map { chosen ->
+            val episode = byId[chosen.id] ?: return@map chosen
+            episode.copies
+                .filter { it.canBeSaved }
+                .mapNotNull { copy -> VideoCopies.heightOf(copy)?.let { copy to it } }
+                .minWithOrNull(
+                    compareBy<Pair<MediaItem, Int>> { kotlin.math.abs(it.second - height) }.thenBy { it.second },
+                )
+                ?.first ?: chosen
+        }
+    }
+
+    /** The qualities [season]'s copies were posted in, highest first, for the one pick. */
+    fun seasonHeights(season: SeriesSeason): List<Int> =
+        season.episodes.flatMap { it.copies }.mapNotNull(VideoCopies::heightOf).distinct().sortedDescending()
+
+    /** The running total of a download choice, in bytes: what the confirm step shows. */
+    fun totalBytes(copies: List<MediaItem>): Long = copies.sumOf { it.sizeBytes.coerceAtLeast(0L) }
+
+    /**
      * Whether "Download unwatched" says anything "Download season" does not: some of the season
      * is watched and some is not. Otherwise the page offers the season alone.
      */

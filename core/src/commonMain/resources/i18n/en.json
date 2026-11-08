@@ -2323,6 +2323,7 @@
     "continue": "Continue {code}",
     "copy": "Play the {label} copy",
     "download_season": "Download season",
+    "download_total": "{count, plural, one {# episode} other {# episodes}} · {size} in all",
     "download_unwatched": "Download unwatched",
     "dropped": "Dropped",
     "episode": "Episode {number}",

@@ -196,6 +196,19 @@ class SeriesWatch(
         SeasonDownload.copies(series, season, which, finished, { point(it)?.fraction ?: 0f }, held)
     }
 
+    /**
+     * The same download with one quality picked for every episode (item 11d, v1.0.15); a
+     * null [height] is [download] itself. See [SeasonDownload.copiesAtHeight].
+     */
+    fun downloadAt(series: Series, season: SeriesSeason, which: SeasonDownload.Which, height: Int?) =
+        if (height == null) {
+            download(series, season, which)
+        } else {
+            SeasonDownloadRequest { held ->
+                SeasonDownload.copiesAtHeight(series, season, which, height, finished, { point(it)?.fraction ?: 0f }, held)
+            }
+        }
+
     /** Where that button stands now, chosen as [download] chooses: see [SeasonDownload.state]. */
     fun downloadState(
         series: Series,
@@ -661,6 +674,70 @@ private fun EpisodeLine(
  * for reading the facts without leaving the show's page. Back or a press outside leaves.
  */
 @Composable
+/**
+ * The confirm step of a season download (item 11d, v1.0.15): the episodes it covers, their
+ * total size, and one quality pick applied to every episode, the total following the pick
+ * as it changes. Nothing is queued until Download is pressed; the platform's own download
+ * flow then plans the copies against the disk exactly as before, and has the last word on
+ * what fitted. The totals here leave out the copies already in the Downloads folder (the
+ * page's [downloadedIds]); a copy already on the queue is only known to that flow, so the
+ * confirmed total can stand a little above what is finally queued, never below the truth
+ * by more than those.
+ */
+@Composable
+private fun SeasonDownloadDialog(
+    series: Series,
+    season: SeriesSeason,
+    which: SeasonDownload.Which,
+    watch: SeriesWatch,
+    downloadedIds: Set<String>,
+    onConfirm: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val s = LocalStrings.current
+    val heights = remember(season) { SeasonDownload.seasonHeights(season) }
+    var height by remember(season) { mutableStateOf<Int?>(null) }
+    val copies = remember(season, which, height, downloadedIds) {
+        val held: (MediaItem) -> Boolean = { it.id in downloadedIds }
+        val finished = watch.finished
+        val position: (MediaItem) -> Float = { watch.point(it)?.fraction ?: 0f }
+        if (height == null) {
+            SeasonDownload.copies(series, season, which, finished, position, held)
+        } else {
+            SeasonDownload.copiesAtHeight(series, season, which, height, finished, position, held)
+        }
+    }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .widthIn(min = 280.dp, max = 440.dp)
+                .clip(com.tmplayer.ui.theme.Floating.DialogShape)
+                .background(com.tmplayer.ui.theme.FloatingTone.dialog)
+                .border(com.tmplayer.ui.theme.floatingBorder(), com.tmplayer.ui.theme.Floating.DialogShape)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                if (which == SeasonDownload.Which.Unwatched) s.seriesDownloadUnwatched else s.seriesDownloadSeason,
+                style = MaterialTheme.typography.titleMedium,
+                color = Tone.text,
+            )
+            Text(
+                s.seriesDownloadTotal(copies.size, s.formatter.size(SeasonDownload.totalBytes(copies))),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Tone.muted,
+            )
+            if (heights.size > 1) {
+                QualityPicker(heights, selected = height, onSelect = { height = it })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CopyChip(s.commonCancel, chosen = false, onClick = onDismiss)
+                CopyChip(s.downloadsDownload, chosen = true, onClick = { onConfirm(height) })
+            }
+        }
+    }
+}
+
 private fun EpisodeFactsDialog(item: MediaItem, onDismiss: () -> Unit) {
     val s = LocalStrings.current
     val facts = remember(item) { com.tmplayer.data.MediaFacts.of(item) }
@@ -878,6 +955,9 @@ fun SeriesPanel(
         series.episodes.flatMap { it.copies }.mapNotNull(VideoCopies::heightOf).distinct().sortedDescending()
     }
     var pickedHeight by rememberSaveable(series.key) { mutableStateOf<Int?>(null) }
+    // A season download being confirmed (item 11d, v1.0.15): which of the two downloads the
+    // viewer pressed, while the confirm step shows its total and takes one quality for all.
+    var downloadAsk by remember(series.key) { mutableStateOf<SeasonDownload.Which?>(null) }
     fun copyOf(episode: SeriesEpisode, fallback: MediaItem) =
         if (pickedHeight == null) fallback else copyAt(episode, pickedHeight, fallback)
     val playFocus = remember { FocusRequester() }
@@ -1174,8 +1254,9 @@ fun SeriesPanel(
                                 s.seriesDownloadSeason,
                                 TmIcons.Download,
                                 {
-                                    buttons.asked = true
-                                    onDownload?.invoke(watch.download(series, shown, SeasonDownload.Which.Season))
+                                    // The confirm step first (item 11d, v1.0.15): the total
+                                    // and one quality for every episode, then the queue.
+                                    downloadAsk = SeasonDownload.Which.Season
                                     Unit
                                 },
                                 progress = if (buttons.asked) 0f else null,
@@ -1195,8 +1276,7 @@ fun SeriesPanel(
                             s.seriesDownloadUnwatched,
                             TmIcons.Download,
                             {
-                                buttons.asked = true
-                                onDownload?.invoke(watch.download(series, shown, SeasonDownload.Which.Unwatched))
+                                downloadAsk = SeasonDownload.Which.Unwatched
                                 Unit
                             },
                             enabled = buttons.unwatchedLeft,
@@ -1486,6 +1566,23 @@ fun SeriesPanel(
     }
     if (showActions != null && marking.value) {
         ShowMenu(series, watch, showActions, onDismiss = { marking.value = false }, season = shown, marksOnly = true)
+    }
+    downloadAsk?.let { which ->
+        if (onDownload != null) {
+            SeasonDownloadDialog(
+                series = series,
+                season = shown,
+                which = which,
+                watch = watch,
+                downloadedIds = downloadedIds,
+                onConfirm = { height ->
+                    buttons.asked = true
+                    downloadAsk = null
+                    onDownload(watch.downloadAt(series, shown, which, height))
+                },
+                onDismiss = { downloadAsk = null },
+            )
+        }
     }
     person?.let { chosen ->
         com.tmplayer.ui.online.PersonTitlesDialog(
