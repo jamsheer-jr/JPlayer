@@ -2871,6 +2871,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val qualities = telegramQualities()
         if (copies.size <= 1 && qualities.isEmpty()) return
         val list = copies.ifEmpty { listOf(currentItem()) }
+        // A joined set offered here is read by its own first bytes in the background
+        // (ArchiveHeadCheck): a set they prove an archive leaves the lists for good.
+        list.forEach { ArchiveHeadCheck.maybe(this, it) }
         showSheet {
             it.showCopies(
                 list, currentItem().id, ::copyChatTitle, ::switchCopy,

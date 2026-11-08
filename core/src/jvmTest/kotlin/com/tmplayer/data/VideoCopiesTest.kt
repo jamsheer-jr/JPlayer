@@ -543,4 +543,25 @@ class VideoCopiesTest {
         val films = VideoCopies.distinctFiles(listOf(whole720, maybe), allowed = null)
         assertEquals(listOf(whole720.id), films.map { it.first.id })
     }
+
+    @Test
+    fun `a joined set proven an archive by its bytes is no copy`() {
+        // Owner, 2026-11-08: a split set whose name denies being an archive in every
+        // spelling is condemned by its first bytes alone (ArchiveHeads), and then it
+        // leaves the copies like any other non video. Unproven, it stands as before.
+        val piece1 = video(1, 91, "Film.2026.1080p.mkv.001", size = 500L shl 20)
+        val piece2 = video(1, 92, "Film.2026.1080p.mkv.002", size = 500L shl 20)
+        val standing = VideoCopies.distinctFiles(listOf(piece1, piece2), allowed = null)
+        assertEquals(1, standing.size)
+        val joined = standing.first().first
+        assertEquals("1|film 2026 1080p", ArchiveHeads.keyOf(joined))
+        val key = "1|film 2026 1080p"
+        try {
+            ArchiveHeads.follow(setOf(key))
+            val files = VideoCopies.distinctFiles(listOf(piece1, piece2), allowed = null)
+            assertTrue(files.isEmpty())
+        } finally {
+            ArchiveHeads.follow(emptySet())
+        }
+    }
 }

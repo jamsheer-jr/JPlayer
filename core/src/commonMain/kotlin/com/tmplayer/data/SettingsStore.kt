@@ -116,6 +116,7 @@ private val VIEWER_PROFILES = stringPreferencesKey("viewer_profiles")
 private val ACTIVE_PROFILE = stringPreferencesKey("active_profile")
 private val HIDDEN_STREAMS = stringPreferencesKey("hidden_streams")
 private val HIDDEN_COPIES = stringPreferencesKey("hidden_copies")
+private val ARCHIVE_HEADS = stringPreferencesKey("archive_heads")
 private val HIDDEN_TITLE_WORDS = stringPreferencesKey("hidden_title_words")
 private val LINK_HISTORY = stringPreferencesKey("link_history")
 private val STREAM_RESUME = stringPreferencesKey("stream_resume")
@@ -2515,6 +2516,15 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     /** Brings every hidden copy back at once: the Settings list's way out (item 8b, v1.0.15). */
     suspend fun clearHiddenCopies() {
         prefs.edit { it.remove(HIDDEN_COPIES) }
+    }
+
+    /** The joined sets a file's own first bytes proved archives: see [ArchiveHeads]. */
+    val archiveHeads: Flow<Set<String>> = read { it[ARCHIVE_HEADS] }.map { raw -> ArchiveHeads.decode(raw) }
+
+    suspend fun archiveHeadsNow(): Set<String> = ArchiveHeads.decode(prefs.data.first()[ARCHIVE_HEADS])
+
+    suspend fun setArchiveHeads(keys: Set<String>) {
+        prefs.edit { it[ARCHIVE_HEADS] = ArchiveHeads.encode(keys) }
     }
 
     /** The addresses the viewer opened from the Open link box, newest first: see [LinkHistory]. */

@@ -122,6 +122,12 @@ internal fun MediaDetailOpened(
     val planning by QueueingDownloads.fileIds.collectAsStateWithLifecycle()
     val asking = item.fileId in planning
     val settings = remember(context) { SettingsStore(context) }
+    // A joined set on this page is read by its own first bytes in the background
+    // (ArchiveHeadCheck): a set they prove an archive leaves the copies lists for good.
+    androidx.compose.runtime.LaunchedEffect(item.id) {
+        com.tmplayer.player.ArchiveHeadCheck.maybe(context, item)
+        item.versions.forEach { com.tmplayer.player.ArchiveHeadCheck.maybe(context, it) }
+    }
     // Watch later is this device's own list, read and written here so every place that opens a
     // video's actions offers it without passing it down.
     val laterStore = remember(context) { WatchLaterStore(context) }

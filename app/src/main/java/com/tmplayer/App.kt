@@ -176,6 +176,9 @@ class App : Application() {
         backgroundScope.launch {
             val settings = SettingsStore(this@App)
             launch { settings.downloadRoot.collect { AndroidStorage.currentRoot = it } }
+            // The joined sets proven archives by their own bytes, read once here for
+            // every copies list in the process (see ArchiveHeads).
+            launch { settings.archiveHeads.collect { com.tmplayer.data.ArchiveHeads.follow(it) } }
             AndroidStorage.currentRoot = settings.downloadRootNow()
             DownloadRelocation.resumePending(this@App, settings)
         }

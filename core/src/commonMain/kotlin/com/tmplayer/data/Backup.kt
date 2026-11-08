@@ -168,6 +168,9 @@ object Backups {
         // The copies the viewer chose never to show again (item 8b, v1.0.15), by the posts
         // that carried them: a choice about what the lists show, so it travels too.
         "hidden_copies" to Kind.TEXT,
+        // The joined sets a file's own first bytes proved archives (ArchiveHeads): a
+        // fact read off the viewer's chats, kept with the other list facts.
+        "archive_heads" to Kind.TEXT,
         // The viewer's own words hidden from titles (TitleCleaning): their own list, kept
         // with their other title choices.
         "hidden_title_words" to Kind.TEXT,

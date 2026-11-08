@@ -77,7 +77,12 @@ object VideoCopies {
      * copy playing is kept by [oneOfEachFile] as it always is, listed or not.
      */
     private fun splitScreen(items: List<MediaItem>): List<MediaItem> =
-        SplitPieces.join(items).filter { it.splitPiece == null || it.pieces.size >= 2 }
+        SplitPieces.join(items)
+            .filter { it.splitPiece == null || it.pieces.size >= 2 }
+            // A joined set its own first bytes have proven an archive is not a video
+            // either (see [ArchiveHeads]): its name denied it in every spelling, so
+            // the bytes were asked, and the verdict is read here like any other.
+            .filter { !ArchiveHeads.hides(it, ArchiveHeads.proven.value) }
 
     /** [distinctFiles], one item per file: the one [playing] where it is among a file's posts. */
     fun oneOfEachFile(
