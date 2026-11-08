@@ -527,6 +527,17 @@ internal fun HomePane(
     // And Home read fresh on the same press (owner, v1.0.15): the shelves and banner
     // reload, and the refresh reads the Live row's posts again with them.
     RefreshOnReselect(TouchDestination.Home) { onRefreshHome() }
+    // Home pressed on the bar while a page of Home's own stands open over it (a
+    // category, a shelf's See all, a show's page): the press means Home itself, so
+    // the page closes and the press lands on Home (owner, v1.0.19: with any
+    // category open, the bar's Home did nothing and Home never came back).
+    RefreshOnReselect(TouchDestination.Home) {
+        seeAllKey = null
+        catalogKey = null
+        categoryKey = null
+        categoriesOpen = false
+        opened.open(null)
+    }
     // Back from Home's rows to the TV top bar: the same, as Home looks when it opens.
     if (!touch) {
         // The bar takes the page's ground behind it once the rows run up under it.
@@ -1935,6 +1946,22 @@ private fun LanguageTile(
 }
 
 /**
+ * The title that heads a category page: the first of [entries] whose own file
+ * carries a picture (its Telegram thumbnail, the still the banner can stand on),
+ * as Home's banner only stands on a title with art of its own. Where none of
+ * them carries one, the first entry heads it anyway and the banner's own
+ * metadata art fills in as it lands, as it does today.
+ */
+private fun heroEntry(entries: List<ShelfEntry>): ShelfEntry =
+    entries.firstOrNull { entry ->
+        val item = when (entry) {
+            is ShelfEntry.File -> entry.item
+            is ShelfEntry.Show -> entry.series.cover
+        }
+        item.thumbnailFileId > 0 || item.miniThumbnail?.isNotEmpty() == true
+    } ?: entries.first()
+
+/**
  * A category page's banner (owner, v1.0.17): the category's first title standing wide
  * over its grid, with Play and My List, the way the streaming apps head a category.
  * The whole surface opens the title, as a Home banner page's tap does. My List reads
@@ -2116,7 +2143,15 @@ private fun CatalogSeeAll(
             }
         }
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-            columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(if (poster) posterWidth(touch) else wideWidth(touch)),
+            // A poster's page keeps the poster's own size, the size Home's rows
+            // give it (owner, v1.0.19: inside a category the posters stood
+            // stretched wide, two big ones across, not Home's size): the cells
+            // are the measure, and a narrower screen simply fits fewer across.
+            columns = if (poster) {
+                androidx.compose.foundation.lazy.grid.GridCells.FixedSize(posterWidth(touch))
+            } else {
+                androidx.compose.foundation.lazy.grid.GridCells.Adaptive(wideWidth(touch))
+            },
             state = grid,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -2128,15 +2163,18 @@ private fun CatalogSeeAll(
             horizontalArrangement = Arrangement.spacedBy(gap),
             verticalArrangement = Arrangement.spacedBy(if (touch) 16.dp else gap + Tv.FocusClearance),
         ) {
-            // A category page's banner (owner, v1.0.17): the first title wide over
-            // the grid. A See all page keeps the plain grid it always had.
+            // A category page's banner (owner, v1.0.17): a title wide over the
+            // grid, the first of the page's titles that carries a picture of its
+            // own (owner, v1.0.19: the first title blindly taken could head the
+            // page with a blurred nothing while a title below it had real art).
+            // A See all page keeps the plain grid it always had.
             if (hero && touch && entries.isNotEmpty()) {
                 item(
                     key = "category-hero",
                     span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
                 ) {
                     CategoryHero(
-                        entry = entries.first(),
+                        entry = heroEntry(entries),
                         watch = watch,
                         chatTitle = chatTitle,
                         onPlay = onPlay,

@@ -105,8 +105,13 @@ object HomeFeatured {
      */
     const val FILL_WAIT_MS = 4_000L
 
-    /** Lookups a fill makes at once, under TMDB's spacing, which the tiles share. */
-    const val LOOKUPS_AT_ONCE = 4
+    /**
+     * Lookups a fill makes at once, under TMDB's spacing, which the tiles share.
+     * Six since v1.0.19 (owner: the fill must be faster): still a spacing TMDB
+     * takes easily, and the pages now join the banner as each answer lands, so
+     * a wider ask is felt at once rather than at the wait's end.
+     */
+    const val LOOKUPS_AT_ONCE = 6
 
     /** The newest [limit] different films and shows in [entries] (see [HomeFeatured]). */
     fun pick(

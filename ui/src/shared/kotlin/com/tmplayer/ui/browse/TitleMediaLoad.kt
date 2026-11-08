@@ -13,6 +13,9 @@ import com.tmplayer.data.Td
 import com.tmplayer.online.KnownMedia
 import com.tmplayer.platform.LruMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Opening a title loads its whole set where it stands (owner, v1.0.14): the detail page's
@@ -65,9 +68,21 @@ object TitleMediaLoad {
         val query = SeriesShelf.episodeOf(item).title.trim()
         if (query.isBlank()) return
         val chats = TitleScope.chats(item.chatId, gate, gateKnown, KnownMedia.all().map { it.chatId }.toSet())
-        for (chatId in chats) {
-            val found = search(fetch, chatId, query)
-            if (found.isNotEmpty()) KnownMedia.note(found)
+        // The chats are asked a few at a time, not one by one (owner, v1.0.19):
+        // in a line, a title whose copies sit in a dozen chats kept the page's
+        // other asks waiting behind the whole line of searches, and the page
+        // felt stuck while its versions filled. Each chat's finds are still
+        // noted as they land, so the versions fill in as they come.
+        kotlinx.coroutines.coroutineScope {
+            val slots = kotlinx.coroutines.sync.Semaphore(CHATS_AT_ONCE)
+            chats.map { chatId ->
+                async {
+                    slots.withPermit {
+                        val found = search(fetch, chatId, query)
+                        if (found.isNotEmpty()) KnownMedia.note(found)
+                    }
+                }
+            }.awaitAll()
         }
     }
 
@@ -101,6 +116,9 @@ object TitleMediaLoad {
 
     /** Titles asked after in a run: a session's worth of pages opened. */
     private const val KEPT = 96
+
+    /** Chats asked at once for one title: a handful in flight, never the whole line at once. */
+    private const val CHATS_AT_ONCE = 4
 }
 
 /**
