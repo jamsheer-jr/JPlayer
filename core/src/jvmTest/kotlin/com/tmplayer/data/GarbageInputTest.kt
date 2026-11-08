@@ -225,6 +225,7 @@ class GarbageInputTest {
             survive("HiddenStreams.decode", text) { HiddenStreams.decode(text) }
             survive("HiddenCopies.decode", text) { HiddenCopies.decode(text) }
             survive("ArchiveHeads.decode", text) { ArchiveHeads.decode(text) }
+            survive("HomeSnapshot.decode", text) { HomeSnapshot.decode(text) }
             survive("ArchiveHeads.isArchive", text) { ArchiveHeads.isArchive(text.toByteArray()) }
             survive("SeriesStatuses.decode", text) { SeriesStatuses.decode(text) }
             survive("ChatVisit.decode", text) { ChatVisit.decode(text) }
