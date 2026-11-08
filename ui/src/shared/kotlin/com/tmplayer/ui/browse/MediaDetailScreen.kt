@@ -659,7 +659,6 @@ private fun Actions(
                 MyListPill(
                     listed = myListRow.action == DetailAction.RemoveWatchLater,
                     onClick = myListRow.onSelect,
-                    plus = false,
                 )
             }
         }
@@ -712,24 +711,35 @@ private fun Actions(
  * draws it beside its own Play too (owner, v1.0.15), wired to the same store, so the
  * pill is public: the app module's carousel composes it.
  *
- * Two faces for the unlisted state (owner, v1.0.16): on a title's own page (the detail
- * page and a show's page, [plus] false) the pill says plain "My List" with no sign,
- * while the Home banner keeps its plus and the "+ My List" words. Listed, both draw
- * the tick and "My List", as they always have.
+ * The owner's word on the faces (2026-11-08, reversing the v1.0.16 no-plus rule the same
+ * day it shipped): unlisted, every surface draws a big plus before "My List" (the sign is
+ * the icon, so the words stay plain); listed, the whole pill turns the streaming red with
+ * the tick, so the state reads from across the room. A television's focus fill still wins
+ * over both, as it must.
  */
 @Composable
-fun MyListPill(listed: Boolean, onClick: () -> Unit, plus: Boolean = true) {
+fun MyListPill(listed: Boolean, onClick: () -> Unit) {
     val s = LocalStrings.current
     val tv = !isTouch()
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusVisibleAsState()
-    val ink = if (focused) Tone.onFocusFill else Tone.onHero
+    val ink = when {
+        focused -> Tone.onFocusFill
+        listed -> Color.White
+        else -> Tone.onHero
+    }
     Row(
         Modifier
             .heightIn(min = if (tv) 48.dp else 52.dp)
             .then(if (tv) Modifier else Modifier.pressScale(interactions, com.tmplayer.ui.components.Micro.PillPressScale))
             .clip(CircleShape)
-            .background(if (focused) Tone.focusFill else Tone.hero)
+            .background(
+                when {
+                    focused -> Tone.focusFill
+                    listed -> Color(0xFFE50914)
+                    else -> Tone.hero
+                },
+            )
             .clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onClick)
             .padding(start = 18.dp, end = 22.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -737,11 +747,11 @@ fun MyListPill(listed: Boolean, onClick: () -> Unit, plus: Boolean = true) {
     ) {
         if (listed) {
             Icon(TmIcons.Check, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
-        } else if (plus) {
-            Icon(TmIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        } else {
+            Icon(TmIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(28.dp))
         }
         Text(
-            if (listed || !plus) s.detailMyList else s.detailMyListAdd,
+            s.detailMyList,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
             color = ink,
