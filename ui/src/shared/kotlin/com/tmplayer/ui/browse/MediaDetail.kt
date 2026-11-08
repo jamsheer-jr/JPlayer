@@ -134,6 +134,8 @@ fun detailRow(
             onSelect = onSelect,
         )
         DetailAction.Play -> DetailRow(action, s.commonPlay, TmIcons.Play, onSelect = onSelect)
+        DetailAction.PlayNext -> DetailRow(action, s.detailPlayNext, TmIcons.List, s.detailPlayNextDetail, onSelect = onSelect)
+        DetailAction.AddToQueue -> DetailRow(action, s.detailAddToQueue, TmIcons.Checklist, s.detailAddToQueueDetail, onSelect = onSelect)
         DetailAction.StartOver -> DetailRow(action, s.detailStartOver, TmIcons.Refresh, s.detailStartOverDetail, onSelect = onSelect)
         DetailAction.MarkWatched -> DetailRow(action, s.gridMarkWatched, TmIcons.Check, s.gridMarkWatchedDetail, onSelect = onSelect)
         DetailAction.MarkUnwatched -> DetailRow(action, s.gridMarkUnwatched, TmIcons.Close, s.gridMarkUnwatchedDetail, onSelect = onSelect)

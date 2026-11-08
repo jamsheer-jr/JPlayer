@@ -351,6 +351,8 @@ internal fun MediaDetailOpened(
             canExport = touch && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q,
             canRemoveFromHistory = true,
             canCollect = true,
+            // The Up Next queue (item 33, v1.0.15) runs on the phone and the television alike.
+            canQueue = true,
             // A poster card (v1.0.10) where a matched poster is there to draw: the phone
             // only, like the other hand-offs, since a television has no share sheet to speak of.
             canSharePoster = touch && matchedMeta?.info?.posterUrl != null,
@@ -367,6 +369,17 @@ internal fun MediaDetailOpened(
             // not play) comes back to it, as a streaming app's title page does; it closed before,
             // and the viewer landed on the list they had opened it from. The hold menu still goes.
             DetailAction.Resume, DetailAction.Play -> { { if (asMenu) onDismiss(); onPlay() } }
+            // The Up Next queue (item 33, v1.0.15): lined up on the device queue, and said.
+            DetailAction.PlayNext -> { {
+                com.tmplayer.player.UpNextQueue.playNext(item)
+                com.tmplayer.ui.components.showMessage(context, s.detailQueuedNext(item.title))
+                if (asMenu) onDismiss()
+            } }
+            DetailAction.AddToQueue -> { {
+                com.tmplayer.player.UpNextQueue.add(item)
+                com.tmplayer.ui.components.showMessage(context, s.detailQueuedAdded(item.title))
+                if (asMenu) onDismiss()
+            } }
             // The saved position goes first, so the player opening a moment later finds nothing
             // to resume from.
             DetailAction.StartOver -> { {

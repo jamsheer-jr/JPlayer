@@ -55,6 +55,8 @@ enum class PlayerMenuEntry {
     AddBookmark,
     /** This video's bookmarks: play from one, give it a note, delete it. */
     Bookmarks,
+    /** The Up Next queue (item 33, v1.0.15): what plays after this, editable from here. */
+    UpNext,
     SaveToDownloads,
     /** "Mark as watched", or "Mark as unwatched" once it is on the list. */
     MarkWatched,
@@ -113,6 +115,8 @@ enum class PhoneMenuEntry {
      * that came from a message, whose chat and post ids are what the link carries.
      */
     WatchParty,
+    /** The Up Next queue (item 33, v1.0.15): what plays after this, editable from here. */
+    UpNext,
     OpenInAnotherApp,
     LoadSubtitleFile,
     LoadSubtitleUrl,
@@ -170,6 +174,7 @@ fun PhoneMenuEntry.label(
     PhoneMenuEntry.MarkWatched -> if (watched) L.playerMarkUnwatched else L.playerMarkWatched
     PhoneMenuEntry.AddBookmark -> L.playerAddBookmark
     PhoneMenuEntry.Bookmarks -> if (bookmarks > 0) L.commonWithDetail(L.playerBookmarks, L.messages.formatter.number(bookmarks)) else L.playerBookmarks
+    PhoneMenuEntry.UpNext -> L.playerUpNext
     PhoneMenuEntry.WatchParty -> L.playerWatchParty
     PhoneMenuEntry.PlaybackDetails -> L.playerPlaybackDetails
 }
@@ -222,6 +227,8 @@ object PlayerMenu {
         chapters: Boolean = false,
         stereo: Boolean = false,
         pictureShape: Boolean = false,
+        /** The Up Next queue's line (item 33, v1.0.15): a video from a message can be queued after. */
+        upNext: Boolean = false,
     ): List<PlayerMenuEntry> = buildList {
         add(PlayerMenuEntry.LockScreen)
         add(PlayerMenuEntry.PlaybackDetails)
@@ -246,6 +253,7 @@ object PlayerMenu {
             add(PlayerMenuEntry.AddBookmark)
             add(PlayerMenuEntry.Bookmarks)
         }
+        if (upNext) add(PlayerMenuEntry.UpNext)
         if (saveToDownloads) add(PlayerMenuEntry.SaveToDownloads)
         if (markWatched) add(PlayerMenuEntry.MarkWatched)
         if (pictureInPicture) add(PlayerMenuEntry.PictureInPicture)
@@ -279,6 +287,8 @@ object PlayerMenu {
         stereo: Boolean = false,
         zoomed: Boolean = false,
         watchParty: Boolean = false,
+        /** The Up Next queue's line (item 33, v1.0.15): a video from a message can be queued after. */
+        upNext: Boolean = false,
     ): List<PhoneMenuEntry> = buildList {
         add(PhoneMenuEntry.LockScreen)
         if (pictureInPicture) add(PhoneMenuEntry.PictureInPicture)
@@ -311,6 +321,7 @@ object PlayerMenu {
             add(PhoneMenuEntry.Bookmarks)
         }
         if (watchParty) add(PhoneMenuEntry.WatchParty)
+        if (upNext) add(PhoneMenuEntry.UpNext)
         if (openInAnotherApp) add(PhoneMenuEntry.OpenInAnotherApp)
         if (saveToDownloads) add(PhoneMenuEntry.SaveToDownloads)
         if (markWatched) add(PhoneMenuEntry.MarkWatched)

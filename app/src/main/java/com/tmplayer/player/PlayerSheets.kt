@@ -108,6 +108,10 @@ class PlayerSheets(
         class Bookmarks(val actions: BookmarkSheetActions) : Sheet
         class BookmarkActions(val mark: Bookmark, val actions: BookmarkSheetActions) : Sheet
 
+        /** The Up Next queue (item 33, v1.0.15), and one of its videos. */
+        class Queue(val actions: QueueSheetActions) : Sheet
+        class QueueItem(val item: MediaItem, val actions: QueueSheetActions) : Sheet
+
         /** A note for a new bookmark at [positionMs] ([editing] null), or for [editing]. */
         class Note(val positionMs: Long, val editing: Bookmark?, val actions: BookmarkSheetActions, val fromList: Boolean) : Sheet
 
@@ -205,6 +209,11 @@ class PlayerSheets(
     /** The video's bookmarks; the list follows [BookmarkSheetActions.bookmarks] while it is up. */
     fun showBookmarks(actions: BookmarkSheetActions) {
         sheet.value = Sheet.Bookmarks(actions)
+    }
+
+    /** The Up Next queue (item 33, v1.0.15); the list follows [QueueSheetActions.items]. */
+    fun showQueue(actions: QueueSheetActions) {
+        sheet.value = Sheet.Queue(actions)
     }
 
     /** The note for a new bookmark at [positionMs], straight from the overflow. */
@@ -389,6 +398,34 @@ class PlayerSheets(
                     extra = { com.tmplayer.ui.settings.TickRow(s.playerHeavyAskSkip, dontAsk) { dontAsk = !dontAsk } },
                     onConfirm = { close(); shown.onAnswer(lighter != null, dontAsk) },
                     onDismiss = { close(); shown.onAnswer(if (lighter != null) false else null, dontAsk) },
+                )
+            }
+            is Sheet.Queue -> {
+                val actions = shown.actions
+                val list by actions.items.collectAsState()
+                QueueSheet(
+                    items = list,
+                    onPick = { sheet.value = Sheet.QueueItem(it, actions) },
+                    onClear = { actions.clear(); close() },
+                    onDismiss = ::close,
+                    onClose = ::close,
+                )
+            }
+            is Sheet.QueueItem -> {
+                val actions = shown.actions
+                val list by actions.items.collectAsState()
+                val index = list.indexOfFirst { it.id == shown.item.id }
+                val back = { sheet.value = Sheet.Queue(actions) }
+                QueueItemSheet(
+                    item = shown.item,
+                    first = index <= 0,
+                    last = index < 0 || index >= list.lastIndex,
+                    onPlay = { close(); actions.play(shown.item) },
+                    onMoveUp = { actions.move(index, index - 1); back() },
+                    onMoveDown = { actions.move(index, index + 1); back() },
+                    onRemove = { actions.remove(shown.item); back() },
+                    onDismiss = back,
+                    onClose = ::close,
                 )
             }
             is Sheet.Bookmarks -> {

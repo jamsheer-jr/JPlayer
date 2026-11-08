@@ -320,6 +320,8 @@ private fun DetailPane(state: ShellState, request: DetailRequest) {
         when (action) {
             // Handled above, with the pane left open.
             DetailAction.Resume, DetailAction.Play, DetailAction.StartOver -> Unit
+            // The desktop never offers the queue (its DetailContext leaves canQueue off).
+            DetailAction.PlayNext, DetailAction.AddToQueue -> Unit
             DetailAction.MarkWatched, DetailAction.MarkUnwatched -> Unit
             DetailAction.AddWatchLater, DetailAction.RemoveWatchLater, DetailAction.RemoveFromHistory -> Unit
             DetailAction.Download, DetailAction.SaveToDownloads, DetailAction.CancelDownload -> Unit

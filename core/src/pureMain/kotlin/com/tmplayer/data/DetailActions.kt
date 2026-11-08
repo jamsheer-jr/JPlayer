@@ -12,6 +12,12 @@ enum class DetailAction {
     Resume,
     Play,
 
+    /** Lines this video up to play after whatever is playing (item 33, v1.0.15). */
+    PlayNext,
+
+    /** Lines this video up at the end of the Up Next queue (item 33, v1.0.15). */
+    AddToQueue,
+
     /** From the first frame, forgetting the saved position. Only beside [Resume]. */
     StartOver,
     MarkWatched,
@@ -133,6 +139,8 @@ data class DetailContext(
     val canExport: Boolean = false,
     /** The panel can take the video out of History ([DetailAction.RemoveFromHistory]). */
     val canRemoveFromHistory: Boolean = false,
+    /** The platform runs the Up Next queue (item 33, v1.0.15): the phone and the television. */
+    val canQueue: Boolean = false,
 )
 
 object DetailActions {
@@ -144,6 +152,11 @@ object DetailActions {
             add(DetailAction.StartOver)
         } else {
             add(DetailAction.Play)
+        }
+        // The queue is next: what happens after Play is decided as the playing is chosen.
+        if (context.canQueue) {
+            add(DetailAction.PlayNext)
+            add(DetailAction.AddToQueue)
         }
         add(if (context.finished) DetailAction.MarkUnwatched else DetailAction.MarkWatched)
         // Nothing is copied, only remembered, so a chat that restricts saving keeps this too.

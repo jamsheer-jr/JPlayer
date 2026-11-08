@@ -5811,6 +5811,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         recordFinished()
         lifecycleScope.launch {
             settings.clearResumePosition(chatId, messageId, currentItem())
+            // The Up Next queue (item 33, v1.0.15) walks before the series' own next
+            // episode: what the viewer lined up by hand is the plan, across chats too,
+            // and stepping to it is the same step an episode takes.
+            val queued = UpNextQueue.takeNext()
+            if (queued != null) {
+                hideNextUp()
+                stepToEpisode(queued)
+                return@launch
+            }
             val next = _episodes.value.next
             val autoplay = runCatching { settings.autoplayNextNow() }.getOrDefault(true)
             hideNextUp()
@@ -6959,6 +6968,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             zoomed = zoom.zoomed,
             // A Watch party link is made of the message's ids, as the Watched list is keyed by one.
             watchParty = hasMessage(),
+            upNext = hasMessage(),
         )
         override fun zoomDetail(): String? =
             zoom.takeIf { it.zoomed }?.let { L.messages.formatter.scalePercent(it.percent) }
@@ -6972,6 +6982,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             chapters = chapters.isNotEmpty(),
             stereo = stereoOffered(),
             pictureShape = stereoOffered(),
+            upNext = hasMessage(),
         )
         override fun shape() = videoScale
         override fun speed() = playbackSpeed
@@ -7042,6 +7053,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             PhoneMenuEntry.SubtitleSync -> Unit
             PhoneMenuEntry.SaveToDownloads -> saveToDownloads()
             PhoneMenuEntry.MarkWatched -> toggleWatched()
+            PhoneMenuEntry.UpNext -> showSheet { it.showQueue(queueActions()) }
             PhoneMenuEntry.ResetZoom -> resetZoom()
             // Pages of the panel itself, opened there.
             PhoneMenuEntry.PictureShape, PhoneMenuEntry.Stereo, PhoneMenuEntry.Speed, PhoneMenuEntry.SleepTimer,
@@ -7071,6 +7083,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             PlayerMenuEntry.PreviousFrame -> frameStep(forward = false)
             PlayerMenuEntry.AddBookmark -> addBookmark(player?.currentPosition ?: 0L, "")
             PlayerMenuEntry.Bookmarks -> showSheet { it.showBookmarks(bookmarkActions()) }
+            PlayerMenuEntry.UpNext -> showSheet { it.showQueue(queueActions()) }
             // Pages of the panel itself, opened there.
             PlayerMenuEntry.SleepTimer, PlayerMenuEntry.RemoteKeys, PlayerMenuEntry.Speed, PlayerMenuEntry.PictureShape -> Unit
         }
@@ -7383,6 +7396,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /** What the bookmark sheets do with a choice: all of it lands here, on this video. */
+    /** The Up Next queue's sheet actions (item 33, v1.0.15): the device queue itself, played from here. */
+    private fun queueActions() = QueueSheetActions(
+        items = UpNextQueue.items,
+        play = { item -> stepToEpisode(item) },
+        remove = { item -> UpNextQueue.remove(item.id) },
+        move = { from, to -> UpNextQueue.move(from, to) },
+        clear = { UpNextQueue.clear() },
+    )
+
     private fun bookmarkActions() = BookmarkSheetActions(
         bookmarks = bookmarkList,
         position = { player?.currentPosition ?: 0L },
