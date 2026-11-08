@@ -663,7 +663,7 @@ class OnlineMetadata(
     }.getOrDefault(VideoIds())
 
     /** The provider's extras alone, from memory, the disk cache or the provider. */
-    private suspend fun providerExtras(info: MetaInfo): MetaExtras? {
+    suspend fun providerExtras(info: MetaInfo): MetaExtras? {
         if (!store.now.enabled) return null
         val lang = tmdbLanguage()
         val key = extrasKey(info, lang, region())

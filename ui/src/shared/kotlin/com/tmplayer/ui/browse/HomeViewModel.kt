@@ -382,6 +382,14 @@ class HomeViewModel(
     var rowsSettled: Boolean by androidx.compose.runtime.mutableStateOf(false)
         internal set
 
+    /**
+     * Bumped by the extras sweep (see SweepHomeExtras) when a round of genre, rating and
+     * language facts has landed in the lookup caches: the rows build reads it as one of
+     * its inputs, so the shelves those facts feed are rebuilt once per round instead of
+     * waiting for some other change to rebuild them.
+     */
+    var extrasTick: Int by androidx.compose.runtime.mutableStateOf(0)
+
     private val _loaded = MutableStateFlow<Map<Long, List<MediaItem>>>(emptyMap())
 
     /** Each starred chat's videos, once fetched. A chat missing here has not answered yet. */
@@ -1341,7 +1349,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool, pinnedChat) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool, pinnedChat, model.extrasTick) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1398,7 +1406,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool, model.extrasTick)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         // The first build on a cold start (owner, v1.0.14): the full build below waits on
@@ -1465,6 +1473,7 @@ fun rememberHomeRows(
         if (built.isNotEmpty() || recent != null || !autoPick) model.rowsSettled = true
     }
     PrefetchHomeArt(rows, model)
+    SweepHomeExtras(rows, model)
     return rows
 }
 
@@ -1567,6 +1576,68 @@ private fun PrefetchHomeArt(rows: List<HomeRow>, model: HomeViewModel) {
                 }
             }
         }
+    }
+}
+
+/** How many titles one sweep round fetches extras for before it asks for a rebuild. */
+private const val EXTRAS_SWEEP_PER_ROUND = 24
+
+/**
+ * The genre, decade, star and language shelves read their facts from the extras cache
+ * ([homeTitleMeta]), and until now extras landed only for the banner's candidates and
+ * for titles somebody opened, so on a large account the shelves sat under their
+ * minimums and never stood (owner, 2026-11-08). This sweep walks the titles Home's
+ * catalog rows carry, in the [PrefetchHomeArt] shape: a few at a time, only while no
+ * video plays ([HomeViewModel.untilIdle]), each title's match asked the way the art
+ * prefetch asks, and where the match's extras are not already stored, the provider's
+ * extras fetched and stored. A title is asked once per run of the app, landed or not,
+ * and a round that landed any asks the rows for one rebuild ([HomeViewModel.extrasTick]).
+ */
+@Composable
+private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
+    val online = com.tmplayer.online.OnlineMetadata.current ?: return
+    val settings by online.settings.collectAsState()
+    if (!settings.enabled) return
+    val items = remember(rows) {
+        rows.flatMap { row ->
+            when (row) {
+                is HomeRow.Catalog -> row.all
+                is HomeRow.Recent -> row.entries
+                else -> emptyList()
+            }
+        }.map { entry ->
+            when (entry) {
+                is com.tmplayer.data.ShelfEntry.File -> entry.item to false
+                is com.tmplayer.data.ShelfEntry.Show -> entry.series.cover to true
+            }
+        }.distinctBy { it.first.id }
+    }
+    val attempted = remember { mutableSetOf<String>() }
+    LaunchedEffect(items) {
+        val gate = Semaphore(PREFETCH_PARALLEL)
+        val landed = java.util.concurrent.atomic.AtomicInteger(0)
+        kotlinx.coroutines.coroutineScope {
+            var taken = 0
+            for ((item, show) in items) {
+                if (taken >= EXTRAS_SWEEP_PER_ROUND) break
+                val query = item.metaQuery?.let { if (show) it.showOnly() else it } ?: continue
+                val key = query.cacheKey(online.tmdbLanguage())
+                val fresh = synchronized(attempted) { attempted.add(key) }
+                if (!fresh) continue
+                taken++
+                launch(Dispatchers.IO) {
+                    gate.withPermit {
+                        model.untilIdle()
+                        val info = ((online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info)
+                            ?: ((online.lookup(query) as? com.tmplayer.online.MetaResult.Found)?.info)
+                            ?: return@withPermit
+                        if (online.storedExtras(info) != null) return@withPermit
+                        if (online.providerExtras(info) != null) landed.incrementAndGet()
+                    }
+                }
+            }
+        }
+        if (landed.get() > 0) model.extrasTick++
     }
 }
 
