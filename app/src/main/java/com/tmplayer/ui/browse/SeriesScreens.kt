@@ -1,6 +1,7 @@
 package com.tmplayer.ui.browse
 
 import com.tmplayer.ui.components.TopMessageHost
+import com.tmplayer.ui.components.TouchPullRefresh
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -129,7 +130,12 @@ internal fun SeriesOpened(
     onOpenChat: (() -> Unit)? = null,
 ) {
     // Every episode its chat holds, not only those the screen behind had read.
-    val whole = com.tmplayer.ui.browse.rememberWholeSeries(series)
+    val readWhole = com.tmplayer.ui.browse.rememberWholeSeries(series)
+    // A pull on the page (owner, v1.0.20) reads the show again and stands the
+    // fresher whole in the read one's place.
+    var refreshed by remember(series.key) { androidx.compose.runtime.mutableStateOf<com.tmplayer.data.Series?>(null) }
+    val whole = refreshed ?: readWhole
+    var refreshing by remember { androidx.compose.runtime.mutableStateOf(false) }
     // Which episodes are in the Downloads folder, for the season's download buttons: read again
     // whenever the index changes (a download finishing, or one deleted while the page is open),
     // each file asked of the disk off the drawing thread, as [queueSeason] does.
@@ -181,7 +187,19 @@ internal fun SeriesOpened(
         runCatching { settings.touchResume(latest.chatId, latest.messageId) }
         runCatching { watchedStore.touchWatched(latest.chatId, latest.messageId) }
     }
-    SeriesPage(whole, watch, onPlay, startOver, onDismiss, onLongClick.takeIf { isTouch() }, onDownload, chatTitle, downloadedIds, showActions, heroTrailerAutoplay)
+    SeriesPage(
+        whole, watch, onPlay, startOver, onDismiss, onLongClick.takeIf { isTouch() }, onDownload, chatTitle, downloadedIds, showActions, heroTrailerAutoplay,
+        refreshing = refreshing,
+        onRefresh = {
+            if (!refreshing) {
+                refreshing = true
+                scope.launch {
+                    runCatching { com.tmplayer.ui.browse.WholeSeries.read(whole) }.getOrNull()?.let { refreshed = it }
+                    refreshing = false
+                }
+            }
+        },
+    )
 }
 
 /**
@@ -203,6 +221,9 @@ private fun SeriesPage(
     downloadedIds: Set<String>,
     showActions: ShowActions,
     heroTrailerAutoplay: Boolean,
+    /** A pull down on a phone asks the chats for the show again (owner, v1.0.20). */
+    refreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
 ) {
     val touch = isTouch()
     // On a phone the page grows out of the show's tile, and folds back towards it.
@@ -214,43 +235,52 @@ private fun SeriesPage(
         if (ScreenshotBarsOverride.hidden) HideDialogBars()
         motion.Frame {
         Box(Modifier.fillMaxSize().background(Tone.background)) {
-            SeriesPanel(
-                series = series,
-                watch = watch,
-                // The page stays open under the player, so Back from an episode lands on the
-                // show again, with its progress and Continue line brought up to date.
-                onPlay = onPlay,
-                onStartOver = onStartOver,
-                onLongClick = onLongClick,
-                onDownload = onDownload,
-                downloadedIds = downloadedIds,
-                chatTitle = chatTitle,
-                showActions = showActions,
-                // A hold on a season tab marks the whole season watched in one tap (item 36,
-                // v1.0.15): the page menu's own season choice, taken without the menu. The
-                // bulk path is the watched store's, under the acting profile (the store is
-                // the profile's), and Watch later is crossed off only by a whole-show mark,
-                // the menu's rule, never by a season's.
-                onMarkSeason = showActions.onMark?.let { mark ->
-                    { held ->
-                        val choice = com.tmplayer.data.ShowMarks.choices(series, held, watch::finishedEpisode)
-                            .firstOrNull { it.watched && it.scope == com.tmplayer.data.ShowMarks.Scope.Season }
-                        if (choice != null) mark(choice)
-                    }
-                },
-                heroTrailerAutoplay = heroTrailerAutoplay,
-                contentPadding = if (touch) {
-                    PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)
-                } else {
-                    PaddingValues(start = Tv.SafeH, end = Tv.SafeH, bottom = Tv.SafeV)
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
-                // A remote has Back on it; a finger needs something to press.
-                onBack = motion.close.takeIf { touch },
-                barInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top),
-            )
+            val panel: @Composable () -> Unit = {
+                SeriesPanel(
+                    series = series,
+                    watch = watch,
+                    // The page stays open under the player, so Back from an episode lands on the
+                    // show again, with its progress and Continue line brought up to date.
+                    onPlay = onPlay,
+                    onStartOver = onStartOver,
+                    onLongClick = onLongClick,
+                    onDownload = onDownload,
+                    downloadedIds = downloadedIds,
+                    chatTitle = chatTitle,
+                    showActions = showActions,
+                    // A hold on a season tab marks the whole season watched in one tap (item 36,
+                    // v1.0.15): the page menu's own season choice, taken without the menu. The
+                    // bulk path is the watched store's, under the acting profile (the store is
+                    // the profile's), and Watch later is crossed off only by a whole-show mark,
+                    // the menu's rule, never by a season's.
+                    onMarkSeason = showActions.onMark?.let { mark ->
+                        { held ->
+                            val choice = com.tmplayer.data.ShowMarks.choices(series, held, watch::finishedEpisode)
+                                .firstOrNull { it.watched && it.scope == com.tmplayer.data.ShowMarks.Scope.Season }
+                            if (choice != null) mark(choice)
+                        }
+                    },
+                    heroTrailerAutoplay = heroTrailerAutoplay,
+                    contentPadding = if (touch) {
+                        PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                    } else {
+                        PaddingValues(start = Tv.SafeH, end = Tv.SafeH, bottom = Tv.SafeV)
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
+                    // A remote has Back on it; a finger needs something to press.
+                    onBack = motion.close.takeIf { touch },
+                    barInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top),
+                )
+            }
+            // A phone page can be pulled down to ask again (owner, v1.0.20); a
+            // television has no pull, and its page re-reads behind itself as always.
+            if (touch && onRefresh != null) {
+                TouchPullRefresh(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) { panel() }
+            } else {
+                panel()
+            }
             // Over the page, which is a window of its own above the app's.
             TopMessageHost()
         }

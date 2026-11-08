@@ -1,6 +1,7 @@
 package com.tmplayer.ui.browse
 
 import com.tmplayer.ui.components.TopMessageHost
+import com.tmplayer.ui.components.TouchPullRefresh
 import android.widget.Toast
 import com.tmplayer.App
 import androidx.compose.foundation.layout.fillMaxSize
@@ -637,6 +638,11 @@ private fun DetailScreen(
     // With a page under this one, Back turns straight to it, in the same window: the fold back
     // towards the tile is for leaving the last page.
     val back = onBack ?: motion.close
+    // A pull down on a phone asks the chats for the title again (owner, v1.0.20):
+    // copies posted since the page opened land in the pool its sections watch,
+    // and the sections redraw as they land.
+    var refreshing by remember { mutableStateOf(false) }
+    val refreshScope = rememberCoroutineScope()
     Dialog(
         onDismissRequest = back,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -645,33 +651,54 @@ private fun DetailScreen(
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
         // Keyed by the video, so one opened from "More like this" starts at its top, and the one
         // Back comes down to starts afresh, its focus on the tile it was left by.
-        androidx.compose.runtime.key(item.id) {
-            androidx.compose.runtime.CompositionLocalProvider(LocalDetailReturn provides returnTo) {
-            MediaDetailScreen(
-                item = item,
-                chatTitle = chatTitle,
-                watched = watched,
-                finished = finished,
-                rows = rows,
-                onClose = back,
-                modifier = if (touch) Modifier else Modifier.ignoreStrayRelease(),
-                firstAction = if (touch) null else first,
-                onOpenItem = onOpenItem,
-                bookmarks = bookmarks,
-                onOpenBookmark = onOpenBookmark,
-                onDeleteBookmark = onDeleteBookmark,
-                hiddenCopies = hiddenCopies,
-                onHideCopy = onHideCopy,
-                onPickCopy = onPickCopy,
-                copyStarted = copyStarted,
-                hideCamCopies = hideCamCopies,
-                hideShortVideos = hideShortVideos,
-                heroTrailerAutoplay = heroTrailerAutoplay,
-                // Cast (CP73) at the top end, opposite the round Back on a phone and before Close
-                // on a tablet: picked here, Play then goes straight to the TV.
-                topEndAction = if (touch) ({ com.tmplayer.cast.CastPageButton() }) else null,
-            )
+        val page: @Composable () -> Unit = {
+            androidx.compose.runtime.key(item.id) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalDetailReturn provides returnTo) {
+                    MediaDetailScreen(
+                        item = item,
+                        chatTitle = chatTitle,
+                        watched = watched,
+                        finished = finished,
+                        rows = rows,
+                        onClose = back,
+                        modifier = if (touch) Modifier else Modifier.ignoreStrayRelease(),
+                        firstAction = if (touch) null else first,
+                        onOpenItem = onOpenItem,
+                        bookmarks = bookmarks,
+                        onOpenBookmark = onOpenBookmark,
+                        onDeleteBookmark = onDeleteBookmark,
+                        hiddenCopies = hiddenCopies,
+                        onHideCopy = onHideCopy,
+                        onPickCopy = onPickCopy,
+                        copyStarted = copyStarted,
+                        hideCamCopies = hideCamCopies,
+                        hideShortVideos = hideShortVideos,
+                        heroTrailerAutoplay = heroTrailerAutoplay,
+                        // Cast (CP73) at the top end, opposite the round Back on a phone and before Close
+                        // on a tablet: picked here, Play then goes straight to the TV.
+                        topEndAction = if (touch) ({ com.tmplayer.cast.CastPageButton() }) else null,
+                    )
+                }
             }
+        }
+        // A phone page can be pulled down to ask again (owner, v1.0.20); a
+        // television has no pull, and its page re-reads behind itself as always.
+        if (touch) {
+            TouchPullRefresh(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    if (!refreshing) {
+                        refreshing = true
+                        refreshScope.launch {
+                            runCatching { com.tmplayer.ui.browse.TitleMediaLoad.refresh(item) }
+                            refreshing = false
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) { page() }
+        } else {
+            page()
         }
         // Over the page, which is a window of its own above the app's.
         TopMessageHost()

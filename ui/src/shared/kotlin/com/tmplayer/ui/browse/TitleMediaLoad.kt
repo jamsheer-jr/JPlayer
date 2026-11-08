@@ -62,6 +62,21 @@ object TitleMediaLoad {
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage? = ::telegram,
     ) {
         if (loaded[item.id] != null) return
+        fill(item, fetch)
+    }
+
+    /**
+     * The same search again at the viewer's own ask (owner, v1.0.20: a pull down on
+     * a title's page refreshes it, as Search's pull does): the once per run mark is
+     * no bar here, so copies or episodes posted since the page opened are asked for
+     * again and land in the pool the open page already watches.
+     */
+    suspend fun refresh(item: MediaItem) = fill(item, ::telegram)
+
+    private suspend fun fill(
+        item: MediaItem,
+        fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
+    ) {
         val gate = ChatGate.awaitBrowsing()
         val gateKnown = ChatGate.awaitBrowsingKnown()
         if (gate != null || gateKnown) loaded[item.id] = Unit
