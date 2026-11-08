@@ -29,7 +29,7 @@ class MediaFactsTest {
         assertNull(facts.container)
 
         val dotted = MediaFacts.read("Harbour.Notes.2026.2160p.WEB-DL.H.265-GROUP.mkv.001")
-        assertEquals("2160p", dotted.resolution)
+        assertEquals("4K", dotted.resolution)
         assertEquals("HEVC", dotted.videoCodec)
         assertEquals("WEB-DL", dotted.source)
         assertEquals("MKV", dotted.container)
