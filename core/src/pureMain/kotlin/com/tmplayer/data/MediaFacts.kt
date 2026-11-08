@@ -60,21 +60,26 @@ data class MediaFacts(
         fun of(item: MediaItem): MediaFacts = read(item.fileName, item.width, item.height)
 
         fun read(fileName: String, width: Int = 0, height: Int = 0): MediaFacts {
-            val name = fileName.lowercase()
+            // A joined video stands under its first piece's name, and the piece suffix is
+            // not a fact of the video (owner, 2026-11-08: a two part set's page read
+            // "Video: 001", the suffix standing as the container). The facts are the
+            // whole video's, read off the name the pieces share.
+            val base = SplitPieces.baseOf(fileName)
+            val name = base.lowercase()
             return MediaFacts(
-                resolution = resolutionOf(width, height) ?: MediaText.qualityTags(fileName).firstOrNull(),
+                resolution = resolutionOf(width, height) ?: MediaText.qualityTags(base).firstOrNull(),
                 pixels = if (width > 0 && height > 0) "$width × $height" else null,
                 videoCodec = first(name, VIDEO_CODECS),
                 dynamicRange = dynamicRangeOf(name),
                 platform = first(name, PLATFORMS),
-                aiEnhanced = AI_ENHANCED.containsMatchIn(fileName),
+                aiEnhanced = AI_ENHANCED.containsMatchIn(base),
                 remastered = REMASTERED.containsMatchIn(name),
                 audio = audioOf(name),
                 tracks = TRACKS.filter { (_, pattern) -> pattern.containsMatchIn(name) }.map { it.first },
                 source = first(name, SOURCES),
                 cleanAudio = CLEAN_AUDIO.containsMatchIn(name),
-                container = containerOf(fileName),
-                languages = MediaName.languages(fileName),
+                container = containerOf(base),
+                languages = MediaName.languages(base),
             )
         }
 

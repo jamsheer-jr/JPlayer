@@ -21,6 +21,21 @@ class MediaFactsTest {
     }
 
     @Test
+    fun `a split piece's facts are the whole video's, not the piece suffix's`() {
+        // The owner's file (2026-11-08): a two part set whose page read "Video: 001",
+        // the first piece's suffix standing as the container. The facts are read off
+        // the name the pieces share, so the suffix never stands as one.
+        val facts = MediaFacts.read("Mindiyum_Paranjum_2026_2160p_SNXT_WEB_DL_DDP5_1_H_265_PMi_XDMovies.001")
+        assertEquals("2160p", facts.resolution)
+        assertNull(facts.container)
+
+        val dotted = MediaFacts.read("Harbour.Notes.2026.2160p.WEB-DL.H.265-GROUP.mkv.001")
+        assertEquals("HEVC", dotted.videoCodec)
+        assertEquals("WEB-DL", dotted.source)
+        assertEquals("MKV", dotted.container)
+    }
+
+    @Test
     fun `a stated picture size beats the name, and says its pixels`() {
         val facts = MediaFacts.read("clip-720p.mp4", width = 1920, height = 1080)
         assertEquals("1080p", facts.resolution)

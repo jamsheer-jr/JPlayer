@@ -3,16 +3,30 @@ package com.tmplayer.player
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme as M3Theme
+import androidx.compose.material3.Text as M3Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.togetherWith
 import com.tmplayer.ui.components.pressScale
 import com.tmplayer.ui.icons.TmIcons
@@ -54,6 +68,7 @@ import com.tmplayer.ui.components.ChoiceList
 import com.tmplayer.online.OnlineSubtitles
 import com.tmplayer.online.SubtitleTranslator
 import com.tmplayer.ui.components.ChoiceSheet
+import com.tmplayer.ui.components.FloatingWindow
 import com.tmplayer.ui.components.FocusOnOpen
 import com.tmplayer.ui.components.LocalChoiceFullScreen
 import com.tmplayer.ui.components.TvConfirm
@@ -808,9 +823,83 @@ private val TILE_GAP = 12.dp
  * one of a few. The pinch on a phone stays as the shortcut; this is the route that can be found.
  */
 /**
+ * The quality window on a phone (owner, 2026-11-08): the same compact side panel the
+ * subtitle and audio buttons open, a slim column at the screen's end over the video,
+ * not a page of its own. A touch outside it closes it, as the track panels close. The
+ * television keeps the sheet it has, where the remote walks the lines.
+ */
+@Composable
+private fun QualitySidePanel(title: String, onDismiss: () -> Unit, rows: @Composable ColumnScope.() -> Unit) {
+    FloatingWindow(onDismiss = onDismiss, ignoreRelease = false) {
+        val panelWidth = if (maxWidth > maxHeight) (maxWidth * 0.42f).coerceAtMost(480.dp) else (maxWidth * 0.88f).coerceAtMost(480.dp)
+        // The window fills the screen, so the dialog's own outside tap never fires:
+        // this catcher is the outside, and the panel column carries its own empty
+        // clickable so its dead space does not fall through to it.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+        )
+        Column(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .width(panelWidth)
+                .fillMaxHeight()
+                .background(Color(0xFF0A0A0C))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                )
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+        ) {
+            M3Text(title, style = M3Theme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+            Spacer(Modifier.height(10.dp))
+            rows()
+        }
+    }
+}
+
+/** One row of the quality side panel: a radio at its head, the name, and its detail under it. */
+@Composable
+private fun QualityPanelRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .border(2.dp, if (selected) Tone.accent else Color.White.copy(alpha = 0.55f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(Tone.accent))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            M3Text(title, style = M3Theme.typography.bodyLarge, color = Color.White, maxLines = 2)
+            if (detail != null) {
+                M3Text(detail, style = M3Theme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+            }
+        }
+    }
+}
+
+/**
  * The quality chooser (J Player, 2026-11-06): the tiers the badge names, SD, HD and UHD, each
  * with the copy choosing it would play (its height and size), the tier playing ticked. Picking
- * the tier playing closes without a switch.
+ * the tier playing closes without a switch. On a phone it opens as the compact side
+ * panel the track buttons open (owner, 2026-11-08); the television keeps the sheet.
  */
 @Composable
 internal fun QualitySheet(
@@ -822,6 +911,18 @@ internal fun QualitySheet(
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
+    if (touch) {
+        QualitySidePanel(title = s.seriesQuality, onDismiss = onDismiss) {
+            choices.forEach { choice ->
+                QualityPanelRow(
+                    title = choice.tier,
+                    detail = detailOf(choice),
+                    selected = choice.current,
+                ) { onPick(choice.copy) }
+            }
+        }
+        return
+    }
     val focus = remember { FocusRequester() }
     val current = choices.firstOrNull { it.current }
     ChoiceSheet(title = s.seriesQuality, onDismiss = onDismiss, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
@@ -855,6 +956,18 @@ internal fun StreamQualitySheet(
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
+    if (touch) {
+        QualitySidePanel(title = s.seriesQuality, onDismiss = onDismiss) {
+            options.forEachIndexed { index, option ->
+                QualityPanelRow(
+                    title = option.label,
+                    detail = option.detail,
+                    selected = option.selected,
+                ) { onPick(index) }
+            }
+        }
+        return
+    }
     val focus = remember { FocusRequester() }
     val selected = options.indexOfFirst { it.selected }
     ChoiceSheet(title = s.seriesQuality, onDismiss = onDismiss, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {

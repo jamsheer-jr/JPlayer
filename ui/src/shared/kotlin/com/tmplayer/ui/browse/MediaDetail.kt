@@ -491,7 +491,9 @@ internal fun DetailFacts(
     val shape = RoundedCornerShape(Corner.Medium)
     val remote = !isTouch()
     val lines = buildList {
-        add(s.detailFileName to item.fileName.ifBlank { item.title })
+        // A joined set's page names the video the pieces make, not its first piece:
+        // the parts themselves are the Size line's business, below.
+        add(s.detailFileName to item.fileName.ifBlank { item.title }.let { if (item.pieces.isNotEmpty()) com.tmplayer.data.SplitPieces.baseOf(it) else it })
         facts.resolution?.let { add(s.detailResolution to listOfNotNull(it, facts.pixels).joinToString("  ·  ")) }
         listOfNotNull(
             facts.videoCodec,
