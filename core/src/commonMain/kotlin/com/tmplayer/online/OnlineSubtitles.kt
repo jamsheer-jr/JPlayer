@@ -66,13 +66,22 @@ class OnlineSubtitles(
     )
     private val subdl = SubdlApi(http, RateLimiter(200, now, sleep), userAgent)
     private val msone = MsoneApi(http, RateLimiter(500, now, sleep), userAgent, msoneKey)
+    private val msoneSite = MsoneSiteApi(http, RateLimiter(1_000, now, sleep), userAgent)
     private val translator = SubtitleTranslator(http)
 
-    /** Whether this build can reach MSone at all: it has the gateway's key. */
+    /** Whether this build can reach MSone through the gateway: it has the gateway's key. */
     val msoneInBuild: Boolean = msoneKey.isNotBlank()
 
     /** Whether the screens offer MSone: a build with the key, and not hidden on this device. */
     val msoneShown: Boolean get() = msoneInBuild && store.now.msoneShown
+
+    /**
+     * Whether the screens offer MSone read from its public site instead (item 10, v1.0.15): a
+     * build without the gateway key gets the public page surface, gated by the same device
+     * switch as the gateway's, so a viewer who hid MSone keeps it hidden. A build with the key
+     * keeps its gateway line and never reads the site this way.
+     */
+    val msoneSiteShown: Boolean get() = !msoneInBuild && store.now.msoneShown
     private val msoneLock = Mutex()
 
     /** When the last MSone check failed, so a gateway that is down is asked once a minute, not on every open. */
@@ -364,7 +373,9 @@ class OnlineSubtitles(
         return when (hit.provider) {
             SubtitleProvider.OpenSubtitles -> downloadOpenSubtitles(hit)
             SubtitleProvider.Subdl -> downloadSubdl(hit, target)
-            SubtitleProvider.Msone -> downloadMsone(hit, target)
+            // A keyless build's MSone hits came from the public site, and are fetched from it;
+            // a build with the key only ever holds gateway hits.
+            SubtitleProvider.Msone -> if (msoneInBuild) downloadMsone(hit, target) else downloadMsoneSite(hit, target)
         }
     }
 
@@ -380,6 +391,8 @@ class OnlineSubtitles(
         val kept = cache.file(hit.provider, hit.id) != null ||
             translateTarget(hit)?.let { cache.file(hit.provider, translatedKey(hit, it)) != null } == true
         if (hit.provider == SubtitleProvider.Msone) {
+            // The public site's hits answer to no gateway state: nothing blocks them but the fetch itself.
+            if (!msoneInBuild) return null
             return SubtitleNotice.MsoneOff(a.msoneState, a.msone.message)
                 .takeIf { a.msoneState != MsoneState.On && !kept }
         }
@@ -617,6 +630,110 @@ class OnlineSubtitles(
                 DownloadResult.Failed(msoneNotice(answer.failure))
             }
         }
+    }
+
+    // ---- MSone, from its public site (builds without the gateway key) ------------------------
+
+    /**
+     * MSone's releases for [target], read from the site's own search page: every release the
+     * search lists, best first (the name and year match, then the season's post for a series,
+     * then the site's order), so the panel pick can stand in where the plain match cannot.
+     * Searches are cached like the gateway's; an empty answer is not kept, since the site's
+     * catalogue grows.
+     */
+    suspend fun searchMsoneSite(target: SubtitleTarget): SearchResult {
+        val parsed = MediaName.parse(target.fileName, target.caption)
+        val title = parsed.title.trim()
+        if (title.length < MIN_QUERY) return SearchResult(emptyList(), SubtitleNotice.MsoneTooShort)
+        val key = msoneSiteKey(parsed)
+        cache.search(key)?.takeIf { it.isNotEmpty() }?.let { return SearchResult(rankMsoneSite(it, parsed), fromCache = true) }
+        val terms = if (parsed.year != null) "$title ${parsed.year}" else title
+        val releases = msoneSite.search(terms) ?: return SearchResult(emptyList(), SubtitleNotice.Offline)
+        val hits = releases.map(::msoneSiteHit)
+        if (hits.isNotEmpty()) cache.putSearch(key, hits)
+        return SearchResult(rankMsoneSite(hits, parsed))
+    }
+
+    /**
+     * The automatic half of item 10: the release [MsoneSite.match] settles on for [target],
+     * downloaded and ready to apply as the track, or null when this build or device does not
+     * offer the site, the search finds nothing, or no release is plainly this title. A matched
+     * release that will not download answers with its failure, so the caller can simply let it
+     * go: the panel pick remains the manual way to the same list.
+     */
+    suspend fun autoMsoneSite(target: SubtitleTarget): DownloadResult? {
+        if (!msoneSiteShown) return null
+        val parsed = MediaName.parse(target.fileName, target.caption)
+        val title = parsed.title.trim()
+        if (title.length < MIN_QUERY) return null
+        val key = msoneSiteKey(parsed)
+        val cached = cache.search(key)?.takeIf { it.isNotEmpty() }
+        val hits = cached ?: run {
+            val terms = if (parsed.year != null) "$title ${parsed.year}" else title
+            val releases = msoneSite.search(terms) ?: return null
+            releases.map(::msoneSiteHit).also { if (it.isNotEmpty()) cache.putSearch(key, it) }
+        }
+        val matched = MsoneSite.match(hits.map(::msoneSiteRelease), parsed.title, parsed.year, parsed.season, parsed.episode)
+            ?: return null
+        val hit = hits.firstOrNull { it.pageUrl == matched.pageUrl } ?: return null
+        return download(hit, target)
+    }
+
+    private fun msoneSiteKey(parsed: ParsedName): String =
+        "msonesite|${parsed.title.trim().lowercase(Locale.ROOT)}|${parsed.year}|${parsed.season}|${parsed.episode}"
+
+    /** A site release as a hit: its page is both its id and its credit link; the file comes from the page. */
+    private fun msoneSiteHit(release: MsoneRelease): SubtitleHit = SubtitleHit(
+        provider = SubtitleProvider.Msone,
+        id = release.pageUrl,
+        language = "ml",
+        release = buildString {
+            append(release.title)
+            release.year?.let { append(" ($it)") }
+            if (release.series) release.season?.let { append(" S%02d".format(it)) }
+        },
+        featureTitle = release.title,
+        featureYear = release.year,
+        featureSeason = if (release.series) release.season else null,
+        pageUrl = release.pageUrl,
+    )
+
+    /** A hit back as the release it came from, for matching: a kept season means a series post. */
+    private fun msoneSiteRelease(hit: SubtitleHit): MsoneRelease = MsoneRelease(
+        title = hit.featureTitle,
+        year = hit.featureYear,
+        series = hit.featureSeason != null,
+        season = hit.featureSeason,
+        pageUrl = hit.pageUrl.ifBlank { hit.id },
+    )
+
+    /** The match first, then the same title's other releases, then the site's order. */
+    private fun rankMsoneSite(hits: List<SubtitleHit>, parsed: ParsedName): List<SubtitleHit> {
+        val releases = hits.map(::msoneSiteRelease)
+        val matched = MsoneSite.match(releases, parsed.title, parsed.year, parsed.season, parsed.episode)
+        return hits.sortedWith(
+            compareByDescending<SubtitleHit> { matched != null && it.pageUrl == matched.pageUrl }
+                .thenByDescending { MsoneSite.sameTitle(msoneSiteRelease(it), parsed.title) },
+        )
+    }
+
+    /**
+     * One subtitle from the public site: the release page read for its download, through
+     * [MsoneSiteApi.fetchSubtitle], and the bytes read as a subtitle (a zip is opened for the
+     * episode's file inside). A page the site will not give the app (its bot gate) answers
+     * [SubtitleNotice.Offline] like any other no answer; the panel keeps its Open row beside
+     * the list, which is the fallback the owner was told about.
+     */
+    private suspend fun downloadMsoneSite(hit: SubtitleHit, target: SubtitleTarget?): DownloadResult {
+        val parsed = target?.let { MediaName.parse(it.fileName, it.caption) }
+        val bytes = msoneSite.fetchSubtitle(
+            hit.pageUrl.ifBlank { hit.id },
+            parsed?.season ?: hit.featureSeason,
+            parsed?.episode,
+        ) ?: return DownloadResult.Failed(SubtitleNotice.Offline)
+        val name = hit.pageUrl.substringBefore('?').trimEnd('/').substringAfterLast('/').ifBlank { "msone" } + ".srt"
+        val text = SubtitleText.from(bytes, name, parsed?.season ?: hit.featureSeason, parsed?.episode, language = hit.language)
+        return save(hit, text, hit.id)
     }
 
     // ---- shared ----------------------------------------------------------------------------

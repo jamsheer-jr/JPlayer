@@ -23,6 +23,7 @@ import com.tmplayer.online.MdlApi
 import com.tmplayer.online.MdlPage
 import com.tmplayer.online.MsoneApi
 import com.tmplayer.online.MsoneSite
+import com.tmplayer.online.MsoneSiteApi
 import com.tmplayer.online.OmdbApi
 import com.tmplayer.online.RateLimiter
 import com.tmplayer.online.SkipSegment
@@ -428,6 +429,14 @@ class GarbageInputTest {
                     msone.search(MsoneApi.Query(imdb = "tt1234567"))
                     msone.search(MsoneApi.Query())
                     msone.fetch(com.tmplayer.online.SubtitleHit(com.tmplayer.online.SubtitleProvider.Msone, "1", "ml", "r"), 1_000)
+                }
+            }
+            val msoneSite = MsoneSiteApi(http, limiter, "t")
+            survive("MsoneSiteApi", shown) {
+                runBlocking {
+                    msoneSite.search("q")
+                    msoneSite.fetchSubtitle("https://malayalamsubtitles.org/languages/english/x-2020/", 1, 2)
+                    msoneSite.fetchSubtitle(shown, null, null)
                 }
             }
             val skips = SkipTimesApi(http, limiter, limiter, "t")
