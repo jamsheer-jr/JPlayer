@@ -112,6 +112,27 @@ class MediaNameTest {
         )
         assertEquals(13, chef.episode)
         assertEquals(null, chef.lastEpisode)
+
+        // The same channel again (owner's screenshots, later the same evening): a spaced
+        // single EP, and one show posted as several packs with different spans.
+        val lanterns = parse(
+            "Lanterns (2026) S01 EP 02 TRUE WEB-DL - 720p - AVC - (AAC 2.0) - ESub.mkv",
+        )
+        assertEquals(2, lanterns.episode)
+        assertEquals(null, lanterns.lastEpisode)
+
+        val roar = parse(
+            "Hunkkhaar The Roar (2026) S01 EP(05-06) combined TRUE WEB-DL - 1080p - AVC.mkv",
+        )
+        assertEquals("Hunkkhaar The Roar", roar.title)
+        assertEquals(5, roar.episode)
+        assertEquals(6, roar.lastEpisode)
+
+        val roarStart = parse(
+            "Hunkkhaar The Roar (2026) S01 EP(01-06) combined TRUE WEB-DL - 480p - AVC.mkv",
+        )
+        assertEquals(1, roarStart.episode)
+        assertEquals(6, roarStart.lastEpisode)
     }
 
     @Test

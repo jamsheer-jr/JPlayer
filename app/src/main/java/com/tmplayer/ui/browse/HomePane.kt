@@ -3077,15 +3077,24 @@ private fun rememberFeatured(
     val fillOrder = remember(candidates, pinKeys) {
         candidates?.let { list -> list.filter(isPinned) + list.filterNot(isPinned).shuffled() }
     }
-    val fill = remember(candidates, online, enabled) { FeaturedFill() }
+    // The fill itself is NOT keyed on the candidates (owner, v1.0.20: the Shows shape
+    // stood with no banner while Movies stood). A rows rebuild, and Home rebuilds its
+    // rows in waves while the catalog deepens, handed this a new candidate list each
+    // time, and keying the fill on it threw away every page already known complete and
+    // restarted the wait; the shape whose pool is thinnest and whose lookups are
+    // slowest starved longest. The fill now keeps what it has learned across rebuilds,
+    // and only its settled mark is per candidate set, so a set already decided is not
+    // waited on again and a changed set is decided afresh without losing the pages.
+    val candidateKeys = candidates?.joinToString("|") { it.key }
+    val fill = remember(online, enabled) { FeaturedFill() }
     LaunchedEffect(candidates, online, enabled) {
         if (!enabled) {
-            fill.settled = true
+            fill.settledFor = candidateKeys
             return@LaunchedEffect
         }
         val picks = candidates ?: return@LaunchedEffect
         if (picks.isEmpty()) {
-            fill.settled = true
+            fill.settledFor = candidateKeys
             return@LaunchedEffect
         }
         // The lookups still unanswered when the wait is up go on in this effect; a page
@@ -3101,23 +3110,25 @@ private fun rememberFeatured(
             emptySet()
         }
         fill.addAll(keys)
-        fill.settled = true
+        fill.settledFor = candidateKeys
     }
     if (!enabled) return emptyList()
     val order = fillOrder ?: return null
     val complete = order.filter { it.key in fill.completed() }
     return when {
         complete.isNotEmpty() -> com.tmplayer.data.HomeFeatured.bannerSet(complete, pinned = isPinned)
-        fill.settled -> emptyList()
+        fill.settledFor == candidateKeys -> emptyList()
         else -> null
     }
 }
 
 /**
  * One banner fill's answers as they land: the keys of the pages known complete so far,
- * and whether the fill's first decision has been made. Written from the lookups' own
- * threads as answers arrive, read in composition; [version] is the snapshot thread
- * between them, so a page completing after the wait still reaches the banner.
+ * and the candidate set the fill's first decision has been made for. Written from the
+ * lookups' own threads as answers arrive, read in composition; [version] is the
+ * snapshot thread between them, so a page completing after the wait still reaches the
+ * banner. The answers are kept across candidate sets (a rows rebuild must not unlearn
+ * them); only the settled mark is per set.
  */
 private class FeaturedFill {
     private val done = HashSet<String>()
@@ -3125,7 +3136,7 @@ private class FeaturedFill {
     var version by mutableStateOf(0)
         private set
 
-    var settled by mutableStateOf(false)
+    var settledFor by mutableStateOf<String?>(null)
 
     fun add(key: String) {
         val changed = synchronized(done) { done.add(key) }
