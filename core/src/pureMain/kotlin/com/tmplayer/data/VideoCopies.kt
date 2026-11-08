@@ -49,7 +49,7 @@ object VideoCopies {
         allowed: Set<Long>? = ChatGate.browsing.value,
     ): List<Pair<MediaItem, List<MediaItem>>> {
         val groups = mutableListOf<MutableList<MediaItem>>()
-        for (copy in visible(copies, allowed)) {
+        for (copy in splitScreen(visible(copies, allowed))) {
             val same = groups.firstOrNull { group -> group.any { sameFile(it, copy) } }
             if (same != null) same += copy else groups += mutableListOf(copy)
         }
@@ -67,6 +67,17 @@ object VideoCopies {
         val chatId = BuiltInChannels.jMoviesChatId ?: return null
         return copies.firstOrNull { it.chatId == chatId }
     }
+
+    /**
+     * Split part files are not copies (owner, v1.0.18: ".001, .002 angane .011 vare
+     * hidden akiyekk, part files aanath"): a cut video's pieces fold into the one
+     * joined video ([SplitPieces.join]), which stands as the copy, and a piece left
+     * on its own is dropped: a lone piece, or a set too small or too unlike in size
+     * to read as cut, cannot play alone and never stands as a copy of the film. The
+     * copy playing is kept by [oneOfEachFile] as it always is, listed or not.
+     */
+    private fun splitScreen(items: List<MediaItem>): List<MediaItem> =
+        SplitPieces.join(items).filter { it.splitPiece == null || it.pieces.size >= 2 }
 
     /** [distinctFiles], one item per file: the one [playing] where it is among a file's posts. */
     fun oneOfEachFile(

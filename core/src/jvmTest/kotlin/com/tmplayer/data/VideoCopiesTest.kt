@@ -515,4 +515,28 @@ class VideoCopiesTest {
             BuiltInChannels.jMoviesChatId = null
         }
     }
+
+    @Test
+    fun `split pieces fold into one copy and a lone piece is no copy at all`() {
+        // Owner, v1.0.18: part files (.001 to .011) are not copies. A cut film's
+        // pieces stand as the one joined video beside the whole copy.
+        val whole = video(1, 80, "Film.2026.1080p.mkv", size = 2_000L shl 20)
+        val piece1 = video(1, 81, "Film.2026.1080p.mkv.001", size = 500L shl 20)
+        val piece2 = video(1, 82, "Film.2026.1080p.mkv.002", size = 500L shl 20)
+        val piece3 = video(1, 83, "Film.2026.1080p.mkv.003", size = 400L shl 20)
+        val files = VideoCopies.distinctFiles(listOf(whole, piece1, piece2, piece3), allowed = null)
+        assertEquals(2, files.size)
+        val joined = files.map { it.first }.first { it.pieces.isNotEmpty() }
+        assertEquals(3, joined.pieces.size)
+        assertEquals(1_400L shl 20, joined.sizeBytes)
+        // A lone piece beside the whole copy leaves the whole copy alone in the list.
+        val lone = video(1, 84, "Film.2026.1080p.mkv.007", size = 500L shl 20)
+        val only = VideoCopies.distinctFiles(listOf(whole, lone), allowed = null)
+        assertEquals(listOf(whole.id), only.map { it.first.id })
+        // A lone piece whose name could be an ordinary file's is no copy either.
+        val maybe = video(1, 85, "Film.2026.720p.001", size = 500L shl 20)
+        val whole720 = video(1, 86, "Film.2026.720p.mkv", size = 900L shl 20)
+        val films = VideoCopies.distinctFiles(listOf(whole720, maybe), allowed = null)
+        assertEquals(listOf(whole720.id), films.map { it.first.id })
+    }
 }
