@@ -90,11 +90,14 @@ class ShortVideosTest {
             video(3, 2_600, "Harbour Notes S01E03.mkv"),
         )
         val chat = ChatSummary(1, "Chat", null, 0, ChatKind.Channel)
+        // The shelf stands under the layout the store hands Home, shelves on: the
+        // bare layout builds no catalog rows at all (see HomeLayout).
         val rows = HomeRows.build(
             continueWatching = emptyList(),
             favourites = listOf(chat),
             loaded = mapOf(1L to episodes),
             recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
             hideShortVideos = true,
         )
         val series = rows.filterIsInstance<HomeRow.Catalog>().first { it.kind == "series" }
