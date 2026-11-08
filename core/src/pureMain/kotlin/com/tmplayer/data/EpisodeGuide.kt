@@ -51,7 +51,7 @@ object EpisodeGuide {
      * else [State.Missing].
      */
     fun seasons(series: Series?, listed: List<MetaSeason>, next: MetaAiring?, today: String): List<Season> {
-        val held = series?.seasons.orEmpty().associate { it.number to it.episodes.size }
+        val held = series?.seasons.orEmpty().associate { it.number to it.coveredCount }
         val provider = listed.associateBy { it.number }
         val numbers = (held.keys + provider.keys + listOfNotNull(next?.season)).filter { it > 0 }.sortedDistinct()
         return numbers.map { n ->
@@ -74,11 +74,15 @@ object EpisodeGuide {
      * announced episodes before they are dated.
      */
     fun episodes(season: Int, series: Series?, listed: List<MetaEpisode>?, today: String): List<Episode> {
-        val held = series?.seasons?.firstOrNull { it.number == season }?.episodes.orEmpty().associateBy { it.episode }
+        val rows = series?.seasons?.firstOrNull { it.number == season }?.episodes.orEmpty()
+        val held = rows.associateBy { it.episode }
+        // A combined pack holds every episode of its span, not only the one it stands under:
+        // an episode inside a pack's range is in the chat, and the pack is what plays it.
+        val holders = rows.filter { (it.lastEpisode ?: 0) > it.episode }
         val provider = listed.orEmpty().filter { it.season == season }.associateBy { it.number }
         val numbers = (held.keys + provider.keys).sortedDistinct()
         return numbers.map { n ->
-            val mine = held[n]
+            val mine = held[n] ?: holders.firstOrNull { holder -> n in (holder.episode + 1)..(holder.lastEpisode ?: holder.episode) }
             val meta = provider[n]
             val state = when {
                 mine != null -> State.InChat

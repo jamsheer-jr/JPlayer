@@ -333,7 +333,7 @@ fun SeasonTabs(
                     maxLines = 1,
                 )
                 Text(
-                    s.seriesEpisodesCount(season.episodes.size),
+                    s.seriesEpisodesCount(season.coveredCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (focused) Tone.onFocusFill.copy(alpha = 0.85f) else Tone.muted,
                     maxLines = 1,
@@ -588,7 +588,8 @@ private fun EpisodeLine(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    s.seriesEpisodeShort(episode.season, episode.episode),
+                    episode.lastEpisode?.let { last -> s.seriesEpisodeRange(episode.season, episode.episode, last) }
+                        ?: s.seriesEpisodeShort(episode.season, episode.episode),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = Tone.muted,

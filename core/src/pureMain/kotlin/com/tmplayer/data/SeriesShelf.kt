@@ -24,6 +24,12 @@ data class SeriesEpisode(
      * "S01E01E02" file for episode two. Watching one counts as watching this episode.
      */
     val alsoIn: List<MediaItem> = emptyList(),
+    /**
+     * The last episode this row's own file holds, when the file is one of several episodes
+     * (a combined pack): the row stands under its first episode and spans to this one.
+     * Null for an ordinary single episode row.
+     */
+    val lastEpisode: Int? = null,
 ) {
     /** Watched when any copy is, or any file of several episodes that holds it. */
     fun watched(finished: (MediaItem) -> Boolean): Boolean = copies.any(finished) || alsoIn.any(finished)
@@ -37,7 +43,16 @@ data class SeriesEpisode(
 }
 
 /** One season's episodes, in watching order. */
-data class SeriesSeason(val number: Int, val episodes: List<SeriesEpisode>)
+data class SeriesSeason(val number: Int, val episodes: List<SeriesEpisode>) {
+
+    /**
+     * How many episodes the season's rows cover between them: a combined pack row counts
+     * for every episode it holds, and copies of one episode count once. The row count
+     * itself would call a season of ten episodes eighteen when four packs stand in it.
+     */
+    val coveredCount: Int
+        get() = episodes.flatMap { row -> row.episode..(row.lastEpisode ?: row.episode) }.distinct().size
+}
 
 /**
  * Every file in a chat that belongs to one show, grouped by season.
@@ -47,7 +62,7 @@ data class SeriesSeason(val number: Int, val episodes: List<SeriesEpisode>)
  */
 data class Series(val key: String, val title: String, val seasons: List<SeriesSeason>) {
     val episodes: List<SeriesEpisode> get() = seasons.flatMap { it.episodes }
-    val episodeCount: Int get() = seasons.sumOf { it.episodes.size }
+    val episodeCount: Int get() = seasons.sumOf { it.coveredCount }
 
     /** The newest upload in the show, for the tile's picture: it is what was posted last. */
     val cover: MediaItem get() = episodes.maxBy { it.item.date }.item
@@ -655,8 +670,10 @@ object SeriesShelf {
             .flatMap { (number, copies) ->
                 // Copies of one episode (720p and 1080p) under one row, the newer first; a copy
                 // whose length says it is something else, or that the viewer set apart, a row of
-                // its own under the same number.
-                val (apart, rest) = copies.partition { separate(it.item) }
+                // its own under the same number. A file of several episodes never folds in as a
+                // copy of its first episode either: it stands as its own row, spanning its range,
+                // so a pack is not read as one more copy of episode one wearing the pack's length.
+                val (apart, rest) = copies.partition { separate(it.item) || (it.name.lastEpisode ?: 0) > number.second }
                 val rows = SameVideo.videosOf(rest.map { it.item to it.name }, dated = true, durationOf).map { it.members } +
                     apart.map { listOf(it.item) }
                 rows.filter { it.isNotEmpty() }.map { members ->
@@ -664,7 +681,10 @@ object SeriesShelf {
                     // The episode stands for the built-in channel's own post where it posted
                     // one (owner, 2026-11-06); the copies keep their newest first order.
                     val lead = VideoCopies.builtInCopy(sorted) ?: sorted.first()
-                    SeriesEpisode(lead, number.first, number.second, sorted)
+                    val span = members.firstNotNullOfOrNull { member ->
+                        copies.firstOrNull { it.item.id == member.id }?.name?.lastEpisode?.takeIf { last -> last > number.second }
+                    }
+                    SeriesEpisode(lead, number.first, number.second, sorted, lastEpisode = span)
                 }
             }
             .let { rows -> withMultiEpisodeFiles(rows, files, defaultSeason) }

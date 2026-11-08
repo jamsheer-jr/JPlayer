@@ -2379,6 +2379,7 @@
     "download_unwatched": "Download unwatched",
     "dropped": "Dropped",
     "episode": "Episode {number}",
+    "episode_range": "S{season} E{first}-E{last}",
     "episode_short": "S{season} E{episode}",
     "episodes_count": "{count, plural, one {# episode} other {# episodes}}",
     "mark_season_unwatched": "Mark season {number} as unwatched",

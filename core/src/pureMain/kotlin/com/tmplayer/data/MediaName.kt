@@ -395,21 +395,26 @@ object MediaName {
                     number = number,
                     at = it.range.first,
                     // A second code straight after the first, the file's last episode.
-                    last = (it.groupValues.getOrNull(3)?.toIntOrNull() ?: it.groupValues.getOrNull(4)?.toIntOrNull())
+                    last = listOf(3, 4, 5).firstNotNullOfOrNull { group -> it.groupValues.getOrNull(group)?.toIntOrNull() }
                         ?.takeIf { last -> number != null && last > number },
                 )
             }
 
         val season = SEASON_ONLY.find(text)
         val range = EPISODE_RANGE.find(text)
-        val number = range ?: EPISODE_ONLY.find(text) ?: DASHED_EPISODE.find(text)?.takeUnless { notAnEpisode(it, text) }
+        // A bare range, "E01-05" or "[E01-05]", counts only beside a season marker or inside
+        // its brackets: with neither, two numbers and a dash are too easy to find in a title.
+        val bareRange = BARE_EPISODE_RANGE.find(text)
+            ?.takeIf { season != null || it.value.startsWith("[") || it.value.startsWith("(") }
+        val anyRange = range ?: bareRange
+        val number = anyRange ?: EPISODE_ONLY.find(text) ?: DASHED_EPISODE.find(text)?.takeUnless { notAnEpisode(it, text) }
         if (season == null && number == null) return null
         val first = number?.groupValues?.get(1)?.toIntOrNull()
         return Episode(
             season = season?.groupValues?.get(1)?.toIntOrNull(),
             number = first,
             at = listOfNotNull(season?.range?.first, number?.range?.first).min(),
-            last = range?.groupValues?.get(2)?.toIntOrNull()?.takeIf { last -> first != null && last > first },
+            last = anyRange?.groupValues?.get(2)?.toIntOrNull()?.takeIf { last -> first != null && last > first },
         )
     }
 
@@ -809,8 +814,10 @@ object MediaName {
      * the first of them, which is the one it opens on, and its last ([ParsedName.lastEpisode]).
      */
     private val PAIRED_EPISODE = listOf(
-        // "S01E01-06" as well, the range a season split in two files writes (not "S01E05-720p").
-        Regex("""\bs(\d{1,2})[\s.-]?e(\d{1,3})(?:-?e(\d{1,3})|-(\d{1,3})(?![\dpPiI]))?\b""", RegexOption.IGNORE_CASE),
+        // "S01E01-06" as well, the range a season split in two files writes (not "S01E05-720p"),
+        // and the bare end number a combined pack writes after a separator, "S02 E06 10" for the
+        // file holding episodes 6 to 10 (not a resolution, a year or a "10bit" tag).
+        Regex("""\bs(\d{1,2})[\s.-]?e(\d{1,3})(?:-?e(\d{1,3})|-(\d{1,3})(?![\dpPiI])|[\s.-]+(\d{1,3})(?![\dpPiI]|bit))?\b""", RegexOption.IGNORE_CASE),
         Regex("""\b(\d{1,2})x(\d{1,3})\b""", RegexOption.IGNORE_CASE),
         Regex("""\bseason\s?(\d{1,2})\s?episode\s?(\d{1,3})\b""", RegexOption.IGNORE_CASE),
     )
@@ -840,6 +847,13 @@ object MediaName {
      * episodes together tend to write.
      */
     private val EPISODE_RANGE = Regex("""\bep(?:isode)?[\s-]?\(?\s*(\d{1,3})\s*-\s*(\d{1,3})\s*\)?""", RegexOption.IGNORE_CASE)
+
+    /**
+     * A range of episodes with no word in front, "E01-05", "[E01-05]", the first and the last
+     * ([ParsedName.lastEpisode]). Weaker than the word forms on its own, so [findEpisode] reads
+     * it only beside a season marker or inside its brackets, where it cannot be title text.
+     */
+    private val BARE_EPISODE_RANGE = Regex("""[\[(]?e(\d{1,3})\s*[-~]\s*e?(\d{1,3})[\])]?""", RegexOption.IGNORE_CASE)
 
     /** "E05" with no word in front, which only [looseEpisode] reads. */
     private val BARE_EPISODE = Regex("""\be(\d{1,3})\b""", RegexOption.IGNORE_CASE)

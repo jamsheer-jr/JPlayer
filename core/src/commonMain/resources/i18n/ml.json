@@ -2364,6 +2364,7 @@
     "download_unwatched": "കാണാത്തവ ഡൗൺലോഡ് ചെയ്യുക",
     "dropped": "ഉപേക്ഷിച്ചു",
     "episode": "എപ്പിസോഡ് {number}",
+    "episode_range": "S{season} E{first}-E{last}",
     "episode_short": "S{season} E{episode}",
     "episodes_count": "{count, plural, one {# എപ്പിസോഡ്} other {# എപ്പിസോഡുകൾ}}",
     "mark_season_unwatched": "സീസൺ {number} കണ്ടിട്ടില്ലെന്ന് അടയാളപ്പെടുത്തുക",

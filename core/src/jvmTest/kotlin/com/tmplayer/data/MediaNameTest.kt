@@ -43,6 +43,37 @@ class MediaNameTest {
     }
 
     @Test
+    fun `a combined pack with a bare end number opens on the first and knows its last`() {
+        // The owner's own file (2026-11-08): episodes 6 to 10 in one file, the end written as a
+        // bare number after the episode code. It read as episode 6 alone, wearing the pack's
+        // four hour length as its own.
+        val parsed = parse("Game_of_Thrones_2012_S02_E06_10_Hindi_DDP_2_0_+_Eng_AAC_2_0_720p.mkv")
+        assertEquals("Game of Thrones", parsed.title)
+        assertEquals(2, parsed.season)
+        assertEquals(6, parsed.episode)
+        assertEquals(10, parsed.lastEpisode)
+    }
+
+    @Test
+    fun `a bracketed bare range beside a season opens on the first and knows its last`() {
+        // The owner's own file (2026-11-08): "S06 [E01-05]" read as a season pack with no
+        // episode at all, and the shelf hung it on the wrong episode.
+        val parsed = parse("Game of Thrones (2016) S06 [E01-05] 720p 10bit DS4K CRAV.mkv")
+        assertEquals("Game of Thrones", parsed.title)
+        assertEquals(6, parsed.season)
+        assertEquals(1, parsed.episode)
+        assertEquals(5, parsed.lastEpisode)
+    }
+
+    @Test
+    fun `a bare end number is not read off a year, a resolution or a bit depth`() {
+        assertEquals(null, parse("Harbour.Notes.S01E01.2019.1080p.mkv").lastEpisode)
+        assertEquals(null, parse("Harbour.Notes.S01E01.1080p.mkv").lastEpisode)
+        assertEquals(null, parse("Harbour.Notes.S01E01.10bit.1080p.mkv").lastEpisode)
+        assertEquals(null, parse("Harbour Notes S01E01 720p x264.mkv").lastEpisode)
+    }
+
+    @Test
     fun `treats dots as spaces`() {
         val parsed = parse("City.Archive.1999.1080p.BluRay.x264-GROUP.mkv")
         assertEquals("City Archive", parsed.title)
