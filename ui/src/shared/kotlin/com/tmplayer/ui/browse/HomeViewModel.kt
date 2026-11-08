@@ -87,6 +87,14 @@ interface HomeSource {
      */
     suspend fun seriesMedia(chatId: Long): List<MediaItem> = chatMedia(chatId)
 
+    /**
+     * [chatId]'s videos for the catalog shelves alone, read deeper than [chatMedia]:
+     * page after page from the chat's newest to a bounded depth (see
+     * [com.tmplayer.data.CatalogDeepening]). A source that cannot page says the
+     * window is all it has.
+     */
+    suspend fun catalogMedia(chatId: Long): List<MediaItem> = chatMedia(chatId)
+
     /** The newest videos across every chat. */
     suspend fun recentMedia(): List<MediaItem>
 
@@ -199,6 +207,21 @@ object TdHomeSource : HomeSource {
             return first
         }
         return com.tmplayer.data.SeriesDeepening.merge(first, found)
+    }
+
+    override suspend fun catalogMedia(chatId: Long): List<MediaItem> {
+        val repository = repository()
+        val items = ArrayList<MediaItem>()
+        var cursors = MediaCursors()
+        var pages = 0
+        while (pages < com.tmplayer.data.CatalogDeepening.PAGES && items.size < com.tmplayer.data.CatalogDeepening.MAX_ITEMS_PER_CHAT) {
+            val page = repository.mediaPage(chatId, cursors, pageSize = MORE_PAGE)
+            items += page.items
+            if (page.endReached || page.items.isEmpty() || page.cursors == cursors) break
+            cursors = page.cursors
+            pages++
+        }
+        return items
     }
 
     override suspend fun recentMedia(): List<MediaItem> = repository().recentMedia()
@@ -373,6 +396,26 @@ class HomeViewModel(
      * yet, and its shows stand on the window meanwhile.
      */
     val series: StateFlow<Map<Long, List<MediaItem>>> = _series.asStateFlow()
+
+    private val _catalog = MutableStateFlow<Map<Long, List<MediaItem>>>(emptyMap())
+
+    /**
+     * Each of Home's chats' deeper reads ([HomeSource.catalogMedia]), for the
+     * catalog shelves alone (owner, v1.0.18): kept apart from [loaded] as [series]
+     * is, so a big channel's older videos stand in its categories while its own
+     * row keeps its window. A chat missing here has not answered yet.
+     */
+    val catalog: StateFlow<Map<Long, List<MediaItem>>> = _catalog.asStateFlow()
+
+    /**
+     * False while Settings has the catalog shelves off: the deeper reads they are
+     * drawn from are not made, by a fill or a refresh either. Set by
+     * [rememberHomeRows] as the layout is read, the way [recentWanted] is.
+     */
+    @Volatile var catalogWanted: Boolean = false
+
+    /** The chats the catalog deepening has been asked for: Home's own first chats, no more than [CATALOG_CHATS]. */
+    private var catalogKept: Set<Long> = emptySet()
 
     private val _partial = MutableStateFlow<Set<Long>>(emptySet())
 
@@ -580,15 +623,57 @@ class HomeViewModel(
             val keep = ids.toHashSet() + seriesKept
             val gone = if (whole) _loaded.value.keys.filterNot { it in keep } else emptyList()
             if (gone.isNotEmpty()) {
-                gone.forEach { fetches.forget("chat:$it"); fetches.forget("series:$it"); reads.remove(it); stale -= it }
+                gone.forEach { fetches.forget("chat:$it"); fetches.forget("series:$it"); fetches.forget("catalog:$it"); reads.remove(it); stale -= it }
                 _loaded.update { it - gone.toSet() }
                 _series.update { it - gone.toSet() }
+                _catalog.update { it - gone.toSet() }
                 _partial.update { it - gone.toSet() }
             }
             // Kept for while the chat list is not there: the next start draws these rows at once.
             if (whole && chats.isNotEmpty() && chats != _own.value) _own.value = chats
         }
         ids.take(EAGER_CHATS).forEach(::request)
+        // The catalog deepening follows Home's chats (see [requestCatalog]): asked
+        // here, where the picks are, and again when the shelves are turned on.
+        requestCatalog()
+    }
+
+    /**
+     * Asks for the catalog deepening of Home's own first chats (owner, v1.0.18):
+     * at most [CATALOG_CHATS] of them, each the one bounded read of
+     * [fetchCatalogChat]. Nothing while the catalog shelves are off
+     * ([catalogWanted]), so a Home without shelves pays nothing for them.
+     */
+    fun requestCatalog() {
+        if (!catalogWanted) return
+        val ids = order.take(CATALOG_CHATS)
+        catalogKept = ids.toSet()
+        ids.forEach { fetchCatalog(it) }
+    }
+
+    /** Asks for [chatId]'s deeper catalog read, once, and again when a refresh says fresh. */
+    private fun fetchCatalog(chatId: Long, fresh: Boolean = false, minGapMs: Long = 0) {
+        fetches.ask("catalog:$chatId", fresh = fresh, minGapMs = minGapMs, before = if (fresh) ::untilIdle else null) {
+            fetchCatalogChat(chatId)
+        }
+    }
+
+    private suspend fun fetchCatalogChat(chatId: Long): HomeFetches.Outcome {
+        val items = try {
+            kotlinx.coroutines.withTimeoutOrNull(ROW_TIMEOUT_MS) { source.catalogMedia(chatId) }
+                ?: throw java.io.IOException("Catalog read timed out")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            Td.noteFailure(failure.message)
+            return HomeFetches.Outcome.of(failure)
+        }
+        val kept = carryReads(
+            withinLimits(items).take(com.tmplayer.data.CatalogDeepening.MAX_ITEMS_PER_CHAT),
+            _catalog.value[chatId].orEmpty() + _loaded.value[chatId].orEmpty(),
+        )
+        _catalog.update { if (it[chatId] == kept) it else it + (chatId to kept) }
+        return HomeFetches.Outcome.Done
     }
 
     /**
@@ -680,6 +765,11 @@ class HomeViewModel(
         chats.take(REFRESH_CHATS).filter { it in seriesKept }.forEach { chatId ->
             if (background && chatId in following) return@forEach
             fetchSeries(chatId, fresh = true)
+        }
+        // And the catalog deepening of the same chats, for the same reason.
+        chats.take(REFRESH_CHATS).filter { it in catalogKept }.forEach { chatId ->
+            if (background && chatId in following) return@forEach
+            fetchCatalog(chatId, fresh = true)
         }
         fetchRecent(fresh = true)
         fetches.retryFailed()
@@ -1032,6 +1122,13 @@ class HomeViewModel(
         /** The most chats asked for the Series row's sake alone ([requestSeriesChats]). */
         const val SERIES_CHATS = 100
 
+        /**
+         * The most of Home's own chats read deeper for the catalog shelves
+         * ([requestCatalog]): the starred and picked ones a viewer actually
+         * browses by category, each bounded by [com.tmplayer.data.CatalogDeepening].
+         */
+        const val CATALOG_CHATS = 12
+
         /** The least time between two fetches of one row set off by posts in its chat. */
         const val LIVE_GAP_MS = 120_000L
 
@@ -1181,6 +1278,13 @@ fun rememberHomeRows(
         val kept = added?.let { ids -> seriesAll.filterKeys { it in ids } } ?: seriesAll
         kept.values.flatten().distinctBy { it.id }
     }
+    // The deeper catalog reads, flattened for the shelves at the foot alone
+    // ([HomeRows.build]'s catalogPool), gated by the added chats as [loaded] is.
+    val catalogAll by model.catalog.collectAsState()
+    val catalogPool = remember(catalogAll, added) {
+        val kept = added?.let { ids -> catalogAll.filterKeys { it in ids } } ?: catalogAll
+        kept.values.flatten().distinctBy { it.id }
+    }
     val partial by model.partial.collectAsState()
     val fresh by model.newEpisodes.collectAsState()
     val stalled by model.stalled.collectAsState()
@@ -1223,6 +1327,13 @@ fun rememberHomeRows(
         if (layout?.catalogRows != true) return@LaunchedEffect
         model.requestSeriesChats(chats.map { it.id })
     }
+    // The catalog shelves read Home's own chats deeper (owner, v1.0.18): while
+    // they are on the model is told, and the deepening is asked for the picks it
+    // already holds; a fill asks again as the picks change.
+    LaunchedEffect(model, layout?.catalogRows) {
+        model.catalogWanted = layout?.catalogRows == true
+        model.requestCatalog()
+    }
     // The form, read in composition: the build below runs in a producer, where it cannot be
     // asked (owner, 2026-11-06).
     val phoneOrder = com.tmplayer.ui.components.isTouch()
@@ -1230,7 +1341,7 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
-    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, pinnedChat) {
+    val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool, pinnedChat) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
         // Home's chats picked for itself only feed Recently added and the carousel.
@@ -1287,7 +1398,7 @@ fun rememberHomeRows(
         // as placeholders for as long as Telegram takes (user, 2026-10-26).
         val loaded = if (stalled) loaded + home.filter { it.id !in loaded }.associate { it.id to emptyList() } else loaded
         val recent = if (stalled) recent ?: emptyList() else recent
-        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool)
+        val inputs = listOf(continueWatching, watchLater, home, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, chatsPending, layout, recentFrom, noneChosen, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool)
         if (value.isNotEmpty() && homeMemo.same(homeMemo.built, inputs)) return@produceState
         if (value.isNotEmpty()) delay(HomeViewModel.ROWS_SETTLE_MS)
         // The first build on a cold start (owner, v1.0.14): the full build below waits on
@@ -1308,7 +1419,7 @@ fun rememberHomeRows(
                     continueWatching, home, loaded, recent, partial = partial, watchLater = watchLater, fresh = fresh,
                     recentMinStarred = recentMinStarred, starred = favourites, autoFill = autoFill,
                     chatsPending = chatsPending, layout = layout, recentFrom = recentFrom, noneChosen = noneChosen,
-                    titleMeta = homeTitleMetaMemoryOnly(home, loaded, recent),
+                    titleMeta = homeTitleMetaMemoryOnly(home, loaded, recent, catalogPool),
                     collections = collections,
                     watchedKeys = watched.mapTo(HashSet()) { it.key },
                     phoneOrder = phoneOrder,
@@ -1316,6 +1427,7 @@ fun rememberHomeRows(
                     hideShortVideos = hideShortVideos,
                     hideCamCopies = hideCamCopies,
                     seriesPool = seriesPool,
+                    catalogPool = catalogPool,
                 )
             }
             if (early.isNotEmpty()) {
@@ -1329,7 +1441,7 @@ fun rememberHomeRows(
                 continueWatching, home, loaded, recent, partial = partial, watchLater = watchLater, fresh = fresh,
                 recentMinStarred = recentMinStarred, starred = favourites, autoFill = autoFill,
                 chatsPending = chatsPending, layout = layout, recentFrom = recentFrom, noneChosen = noneChosen,
-                titleMeta = if (layout.catalogRows) homeTitleMeta(home, loaded, recent) else emptyMap(),
+                titleMeta = if (layout.catalogRows) homeTitleMeta(home, loaded, recent, catalogPool) else emptyMap(),
                 collections = collections,
                 trending = if (layout.catalogRows) homeTrendingRanks(home, loaded, recent, trendingRefs) else emptyMap(),
                 watchedGenres = if (layout.catalogRows) homeWatchedGenres(watched) else emptySet(),
@@ -1341,6 +1453,7 @@ fun rememberHomeRows(
                 hideShortVideos = hideShortVideos,
                 hideCamCopies = hideCamCopies,
                 seriesPool = seriesPool,
+                catalogPool = catalogPool,
             )
         }
         homeMemo.built = inputs
@@ -1470,10 +1583,11 @@ private fun homeTitleMetaMemoryOnly(
     home: List<ChatSummary>,
     loaded: Map<Long, List<MediaItem>>,
     recent: List<MediaItem>?,
+    catalogPool: List<MediaItem> = emptyList(),
 ): Map<String, com.tmplayer.data.TitleMeta> {
     val online = com.tmplayer.online.OnlineMetadata.current ?: return emptyMap()
     if (!online.settings.value.enabled) return emptyMap()
-    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty()).distinctBy { it.id }
+    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty() + catalogPool).distinctBy { it.id }
     val out = LinkedHashMap<String, com.tmplayer.data.TitleMeta>()
     for (item in pool) {
         val query = item.metaQuery?.showOnly() ?: continue
@@ -1498,10 +1612,13 @@ private fun homeTitleMeta(
     home: List<ChatSummary>,
     loaded: Map<Long, List<MediaItem>>,
     recent: List<MediaItem>?,
+    catalogPool: List<MediaItem> = emptyList(),
 ): Map<String, com.tmplayer.data.TitleMeta> {
     val online = com.tmplayer.online.OnlineMetadata.current ?: return emptyMap()
     if (!online.settings.value.enabled) return emptyMap()
-    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty()).distinctBy { it.id }
+    // The deepened catalog reads join the pool (owner, v1.0.18): a title only the
+    // deepening reached still needs its facts read, or no genre shelf can hold it.
+    val pool = (home.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty() + catalogPool).distinctBy { it.id }
     val lang = online.tmdbLanguage()
     val byQuery = HashMap<String, com.tmplayer.data.TitleMeta?>()
     val out = LinkedHashMap<String, com.tmplayer.data.TitleMeta>()

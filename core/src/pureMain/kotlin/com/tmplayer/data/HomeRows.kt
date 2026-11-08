@@ -352,6 +352,15 @@ object HomeRows {
          * and episodes the channels really hold rather than the window's share.
          */
         seriesPool: List<MediaItem> = emptyList(),
+        /**
+         * Extra videos for the shelves at the foot alone, past what [loaded] and
+         * [recent] hold: the bounded deeper read of Home's own chats (see
+         * [CatalogDeepening], owner v1.0.18). A large channel's catalogue stands in
+         * its categories from these, not only from its window; they feed nothing
+         * else, so a chat read deeper for its catalogue does not change what its
+         * own row, Recently added or the carousel shows.
+         */
+        catalogPool: List<MediaItem> = emptyList(),
     ): List<HomeRow> {
         // A phone's catalog shelves, held back until Recently added stands (owner, v1.0.13):
         // the series shelves and the foot shelves are gathered here and laid down together,
@@ -377,6 +386,7 @@ object HomeRows {
         val loaded = loaded.mapValues { (_, items) -> screened(items) }
         val recent = recent?.let(::screened)
         val seriesPool = screened(seriesPool)
+        val catalogPool = screened(catalogPool)
 
         val distinct = continueWatching.distinctBy { keyOf(it.chatId, it.messageId) }
         val everyResume = foldCopies(distinct)
@@ -516,7 +526,10 @@ object HomeRows {
         // The shelves at the foot (J Player, 2026-11-06), from every video Home's chats hold,
         // the recent search's included: a second way through them, under the chat rows.
         if (layout.catalogRows) {
-            val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty())
+            // The deepened pools join here and nowhere else: the series reads (their
+            // shows' episodes categorise with the rest) and the catalog reads (a big
+            // channel's older videos), each screened above like the windows.
+            val pool = (homeChats.flatMap { loaded[it.id].orEmpty() } + recent.orEmpty() + seriesPool + catalogPool)
                 .distinctBy { it.id }
             val foot = ArrayList<HomeRow.Catalog>()
             foot += catalogShelves(pool, shownCopies, inContinue, titleMeta, trending, watchedGenres, watchedKeys, nowMs)

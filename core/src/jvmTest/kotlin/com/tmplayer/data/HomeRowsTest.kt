@@ -148,6 +148,48 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `a title only the catalog deepening reached stands in its shelf`() {
+        // Owner, v1.0.18: a big channel's window is its newest handful, and its
+        // older films reached no category. The deepened pool feeds the shelves.
+        val window = listOf(
+            video(1, "Action One 2024.mp4"),
+            video(1, "Action Two 2024.mp4"),
+            video(1, "Action Three 2024.mp4"),
+        )
+        val deeper = listOf(
+            video(1, "Action Four 2024.mp4"),
+            video(1, "Action Five 2024.mp4"),
+        )
+        val meta = HashMap<String, TitleMeta>()
+        (window + deeper).forEach { meta[it.id] = TitleMeta(listOf("Action"), 7.0) }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to window),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+            catalogPool = deeper,
+        )
+        val genre = rows.filterIsInstance<HomeRow.Catalog>().first { it.key == "catalog-genre-action" }
+        assertEquals(5, genre.entries.size)
+        // The chat's own row keeps its window: the deepened films stand in no chat row.
+        val chatRow = rows.filterIsInstance<HomeRow.Chat>().single()
+        assertEquals(3, chatRow.entries.size)
+        // Without the deepening the shelf stands on the window alone, as before.
+        val bare = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to window),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val bareGenre = bare.filterIsInstance<HomeRow.Catalog>().first { it.key == "catalog-genre-action" }
+        assertEquals(3, bareGenre.entries.size)
+    }
+
+    @Test
     fun `the series row stands under continue watching, fed by every chat read`() {
         val started = video(1)
         val episodes = (1..2).map { video(2, "Harbour.Notes.S01E%02d.mkv".format(it)) }
