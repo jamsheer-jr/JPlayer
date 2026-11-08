@@ -30,7 +30,7 @@ enum class TourPage {
     /** Downloading a video or a season, and the Downloads screen. */
     Downloads,
 
-    /** The row TMPlayer keeps on the Android TV home screen. Television only. */
+    /** The row J Player keeps on the Android TV home screen. Television only. */
     TvHome,
 
     /** Which Settings page holds what. */
