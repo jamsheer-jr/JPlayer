@@ -456,6 +456,7 @@
     "ai_enhanced": "AI Enhanced",
     "airs_on": "Airs {date}",
     "audio": "Audio",
+    "best_copy": "Best",
     "bookmark_at": "Play from {time}",
     "cam_hidden": "{count, plural, one {# cam or PreDVD version is hidden} other {# cam or PreDVD versions are hidden}}",
     "close": "Close details",

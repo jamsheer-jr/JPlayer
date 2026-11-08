@@ -94,6 +94,20 @@ data class MediaFacts(
             }
         }
 
+        /**
+         * How the codecs rank against each other for the copy order (item 13, v1.0.16,
+         * the owner's ranking): HEVC above H.264, the other modern codecs with HEVC,
+         * an unstated codec above the old MPEG-4 pair and below everything named
+         * modern. Only the names [of] itself states are ranked; nothing is guessed.
+         */
+        fun codecRank(codec: String?): Int = when (codec) {
+            "HEVC", "AV1", "VP9" -> 5
+            "H.264" -> 3
+            null -> 2
+            "XviD", "DivX" -> 1
+            else -> 2
+        }
+
         private fun audioOf(name: String): String? {
             val codec = first(name, AUDIO_CODECS)
             val atmos = ATMOS.containsMatchIn(name) && codec != null

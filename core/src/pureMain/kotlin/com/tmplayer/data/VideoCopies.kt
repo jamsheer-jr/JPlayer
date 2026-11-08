@@ -255,8 +255,8 @@ object VideoCopies {
     /**
      * The quality chooser's rows (J Player, 2026-11-06: the badge tap opens a chooser instead of
      * cycling blind): every tier [copies] actually has, lowest first, each with its own best copy
-     * by the order copies are always offered in (tallest picture, then largest file), and the tier
-     * playing marked. Copies whose height is not known take no part.
+     * by the order copies are always offered in (tallest picture, then the better codec, then
+     * largest file), and the tier playing marked. Copies whose height is not known take no part.
      */
     fun tierChoices(copies: List<MediaItem>, currentId: String): List<TierChoice> {
         fun tierOf(item: MediaItem): String? = heightOf(item)?.let { badgeForHeight(it) }
@@ -264,16 +264,21 @@ object VideoCopies {
         return TIERS.mapNotNull { tier ->
             val best = copies
                 .filter { tierOf(it) == tier }
-                .maxWithOrNull(compareBy<MediaItem> { heightOf(it) ?: 0 }.thenBy { it.sizeBytes })
+                .maxWithOrNull(
+                    compareBy<MediaItem> { heightOf(it) ?: 0 }
+                        .thenBy { MediaFacts.codecRank(MediaFacts.of(it).videoCodec) }
+                        .thenBy { it.sizeBytes },
+                )
                 ?: return@mapNotNull null
             TierChoice(tier, best, tier == currentTier)
         }
     }
 
     /**
-     * [rows] in the order copies are always offered (best picture first, the biggest of it
-     * next), grouped under the quality of the copy each row stands for: one group per picture
-     * height ([heightOf]), tallest first, each group holding its rows biggest first. The rows
+     * [rows] in the order copies are always offered (best picture first, the better codec
+     * of it next, then the biggest: item 13, v1.0.16), grouped under the quality of the copy
+     * each row stands for: one group per picture height ([heightOf]), tallest first, each
+     * group holding its rows in that order. The rows
      * whose copy states no quality (sent as a file, its name carrying no marker) form the last
      * group, keyed by a null height: no quality is read into them from their size or anything
      * else. The one grouping both copies choosers draw (the detail page's Versions and the
@@ -282,6 +287,7 @@ object VideoCopies {
     fun <T> tiersOf(rows: List<T>, copyOf: (T) -> MediaItem): List<Pair<Int?, List<T>>> {
         val sorted = rows.sortedWith(
             compareByDescending<T> { heightOf(copyOf(it)) ?: 0 }
+                .thenByDescending { MediaFacts.codecRank(MediaFacts.of(copyOf(it)).videoCodec) }
                 .thenByDescending { copyOf(it).sizeBytes },
         )
         return sorted.groupBy { heightOf(copyOf(it)) }.entries

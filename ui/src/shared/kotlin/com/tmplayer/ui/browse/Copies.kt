@@ -481,6 +481,11 @@ private fun CopyChooser(
         VideoCopies.tiersOf(files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }) { it.first }
     }
     val rows = remember(tiers) { tiers.flatMap { it.second } }
+    // The best copy standing (item 13, v1.0.16): the first row of the first group, the
+    // head of the order the copies are always offered in. These files are the screened
+    // ones, so a hidden copy never carries the badge; one copy alone has nothing to
+    // be best over.
+    val bestId = remember(tiers) { if (rows.size > 1) tiers.firstOrNull()?.second?.firstOrNull()?.first?.id else null }
     val datesDiffer = remember(rows) { rows.map { it.first.date / 86_400 }.distinct().size > 1 }
     val chatOf: (MediaItem) -> String? = { copyChat(it, item, chatTitle) }
     // A choice made by a finger is shown before the list goes: the tint and the mark move to the
@@ -553,6 +558,7 @@ private fun CopyChooser(
                         postedAgain(same, s),
                     ).joinToString("  ·  "),
                     chosen = picked?.let { id -> same.any { it.id == id } } ?: same.any { it.id == item.id },
+                    best = copy.id == bestId,
                     onHide = onHideCopy?.takeIf { !same.any { it.id == item.id } }?.let { hide -> { hide(copy) } },
                     onClick = { choose(copy) },
                     // The rows arrive one after another, top first, as the sheet comes up.
@@ -572,6 +578,8 @@ private fun CopyOption(
     what: String,
     facts: String,
     chosen: Boolean,
+    /** The best copy standing (item 13, v1.0.16) carries the Best badge beside its size. */
+    best: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
@@ -608,7 +616,18 @@ private fun CopyOption(
         val ink = if (focused) Tone.onFocusFill else Tone.text
         RadioMark(chosen, focused)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = ink)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = ink)
+                if (best) {
+                    Text(
+                        s.detailBestCopy,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Tone.onAccent,
+                        modifier = Modifier.clip(RoundedCornerShape(percent = 50)).background(Tone.accent).padding(horizontal = 7.dp, vertical = 2.dp),
+                    )
+                }
+            }
             if (what.isNotEmpty()) Text(what, style = MaterialTheme.typography.bodySmall, color = if (focused) ink else Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (facts.isNotEmpty()) Text(facts, style = MaterialTheme.typography.bodySmall, color = if (focused) ink.copy(alpha = 0.8f) else Tone.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }

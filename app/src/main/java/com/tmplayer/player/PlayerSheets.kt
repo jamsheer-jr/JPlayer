@@ -1072,6 +1072,9 @@ internal fun CopiesSheet(
     // playing stays listed wherever it lands (VideoCopies.oneOfEachFile keeps it in the list
     // upstream), so its heading stands even when it is the only copy under it.
     val tiers = remember(visible) { VideoCopies.tiersOf(visible) { it } }
+    // The best copy standing (item 13, v1.0.16): the head of the tiers' order among the
+    // copies this sheet shows, so a copy the sheet screens out never carries the badge.
+    val bestId = remember(tiers, visible) { if (visible.size > 1) tiers.firstOrNull()?.second?.firstOrNull()?.id else null }
     val datesDiffer = remember(visible) { visible.map { it.date / 86_400 }.distinct().size > 1 }
     ChoiceSheet(title = s.playerCopies, note = s.playerCopiesNote, onDismiss = onClose, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
         ChoiceList {
@@ -1089,6 +1092,7 @@ internal fun CopiesSheet(
                     // The size leads the row, as a Versions row leads with it; the quality
                     // is the group's heading, said once.
                     val size = copy.sizeBytes.takeIf { it > 0 }?.let { com.tmplayer.data.SplitPieces.sizeFact(copy, s.formatter.size(it)) } ?: copyHeading(copy)
+                    Box {
                     ChoiceLine(
                         title = if (here && qualities.isNotEmpty()) "$size  ·  ${s.detailUploadQuality}" else size,
                         // Under the size, what the copy is (its source, codec and the sound
@@ -1119,6 +1123,20 @@ internal fun CopiesSheet(
                             here -> onQuality(0)
                             else -> onPick(copy)
                         }
+                    }
+                    // The Best badge (item 13, v1.0.16): a pill over the best standing
+                    // copy's row, the same badge the Versions chooser draws.
+                    if (copy.id == bestId) {
+                        Text(
+                            s.detailBestCopy,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            color = Tone.onAccent,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 16.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
+                                .background(Tone.accent).padding(horizontal = 7.dp, vertical = 2.dp),
+                        )
+                    }
                     }
                     if (here) {
                         qualities.forEach { q ->

@@ -502,20 +502,23 @@ object GlobalSearch {
     fun titleOf(group: ResultGroup): String = group.show?.takeIf { group.isShow } ?: SeriesShelf.tileTitle(group.asItem())
 
     /**
-     * On this device first, then the best picture, then the biggest of that picture, then
-     * the newest: the copy a tap plays is the one already here when there is one, and the
-     * size breaks the tie inside one picture height (the order the copies are listed and
-     * led with everywhere; the detail page's chooser sorts the same way, by height then
-     * size). Which copy actually plays when one is picked stays [VideoCopies.pick]'s
-     * business, but the list itself leads with the copy on the device.
+     * On this device first, then the best picture, then the better codec (HEVC above
+     * H.264, item 13, v1.0.16), then the biggest of that picture, then the newest: the
+     * copy a tap plays is the one already here when there is one, and the codec and
+     * the size break the ties inside one picture height (the order the copies are
+     * listed and led with everywhere; the detail page's chooser sorts the same way,
+     * by height then codec then size). Which copy actually plays when one is picked
+     * stays [VideoCopies.pick]'s business, but the list itself leads with the copy
+     * on the device.
      */
     fun copyOrder(copies: List<MediaItem>): List<MediaItem> {
         if (copies.size < 2) return copies.toList()
-        // Each copy's quality read once, not on every comparison of the sort.
-        return copies.map { it to (qualityOf(it)?.let(::qualityRank) ?: 0) }
+        // Each copy's quality and codec read once, not on every comparison of the sort.
+        return copies.map { Triple(it, qualityOf(it)?.let(::qualityRank) ?: 0, MediaFacts.codecRank(MediaFacts.of(it).videoCodec)) }
             .sortedWith(
-                compareByDescending<Pair<MediaItem, Int>> { it.first.onDevice }
+                compareByDescending<Triple<MediaItem, Int, Int>> { it.first.onDevice }
                     .thenByDescending { it.second }
+                    .thenByDescending { it.third }
                     .thenByDescending { it.first.sizeBytes }
                     .thenByDescending { it.first.date }
                     .thenByDescending { it.first.messageId },

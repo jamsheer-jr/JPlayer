@@ -398,6 +398,19 @@ class VideoCopiesTest {
     }
 
     @Test
+    fun `within one height the tiers order by codec before size`() {
+        // Item 13, v1.0.16: the owner's ranking, resolution, then codec (HEVC above
+        // H.264), then size. The bigger x264 stands under the smaller x265.
+        val avc = video(2, 71, "Night.Train.2019.1080p.BluRay.x264.mkv", size = 1_600L shl 20)
+        val hevc = video(2, 72, "Night.Train.2019.1080p.BluRay.x265.mkv", size = 900L shl 20)
+        val tiers = VideoCopies.tiersOf(listOf(avc, hevc)) { it }
+        assertEquals(listOf(1080), tiers.map { it.first })
+        assertEquals(listOf(hevc.id, avc.id), tiers[0].second.map { it.id })
+        // And the search's order, the same ranking over the same copies.
+        assertEquals(listOf(hevc.id, avc.id), GlobalSearch.copyOrder(listOf(avc, hevc)).map { it.id })
+    }
+
+    @Test
     fun `a copy stating no quality forms the last group, keyed by no height`() {
         // Sent as a file, its name carrying no marker: nothing about it states a picture size.
         val unstated = video(1, 98, "Jailer 2 (2026) Tamil HQ PreDVD - x264 - HQ Clean - AAC.mkv", size = 461L shl 20)
