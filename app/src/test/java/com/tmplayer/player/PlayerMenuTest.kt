@@ -127,6 +127,7 @@ class PlayerMenuTest {
             chapters = true,
             stereo = true,
             pictureShape = true,
+            upNext = true,
         )
         assertFalse(PlayerMenuEntry.PictureInPicture in entries)
         assertEquals(PlayerMenuEntry.entries.size - 1, entries.size)
@@ -145,6 +146,7 @@ class PlayerMenuTest {
                 chapters = true,
                 stereo = true,
                 pictureShape = true,
+                upNext = true,
             ).toSet(),
         )
     }
@@ -204,7 +206,21 @@ class PlayerMenuTest {
                 watchParty = true,
             ),
         )
-        assertEquals(PhoneMenuEntry.entries.toSet(), PlayerMenu.phoneEntries(true, true, true, true, paused = true, bookmarks = true, chapters = true, saveFrame = true, pictureShape = true, stereo = true, zoomed = true, watchParty = true).toSet())
+        assertEquals(PhoneMenuEntry.entries.toSet(), PlayerMenu.phoneEntries(true, true, true, true, paused = true, bookmarks = true, chapters = true, saveFrame = true, pictureShape = true, stereo = true, zoomed = true, watchParty = true, upNext = true).toSet())
+        // The Up Next line stands after Watch party when the video can be queued (item 33, v1.0.15).
+        val withUpNext = PlayerMenu.phoneEntries(
+            pictureInPicture = true,
+            openInAnotherApp = true,
+            saveToDownloads = true,
+            markWatched = true,
+            paused = true,
+            bookmarks = true,
+            chapters = true,
+            saveFrame = true,
+            watchParty = true,
+            upNext = true,
+        )
+        assertEquals(withUpNext.indexOf(PhoneMenuEntry.WatchParty) + 1, withUpNext.indexOf(PhoneMenuEntry.UpNext))
     }
 
     @Test
