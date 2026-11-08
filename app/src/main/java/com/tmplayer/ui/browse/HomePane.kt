@@ -391,7 +391,7 @@ internal fun HomePane(
     // unless Settings turned the row off and kept the carousel it feeds. Its "no chosen chats"
     // line shows either way, so the carousel's empty place is explained.
     val listed = remember(chipRows) { chipRows.filter { it !is HomeRow.Recent || it.asRow || it.noneChosen } }
-    // The phone's chips (owner, v1.0.15, items 16 and 29): Shows, Movies, New & Hot
+    // The phone's chips (owner, v1.0.15, items 16 and 29): Movies, Shows, New & Hot
     // and Categories, under the header line and above the banner. They no longer
     // jump to a shelf: Shows and Movies turn Home itself into that shape (see
     // [chipRows]), New & Hot into the new arrivals, and Categories keeps opening
@@ -2947,9 +2947,10 @@ private fun HomeHeaderLine(
 }
 
 /**
- * The chips row under the header line (owner, v1.0.15, items 16 and 29): Shows,
- * Movies, New & Hot and Categories in a row that scrolls sideways, the picked
- * chip filled with the accent. One composable for the list's top and the pinned
+ * The chips row under the header line (owner, v1.0.15, items 16 and 29): Movies,
+ * Shows, New & Hot and Categories in a row that scrolls sideways, the picked
+ * chip filled with the accent. Movies stands first by the owner's word
+ * (v1.0.17). One composable for the list's top and the pinned
  * bar, as the header line is.
  */
 @Composable
@@ -2973,8 +2974,8 @@ private fun HomeChipsRow(
             .padding(start = start, end = end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (shows) HomeChipPill(s.homeRowShows, selected = chip == com.tmplayer.data.HomeChip.Shows) { onChip(com.tmplayer.data.HomeChip.Shows) }
         if (movies) HomeChipPill(s.homeRowMovies, selected = chip == com.tmplayer.data.HomeChip.Movies) { onChip(com.tmplayer.data.HomeChip.Movies) }
+        if (shows) HomeChipPill(s.homeRowShows, selected = chip == com.tmplayer.data.HomeChip.Shows) { onChip(com.tmplayer.data.HomeChip.Shows) }
         if (hot) HomeChipPill(s.homeNewHot, selected = chip == com.tmplayer.data.HomeChip.NewHot) { onChip(com.tmplayer.data.HomeChip.NewHot) }
         if (categories) HomeChipPill(s.homeCategories, selected = false) { onCategories() }
     }
