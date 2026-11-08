@@ -406,9 +406,23 @@ internal fun HomePane(
     } else {
         emptyList()
     }
+    // On the Movies and Shows shapes the banner also draws from the shape's own
+    // shelf (owner, v1.0.19): the Recent row cut to one kind is too thin a pool to
+    // fill it, so those shapes stood with no banner while the full Home's stood.
+    val bannerExtras = remember(chipRows, homeChip) {
+        val kind = when (homeChip) {
+            com.tmplayer.data.HomeChip.Movies -> "movies"
+            com.tmplayer.data.HomeChip.Shows -> "series"
+            else -> null
+        }
+        kind?.let { wanted ->
+            chipRows.filterIsInstance<HomeRow.Catalog>().firstOrNull { it.kind == wanted }?.all
+        }.orEmpty()
+    }
     // Off in Settings, nothing is picked or turned over for it either.
     val featured = rememberFeatured(
         bannerRecent.takeIf { carouselOn },
+        extraEntries = bannerExtras,
         pinEntries = bannerPinEntries,
         pinKeys = if (bannerMode == "pinned") bannerPins.toSet() else emptySet(),
     )
@@ -2999,65 +3013,113 @@ private val TV_DOWN_STEP = 200.dp
  * The carousel's pages from the Recently added row [recent]: null while that row is still being
  * asked for or the fill is still deciding (the carousel then holds its frame with a stand-in, at
  * most [HomeFeatured.FILL_WAIT_MS] once the row is in), empty for nothing to feature, which hides
- * the carousel. Only complete pages ([com.tmplayer.ui.online.completeFeatured]), decided once
- * per fill so no page comes or goes while it is looked at; a refresh keeps the pages up until
- * the new ones are decided. Each fill draws the unpinned pages in a fresh order (owner,
- * v1.0.17), so a refresh brings different banners rather than the same ones again. With online lookups off there are no complete pages, so none at once.
+ * the carousel. Only complete pages ([com.tmplayer.ui.online.completeFeatured]). Each fill draws
+ * the unpinned pages in a fresh order (owner, v1.0.17), drawn once when the fill starts, so a
+ * refresh brings different banners rather than the same ones again, and a page that completes
+ * late takes its drawn place instead of reshuffling the banner under the viewer. A refresh
+ * keeps the pages up until the new ones are decided.
+ *
+ * On a phone's Movies or Shows shape the banner also draws from the shape's own shelf
+ * ([extraEntries], owner, v1.0.19): the Recent row cut to one kind is a thin pool, and its
+ * answers were landing after the fill's wait with nothing left to hear them, so those shapes
+ * stood with no banner at all while the full Home's banner stood. A lookup that answers after
+ * the wait now still joins this fill (see [com.tmplayer.data.HomeFeatured.completeKeys]).
+ * With online lookups off there are no complete pages, so none at once.
  * The decided pages are [HomeFeatured.bannerSet]'s: the pinned titles ([pinEntries], named by
  * [pinKeys]) lead, and the rest fill toward the full set in its six films and four shows mix.
  */
 @Composable
 private fun rememberFeatured(
     recent: HomeRow.Recent?,
+    extraEntries: List<ShelfEntry> = emptyList(),
     pinEntries: List<ShelfEntry> = emptyList(),
     pinKeys: Set<String> = emptySet(),
 ): List<com.tmplayer.data.FeaturedPick>? {
     val online = com.tmplayer.online.OnlineMetadata.current
     val enabled = online?.settings?.collectAsState()?.value?.enabled == true
-    val candidates = remember(recent, pinEntries) {
+    val candidates = remember(recent, extraEntries, pinEntries) {
         val auto = recent?.takeIf { it.loaded }?.let { com.tmplayer.data.HomeFeatured.pick(it.entries, com.tmplayer.data.HomeFeatured.CANDIDATES) }
+        val extra = extraEntries.takeIf { it.isNotEmpty() }?.let { com.tmplayer.data.HomeFeatured.pick(it, com.tmplayer.data.HomeFeatured.CANDIDATES) }
         // The pinned titles are candidates in their own right, ahead of the newest: the
         // newest-first candidate cut must not crowd a pinned title out of its own banner.
         val pins = pinEntries.takeIf { it.isNotEmpty() }?.let { com.tmplayer.data.HomeFeatured.pick(it, com.tmplayer.data.HomeFeatured.LIMIT) }
         when {
-            auto == null && pins == null -> null
-            else -> (pins.orEmpty() + auto.orEmpty()).distinctBy { it.key }
+            auto == null && extra == null && pins == null -> null
+            else -> (pins.orEmpty() + auto.orEmpty() + extra.orEmpty()).distinctBy { it.key }
         }
     }
-    var decided by remember { mutableStateOf<List<com.tmplayer.data.FeaturedPick>?>(null) }
+    val isPinned = { pick: com.tmplayer.data.FeaturedPick ->
+        pinKeys.isNotEmpty() && com.tmplayer.data.VideoCopies.keyOf(pick.item) in pinKeys
+    }
+    // The fill's order, drawn once: pinned titles lead in their order, the rest shuffled.
+    val fillOrder = remember(candidates, pinKeys) {
+        candidates?.let { list -> list.filter(isPinned) + list.filterNot(isPinned).shuffled() }
+    }
+    val fill = remember(candidates, online, enabled) { FeaturedFill() }
     LaunchedEffect(candidates, online, enabled) {
         if (!enabled) {
-            decided = emptyList()
+            fill.settled = true
             return@LaunchedEffect
         }
         val picks = candidates ?: return@LaunchedEffect
         if (picks.isEmpty()) {
-            decided = picks
+            fill.settled = true
             return@LaunchedEffect
         }
-        // The lookups still unanswered when the wait is up go on in this effect, so their answers
-        // are on the device for the next fill; they stop with it.
+        // The lookups still unanswered when the wait is up go on in this effect; a page
+        // that completes late still joins this fill through onSettled, and either way its
+        // answer is on the device for the next fill. They stop with the effect.
         val keys = try {
-            com.tmplayer.ui.online.completeFeatured(picks, this)
+            com.tmplayer.ui.online.completeFeatured(picks, this, onSettled = { key, complete ->
+                if (complete) fill.add(key)
+            })
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             emptySet()
         }
-        val complete = picks.filter { it.key in keys }
-        val isPinned = { pick: com.tmplayer.data.FeaturedPick ->
-            pinKeys.isNotEmpty() && com.tmplayer.data.VideoCopies.keyOf(pick.item) in pinKeys
-        }
-        decided = com.tmplayer.data.HomeFeatured.bannerSet(
-            // A fresh draw on every fill (owner, v1.0.17): the unpinned pages are
-            // shuffled before the set is made, so a refresh brings different banners
-            // from the whole complete pool instead of the same newest pages in the
-            // same order. The pinned titles keep their head places and their order.
-            complete.filter(isPinned) + complete.filterNot(isPinned).shuffled(),
-            pinned = isPinned,
-        )
+        fill.addAll(keys)
+        fill.settled = true
     }
-    return if (!enabled) emptyList() else decided
+    if (!enabled) return emptyList()
+    val order = fillOrder ?: return null
+    val complete = order.filter { it.key in fill.completed() }
+    return when {
+        complete.isNotEmpty() -> com.tmplayer.data.HomeFeatured.bannerSet(complete, pinned = isPinned)
+        fill.settled -> emptyList()
+        else -> null
+    }
+}
+
+/**
+ * One banner fill's answers as they land: the keys of the pages known complete so far,
+ * and whether the fill's first decision has been made. Written from the lookups' own
+ * threads as answers arrive, read in composition; [version] is the snapshot thread
+ * between them, so a page completing after the wait still reaches the banner.
+ */
+private class FeaturedFill {
+    private val done = HashSet<String>()
+
+    var version by mutableStateOf(0)
+        private set
+
+    var settled by mutableStateOf(false)
+
+    fun add(key: String) {
+        val changed = synchronized(done) { done.add(key) }
+        if (changed) version++
+    }
+
+    fun addAll(keys: Set<String>) {
+        val changed = synchronized(done) { done.addAll(keys) }
+        if (changed) version++
+    }
+
+    /** The complete keys so far; reading [version] is what subscribes the composition. */
+    fun completed(): Set<String> {
+        version
+        return synchronized(done) { done.toSet() }
+    }
 }
 
 /** How long an empty Home waits for its rows before it takes itself for a first run. */

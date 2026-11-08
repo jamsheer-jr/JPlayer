@@ -192,6 +192,30 @@ class HomeFeaturedTest {
     }
 
     @Test
+    fun `a lookup that answers after the wait still settles for the banner`() = kotlinx.coroutines.runBlocking<Unit> {
+        // The Movies shape's thin pool (owner, v1.0.19): every answer can land after
+        // the fill's wait, and the banner on screen must still hear of them.
+        val picks = films(3)
+        val settled = java.util.Collections.synchronizedList(ArrayList<Pair<String, Boolean>>())
+        val keys = HomeFeatured.completeKeys(
+            picks,
+            known = { null },
+            ask = { pick ->
+                if (pick.key == picks[0].key) kotlinx.coroutines.delay(400)
+                true
+            },
+            scope = this,
+            waitMs = 100,
+            onSettled = { key, complete -> settled += key to complete },
+        )
+        assertEquals(setOf(picks[1].key, picks[2].key), keys)
+        kotlinx.coroutines.delay(800)
+        assertTrue(settled.contains(picks[0].key to true))
+        assertTrue(settled.contains(picks[1].key to true))
+        coroutineContext[kotlinx.coroutines.Job]?.children?.forEach { it.cancel() }
+    }
+
+    @Test
     fun `nothing complete means no carousel`() = kotlinx.coroutines.runBlocking<Unit> {
         val picks = films(4)
         val keys = HomeFeatured.completeKeys(picks, known = { false }, ask = { true }, scope = this)

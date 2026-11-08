@@ -219,9 +219,13 @@ object HomeFeatured {
      * The keys of [candidates] that are complete pages, worked out once for a fill. [known]
      * answers from what is on this device (true, false, or null for not looked up yet), and the
      * rest are asked with [ask], [LOOKUPS_AT_ONCE] at a time in [scope] on [context], for at most
-     * [waitMs] in all. A candidate still unanswered then is left out of this fill; its lookup goes
-     * on in [scope], so the answer is on the device for the next fill. The wait ends early once
-     * the first [limit] complete pages, in the candidates' order, are settled.
+     * [waitMs] in all. A candidate still unanswered then is left out of this fill's answer; its
+     * lookup goes on in [scope], so the answer is on the device for the next fill, and
+     * [onSettled] hears of it when it lands (owner, v1.0.19: a chip whose candidate pool is
+     * small was left with no banner at all when every answer landed after the wait, because
+     * nothing ever heard them). [onSettled] is called for every asked candidate, whenever its
+     * answer lands, in or after the wait; an answer of null counts as not complete. The wait
+     * ends early once the first [limit] complete pages, in the candidates' order, are settled.
      */
     suspend fun completeKeys(
         candidates: List<FeaturedPick>,
@@ -231,6 +235,7 @@ object HomeFeatured {
         context: CoroutineContext = EmptyCoroutineContext,
         waitMs: Long = FILL_WAIT_MS,
         limit: Int = LIMIT,
+        onSettled: (key: String, complete: Boolean) -> Unit = { _, _ -> },
     ): Set<String> {
         val verdicts = HashMap<String, Boolean?>()
         for (pick in candidates) verdicts[pick.key] = guarded { known(pick) }
@@ -254,6 +259,9 @@ object HomeFeatured {
             scope.launch(context) {
                 val verdict = gate.withPermit { guarded { ask(pick) } }
                 answers.trySend(pick.key to verdict)
+                // Heard even when the wait below is already over: the fill that
+                // asked is still on screen, and its banner can still take the page.
+                guarded { onSettled(pick.key, verdict == true) }
             }
         }
         withTimeoutOrNull(waitMs) {

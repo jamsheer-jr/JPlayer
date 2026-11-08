@@ -691,6 +691,7 @@ suspend fun completeFeatured(
     candidates: List<com.tmplayer.data.FeaturedPick>,
     scope: kotlinx.coroutines.CoroutineScope,
     limit: Int = com.tmplayer.data.HomeFeatured.LIMIT,
+    onSettled: (key: String, complete: Boolean) -> Unit = { _, _ -> },
 ): Set<String> {
     val online = OnlineMetadata.current ?: return emptySet()
     if (!online.settings.value.enabled || candidates.isEmpty()) return emptySet()
@@ -728,7 +729,7 @@ suspend fun completeFeatured(
         return online.matched(target.item, target.name, info) != null
     }
     val keys = withContext(Dispatchers.IO) {
-        com.tmplayer.data.HomeFeatured.completeKeys(candidates, ::known, ::ask, scope, Dispatchers.IO, limit = limit)
+        com.tmplayer.data.HomeFeatured.completeKeys(candidates, ::known, ::ask, scope, Dispatchers.IO, limit = limit, onSettled = onSettled)
     }
     // The first page's title logo within what is left of the wait: the page opens on it rather
     // than on its name with the logo fading in a moment later.
