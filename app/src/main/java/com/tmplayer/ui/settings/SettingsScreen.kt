@@ -2067,7 +2067,7 @@ fun SettingsScreen(
                 // television is showing for its own sign in, from inside J Player, so Telegram
                 // never has to be opened. A phone only: a television has no camera to offer,
                 // and its own sign in pane is the one being scanned.
-                if (isTouch()) {
+                if (touch) {
                     item {
                         ActionRow(
                             title = s.settingsAccountScan,
@@ -3503,6 +3503,12 @@ internal fun TickRow(label: String, checked: Boolean, onToggle: () -> Unit) {
     }
 }
 
+/** A minute of day as a clock reading, "23:00": the night window's ends (item 7c, v1.0.15). */
+private fun nightClock(minutes: Int): String {
+    val clean = NightWindow.clean(minutes)
+    return (clean / 60).toString().padStart(2, '0') + ":" + (clean % 60).toString().padStart(2, '0')
+}
+
 /**
  * A row whose value is a number the viewer walks up and down.
  *
@@ -3511,12 +3517,6 @@ internal fun TickRow(label: String, checked: Boolean, onToggle: () -> Unit) {
  * greyed at the ends, because they are what says the row can be moved at all.
  */
 @Composable
-/** A minute of day as a clock reading, "23:00": the night window's ends (item 7c, v1.0.15). */
-private fun nightClock(minutes: Int): String {
-    val clean = NightWindow.clean(minutes)
-    return (clean / 60).toString().padStart(2, '0') + ":" + (clean % 60).toString().padStart(2, '0')
-}
-
 private fun StepperRow(
     title: String,
     subtitle: String,
