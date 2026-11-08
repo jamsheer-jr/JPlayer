@@ -266,7 +266,14 @@ object HomeFeatured {
                 answers.trySend(pick.key to verdict)
                 // Heard even when the wait below is already over: the fill that
                 // asked is still on screen, and its banner can still take the page.
-                guarded { onSettled(pick.key, verdict == true) }
+                // A hearer that fails must not take the lookup down with it.
+                try {
+                    onSettled(pick.key, verdict == true)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Unit
+                }
             }
         }
         withTimeoutOrNull(waitMs) {
