@@ -2163,6 +2163,27 @@ private fun CatalogSeeAll(
                 )
             }
         }
+        // A category page's banner (owner, v1.0.17): a title wide over the
+        // grid, the first of the page's titles that carries a picture of its
+        // own (owner, v1.0.19: the first title blindly taken could head the
+        // page with a blurred nothing while a title below it had real art).
+        // It stands over the grid at the page's full width, not inside it as
+        // an item (owner, v1.0.21, on device on 1.0.20): as a grid item its
+        // width was the poster columns' sum, and on a phone where two
+        // columns fit, the banner shrank to them and its Play pill's label
+        // was crushed to its first letters by the pill's own padding.
+        // A See all page keeps the plain grid it always had.
+        if (hero && touch && entries.isNotEmpty()) {
+            CategoryHero(
+                entry = heroEntry(entries),
+                watch = watch,
+                chatTitle = chatTitle,
+                onPlay = onPlay,
+                onOpenSeries = onOpenSeries,
+                onDetails = onDetails,
+                modifier = Modifier.padding(start = start, end = end, bottom = 12.dp),
+            )
+        }
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
             // A poster's page keeps the poster's own size, the size Home's rows
             // give it (owner, v1.0.19: inside a category the posters stood
@@ -2181,29 +2202,9 @@ private fun CatalogSeeAll(
                 top = if (touch) 4.dp else Tv.FocusClearance,
                 bottom = bottom + if (touch) 24.dp else Tv.FocusClearance,
             ),
-            horizontalArrangement = Arrangement.spacedBy(gap),
+            horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(if (touch) 16.dp else gap + Tv.FocusClearance),
         ) {
-            // A category page's banner (owner, v1.0.17): a title wide over the
-            // grid, the first of the page's titles that carries a picture of its
-            // own (owner, v1.0.19: the first title blindly taken could head the
-            // page with a blurred nothing while a title below it had real art).
-            // A See all page keeps the plain grid it always had.
-            if (hero && touch && entries.isNotEmpty()) {
-                item(
-                    key = "category-hero",
-                    span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
-                ) {
-                    CategoryHero(
-                        entry = heroEntry(entries),
-                        watch = watch,
-                        chatTitle = chatTitle,
-                        onPlay = onPlay,
-                        onOpenSeries = onOpenSeries,
-                        onDetails = onDetails,
-                    )
-                }
-            }
             items(
                 entries.size,
                 key = { entries[it].key },
