@@ -18,7 +18,9 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -958,8 +960,9 @@ internal fun HomePane(
                     // language the chats hold, its first title's picture under the
                     // name; a tap opens that language's page, films and shows
                     // together, the way the streaming apps lay languages out.
-                    val languageTiles = remember(chipRows) {
-                        val codes = LinkedHashSet<String>()
+                    item(key = LANGUAGE_TILES_KEY, contentType = LANGUAGE_TILES_KEY) {
+                        val languageTiles = remember(chipRows) {
+                            val codes = LinkedHashSet<String>()
                         chipRows.filterIsInstance<HomeRow.Catalog>().forEach { row ->
                             when {
                                 row.kind.startsWith("series-lang-") -> codes += row.kind.removePrefix("series-lang-")
@@ -974,8 +977,7 @@ internal fun HomePane(
                             Triple(code, name, first)
                         }
                     }
-                    if (languageTiles.size >= 2) {
-                        item(key = LANGUAGE_TILES_KEY, contentType = LANGUAGE_TILES_KEY) {
+                        if (languageTiles.size >= 2) {
                             Column(Modifier.padding(top = 10.dp)) {
                                 M3Text(
                                     s.homeWatchLanguage,

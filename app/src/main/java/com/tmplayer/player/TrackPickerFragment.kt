@@ -484,7 +484,7 @@ class TrackPickerFragment : Fragment() {
             pair.mapNotNull { pick -> pick.group?.let { it.mediaTrackGroup to pick.trackIndex } }
                 .groupBy({ it.first }, { it.second })
                 .forEach { (group, indices) ->
-                    builder.addOverride(TrackSelectionOverride(group, *indices.toIntArray()))
+                    builder.addOverride(TrackSelectionOverride(group, indices))
                 }
             player.trackSelectionParameters = builder.build()
         }
