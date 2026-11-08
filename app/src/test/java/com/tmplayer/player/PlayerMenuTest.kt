@@ -169,6 +169,7 @@ class PlayerMenuTest {
             listOf(
                 PhoneMenuEntry.LockScreen,
                 PhoneMenuEntry.PictureInPicture,
+                PhoneMenuEntry.BackgroundPlay,
                 PhoneMenuEntry.Speed,
                 PhoneMenuEntry.LoadSubtitleFile,
                 PhoneMenuEntry.LoadSubtitleUrl,

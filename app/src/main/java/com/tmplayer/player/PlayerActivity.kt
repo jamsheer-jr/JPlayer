@@ -7192,6 +7192,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         override fun stereoDetail() = stereo.detailText()
         override fun volumeBoost() = volumeBoostOn
         override fun nightMode() = nightModeOn
+        override fun backgroundPlay() = backgroundAudioOn
         override fun evenVolume() = evenVolumeOn
         override fun sleepDetail() = sleepTimerDetail()
         override fun sleepChoice() = this@PlayerActivity.sleepChoice()
@@ -7232,6 +7233,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         when (entry) {
             PhoneMenuEntry.LockScreen -> lockScreen()
             PhoneMenuEntry.PictureInPicture -> enterPictureInPictureNow()
+            PhoneMenuEntry.BackgroundPlay -> toggleBackgroundPlay()
             PhoneMenuEntry.VolumeBoost -> toggleVolumeBoost()
             PhoneMenuEntry.NightMode -> toggleNightMode()
             PhoneMenuEntry.EvenVolume -> toggleEvenVolume()
@@ -7643,6 +7645,18 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         volumeBoost?.night = on
         showGestureFeedback(if (on) L.playerNightModeOn else L.playerNightModeOff)
         lifecycleScope.launch { runCatching { settings.setNightMode(on) } }
+    }
+
+    /**
+     * The More panel's Background play line (owner, v1.0.19): the Settings, Playback switch
+     * flipped from inside the player. Held at once, so leaving the player before the write
+     * lands already follows the new choice; the settings collector confirms it after.
+     */
+    private fun toggleBackgroundPlay() {
+        val on = !backgroundAudioOn
+        backgroundAudioOn = on
+        showGestureFeedback(L.commonWithDetail(L.playerBackgroundPlay, if (on) L.commonOn else L.commonOff))
+        lifecycleScope.launch { runCatching { settings.setBackgroundAudio(on) } }
     }
 
     /** 3D video is for a picture: not sound alone, and not while a cast plays the video. */

@@ -76,6 +76,12 @@ enum class PhoneMenuEntry {
     LockScreen,
     PictureInPicture,
     /**
+     * The background audio switch (owner, v1.0.19): the same setting as Settings, Playback,
+     * flipped from here without leaving the video. On or off, and the panel stays. A phone
+     * only: a television has no screen to turn off and nothing else to switch to.
+     */
+    BackgroundPlay,
+    /**
      * Every shape as a page (HX16): the row's button (on a phone held sideways) steps them a press
      * at a time and the pinch only the first three, so this is where any one is a tap away.
      */
@@ -149,6 +155,7 @@ fun PhoneMenuEntry.label(
 ): String = when (this) {
     PhoneMenuEntry.LockScreen -> L.playerLockScreen
     PhoneMenuEntry.PictureInPicture -> L.playerPictureInPicture
+    PhoneMenuEntry.BackgroundPlay -> L.playerBackgroundPlay
     PhoneMenuEntry.PictureShape -> shape?.let { L.commonWithDetail(L.playerPictureShape, it.label) } ?: L.playerPictureShape
     PhoneMenuEntry.ResetZoom -> L.playerResetZoom
     PhoneMenuEntry.Stereo -> stereo?.let { L.commonWithDetail(L.playerStereo, it) } ?: L.playerStereo
@@ -292,6 +299,7 @@ object PlayerMenu {
     ): List<PhoneMenuEntry> = buildList {
         add(PhoneMenuEntry.LockScreen)
         if (pictureInPicture) add(PhoneMenuEntry.PictureInPicture)
+        add(PhoneMenuEntry.BackgroundPlay)
         if (pictureShape) add(PhoneMenuEntry.PictureShape)
         if (pictureShape && zoomed) add(PhoneMenuEntry.ResetZoom)
         if (stereo) add(PhoneMenuEntry.Stereo)

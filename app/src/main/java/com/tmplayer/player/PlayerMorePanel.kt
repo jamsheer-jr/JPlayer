@@ -135,6 +135,9 @@ interface PlayerMoreHost {
     fun stereoDetail(): String?
     fun volumeBoost(): Boolean
     fun nightMode(): Boolean
+
+    /** The background audio switch's state (owner, v1.0.19); off where a host has no such switch. */
+    fun backgroundPlay(): Boolean = false
     fun evenVolume(): Boolean
     fun sleepDetail(): String?
     fun sleepChoice(): Int?
@@ -406,7 +409,7 @@ class PlayerMorePanel(
 
     /** Every line the panel can carry: the phone's and the television's entries share these names. */
     private enum class Kind {
-        LockScreen, PictureInPicture, PlaybackDetails, StartOver, PictureShape, ResetZoom, Stereo, Speed,
+        LockScreen, PictureInPicture, BackgroundPlay, PlaybackDetails, StartOver, PictureShape, ResetZoom, Stereo, Speed,
         VolumeBoost, NightMode, EvenVolume, SleepTimer, AbLoop, NextChapter, PreviousChapter,
         NextFrame, PreviousFrame, SaveFrame, AddBookmark, Bookmarks, WatchParty, ContinueQr, UpNext, OpenInAnotherApp,
         LoadSubtitleFile, LoadSubtitleUrl, TranslateSubtitles, SubtitleSize, SubtitlePosition, SubtitleSync, SaveToDownloads, MarkWatched, RemoteKeys,
@@ -542,6 +545,7 @@ class PlayerMorePanel(
         return when (kind) {
             Kind.LockScreen -> Line(kind, s.playerLockScreen, TmIcons.Lock, if (host.tv) s.playerHoldOkToUnlock else null)
             Kind.PictureInPicture -> Line(kind, s.playerPictureInPicture, ImageVector.vectorResource(R.drawable.ic_pip), null)
+            Kind.BackgroundPlay -> Line(kind, s.playerBackgroundPlay, TmIcons.Audio, if (host.backgroundPlay()) s.commonOn else s.commonOff)
             Kind.PlaybackDetails -> Line(kind, s.playerPlaybackDetails, TmIcons.Info, null)
             Kind.StartOver -> Line(kind, s.playerStartOver, TmIcons.Refresh, null)
             Kind.PictureShape -> Line(kind, s.playerPictureShape, TmIcons.AspectRatio, host.shape().label)
@@ -861,7 +865,7 @@ class PlayerMorePanel(
         const val SCRIM_ALPHA = 0.32f
 
         /** Lines that act and leave the panel up: the switches and the frame steps. */
-        val STAYS_OPEN = setOf(Kind.VolumeBoost, Kind.NightMode, Kind.EvenVolume, Kind.NextFrame, Kind.PreviousFrame, Kind.SubtitleSize, Kind.SubtitlePosition)
+        val STAYS_OPEN = setOf(Kind.VolumeBoost, Kind.NightMode, Kind.EvenVolume, Kind.BackgroundPlay, Kind.NextFrame, Kind.PreviousFrame, Kind.SubtitleSize, Kind.SubtitlePosition)
     }
 }
 
