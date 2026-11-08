@@ -1688,6 +1688,7 @@
     "clear_cache": "Clear online subtitles",
     "download_count": "{count, plural, one {# download} other {# downloads}}",
     "downloading": "Downloading subtitles…",
+    "downloading_percent": "Downloading subtitles… {percent}%",
     "downloads_left": "{remaining, plural, one {# of {allowed} download left today} other {# of {allowed} downloads left today}}",
     "hash_match": "Exact match",
     "hearing_impaired": "Hearing impaired",

@@ -86,6 +86,7 @@ import com.tmplayer.online.OnlineWords
 import com.tmplayer.online.SearchResult
 import com.tmplayer.online.SubtitleHit
 import com.tmplayer.online.SubtitleNotice
+import com.tmplayer.online.SubtitleProvider
 import com.tmplayer.online.SubtitleTarget
 import com.tmplayer.online.SubtitleTranslator
 import com.tmplayer.ui.components.ChoiceLine
@@ -100,6 +101,8 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.TMPlayerTheme
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -170,6 +173,59 @@ class TrackPickerFragment : Fragment() {
     private fun close() {
         val fm = parentFragmentManager
         if (isAdded && !fm.isStateSaved) fm.popBackStack(BACK_STACK, FragmentManager.POP_BACK_STACK_INCLUSIVE)
+    }
+
+    /**
+     * A subtitle download asked for on the online or MSone page, held on the
+     * fragment rather than on the page (owner, v1.0.18: "back adichal download
+     * onnoode kodukkanam"): the pages are steps inside this one panel, and a
+     * download launched in a page's own scope died when Back stepped back to the
+     * tracks, so the viewer had to ask for the same subtitle again. Held here and
+     * run in the fragment's own scope, it finishes across the step back, attaches
+     * its subtitle and closes the picker as a tap's download always did; coming
+     * back into the page finds the same hit still busy, with its percent where
+     * the fetch states one. Closing the whole picker still ends it.
+     */
+    private class SubtitleDownload {
+        /** The hit being fetched, or null. */
+        val busy = MutableStateFlow<SubtitleHit?>(null)
+        /** Its percent so far, where the fetch states one; null keeps the plain word. */
+        val percent = MutableStateFlow<Int?>(null)
+        /** A finished download's failure: the hit it was for and what stopped it. */
+        val failed = MutableStateFlow<Pair<SubtitleHit, SubtitleNotice?>?>(null)
+    }
+
+    private val subtitleDownload = SubtitleDownload()
+
+    /** Starts [hit]'s download in the fragment's scope; one at a time, as the pages always kept it. */
+    private fun startSubtitleDownload(online: OnlineSubtitles, hit: SubtitleHit, target: SubtitleTarget?) {
+        if (subtitleDownload.busy.value != null) return
+        subtitleDownload.busy.value = hit
+        subtitleDownload.percent.value = null
+        subtitleDownload.failed.value = null
+        lifecycleScope.launch {
+            try {
+                val done = online.download(hit, target) { received, total ->
+                    if (total > 0) subtitleDownload.percent.value = (received * 100 / total).toInt().coerceIn(0, 100)
+                }
+                when (done) {
+                    is DownloadResult.Done -> {
+                        host?.attachOnlineSubtitle(done.file, done.label)
+                        close()
+                    }
+                    is DownloadResult.Failed -> subtitleDownload.failed.value = hit to done.notice
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                // The download itself answers failures as results; anything else
+                // lands as the page's offline word, with its Try again.
+                subtitleDownload.failed.value = hit to SubtitleNotice.Offline
+            } finally {
+                subtitleDownload.busy.value = null
+                subtitleDownload.percent.value = null
+            }
+        }
     }
 
     @Composable
@@ -503,17 +559,25 @@ class TrackPickerFragment : Fragment() {
     @Composable
     private fun OnlinePage(closeFocus: FocusRequester, firstFocus: FocusRequester, onBack: () -> Unit, msone: Boolean) {
         val online = OnlineSubtitles.current ?: return close()
-        val scope = rememberCoroutineScope()
         var attempt by remember { mutableIntStateOf(0) }
         // Check again asks the gateway even inside the six hours between checks.
         var force by remember { mutableStateOf(false) }
         var result by remember { mutableStateOf<SearchResult?>(null) }
         var override by remember { mutableStateOf<SubtitleNotice?>(null) }
         var target by remember { mutableStateOf<SubtitleTarget?>(null) }
-        var busy by remember { mutableStateOf<SubtitleHit?>(null) }
+        // The download state lives on the fragment (see SubtitleDownload): Back to
+        // the tracks neither cancels it nor forgets it, and a failure met while the
+        // viewer was on the tracks page is still here on the way back in.
+        val busy by subtitleDownload.busy.collectAsState()
+        val percent by subtitleDownload.percent.collectAsState()
+        // This page's own failure: a download asked on the other page (MSone's for
+        // an OpenSubtitles or SubDL hit, or the other way round) is not this page's
+        // to report.
+        val downloadFailed by subtitleDownload.failed.collectAsState()
+        val pageFailed = downloadFailed?.takeIf { (it.first.provider == SubtitleProvider.Msone) == msone }
         // The MSone site hit whose download failed (item 5, v1.0.16): its release page can
         // be opened in the browser, where the download and the Open row remain the way on.
-        var failedHit by remember { mutableStateOf<SubtitleHit?>(null) }
+        val failedHit = pageFailed?.first
         // A typed ask of the viewer's own (item 15, v1.0.17): the MSone page's manual
         // search, for a video whose own name reads wrong.
         var manualQuery by remember { mutableStateOf<String?>(null) }
@@ -524,7 +588,7 @@ class TrackPickerFragment : Fragment() {
         LaunchedEffect(attempt) {
             result = null
             override = null
-            failedHit = null
+            subtitleDownload.failed.value = null
             val wanted = host?.onlineTarget()
             target = wanted
             if (msone && force && online.msoneInBuild) online.msoneStatus(force = true)
@@ -606,7 +670,10 @@ class TrackPickerFragment : Fragment() {
                 }
                 return@ChoiceSheet
             }
-            val notice = override ?: shown.notice
+            // A download that failed (perhaps while the viewer was back on the
+            // tracks page) speaks over the search's own notice, as it did when the
+            // failure was met on this page.
+            val notice = override ?: pageFailed?.second ?: shown.notice
             if (notice != null) {
                 Column(
                     Modifier
@@ -635,31 +702,26 @@ class TrackPickerFragment : Fragment() {
                     })
                 }
                 shown.hits.forEach { hit ->
+                    // The percent where the fetch states one (owner, v1.0.18:
+                    // "atleast percent enkilum kodukk"): these files are under a
+                    // megabyte, and a bare "Downloading" on a slow step read as
+                    // stuck.
+                    val pct = if (busy == hit) percent else null
                     add(
                         Line(
                             key = "hit:${hit.provider}:${hit.id}",
                             title = hit.release.ifBlank { hit.fileName },
-                            detail = if (busy == hit) L.onlineDownloading else OnlineWords.hitDetail(hit),
+                            detail = when {
+                                busy != hit -> OnlineWords.hitDetail(hit)
+                                pct != null -> L.onlineDownloadingPercent(percent = pct.toString())
+                                else -> L.onlineDownloading
+                            },
                             enabled = online.blockedFor(hit) == null,
                         ) {
                             if (busy != null) return@Line
-                            busy = hit
-                            scope.launch {
-                                try {
-                                    when (val done = online.download(hit, target)) {
-                                        is DownloadResult.Done -> {
-                                            host?.attachOnlineSubtitle(done.file, done.label)
-                                            close()
-                                        }
-                                        is DownloadResult.Failed -> {
-                                            override = done.notice
-                                            if (msone && !online.msoneInBuild) failedHit = hit
-                                        }
-                                    }
-                                } finally {
-                                    busy = null
-                                }
-                            }
+                            // The fragment runs it (see SubtitleDownload): Back to
+                            // the tracks lets it finish, and its answer lands there.
+                            startSubtitleDownload(online, hit, target)
                         },
                     )
                 }

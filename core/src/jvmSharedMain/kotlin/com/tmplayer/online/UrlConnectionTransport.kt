@@ -36,7 +36,7 @@ object UrlConnectionTransport : HttpTransport {
             }
             val code = connection.responseCode
             val stream = if (code >= 400) connection.errorStream else connection.inputStream
-            val body = stream?.use { read(it) } ?: ByteArray(0)
+            val body = stream?.use { read(it, connection.contentLengthLong, request.onProgress) } ?: ByteArray(0)
             val headers = connection.headerFields
                 .filterKeys { it != null }
                 .mapValues { it.value.firstOrNull().orEmpty() }
@@ -57,7 +57,7 @@ object UrlConnectionTransport : HttpTransport {
         if (System.getProperty("http.maxConnections") == null) System.setProperty("http.maxConnections", "8")
     }
 
-    private fun read(input: InputStream): ByteArray {
+    private fun read(input: InputStream, total: Long, onProgress: ((Long, Long) -> Unit)?): ByteArray {
         val out = ByteArrayOutputStream()
         val chunk = ByteArray(16 * 1024)
         while (true) {
@@ -65,6 +65,9 @@ object UrlConnectionTransport : HttpTransport {
             if (n < 0) break
             out.write(chunk, 0, n)
             if (out.size() > MAX_BYTES) throw IOException("answer larger than $MAX_BYTES bytes")
+            // The whole answer's size, where the server stated it: a subtitle
+            // download's page turns the pair into its percent (owner, v1.0.18).
+            if (onProgress != null && total > 0) onProgress(out.size().toLong(), total)
         }
         return out.toByteArray()
     }

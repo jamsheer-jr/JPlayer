@@ -60,16 +60,18 @@ class MsoneSiteApi(
      * The pass loads the page in a WebView, triggers the control and fetches what it asks
      * for; its bytes are checked the same way before they are believed.
      */
-    suspend fun fetchSubtitle(pageUrl: String, season: Int?, episode: Int?): ByteArray? {
+    suspend fun fetchSubtitle(pageUrl: String, season: Int?, episode: Int?, onProgress: ((Long, Long) -> Unit)? = null): ByteArray? {
         if (!releasePage(pageUrl)) return null
-        plainFetch(pageUrl, season, episode)?.let { return it }
+        plainFetch(pageUrl, season, episode, onProgress)?.let { return it }
+        // The browser pass fetches inside a WebView, whose arrival no progress is
+        // read from: the page keeps its plain "Downloading" there (owner, v1.0.18).
         val browsed = browserPass?.invoke(pageUrl) ?: return null
         if (browsed.isEmpty() || browsed.size > SubtitleText.MAX_BYTES) return null
         return browsed
     }
 
     /** The plain read of [fetchSubtitle]: the page's trusted anchor, fetched. */
-    private suspend fun plainFetch(pageUrl: String, season: Int?, episode: Int?): ByteArray? {
+    private suspend fun plainFetch(pageUrl: String, season: Int?, episode: Int?, onProgress: ((Long, Long) -> Unit)? = null): ByteArray? {
         val page = get(pageUrl) ?: return null
         if (page.code !in 200..299) {
             ProviderLog.status(PROVIDER, "GET", pageUrl, page)
@@ -77,7 +79,7 @@ class MsoneSiteApi(
         }
         if (page.body.size > MAX_PAGE_BYTES) return null
         val href = MsoneSite.downloadHref(page.text, pageUrl, season, episode) ?: return null
-        val file = get(href) ?: return null
+        val file = get(href, onProgress) ?: return null
         if (file.code !in 200..299) {
             ProviderLog.status(PROVIDER, "GET", href, file)
             return null
@@ -86,13 +88,13 @@ class MsoneSiteApi(
         return file.body
     }
 
-    private suspend fun get(url: String): HttpResponse? {
+    private suspend fun get(url: String, onProgress: ((Long, Long) -> Unit)? = null): HttpResponse? {
         limiter.acquire()
         val headers = mapOf(
             "User-Agent" to userAgent,
             "Accept" to "text/html,application/xhtml+xml",
         )
-        return http.sendLogged(PROVIDER, HttpRequest("GET", url, headers))
+        return http.sendLogged(PROVIDER, HttpRequest("GET", url, headers, onProgress = onProgress))
     }
 
     /** A release page address on the site itself: https, its host, under `/languages/`. */

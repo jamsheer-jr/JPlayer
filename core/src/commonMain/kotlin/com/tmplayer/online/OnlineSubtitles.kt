@@ -430,7 +430,14 @@ class OnlineSubtitles(
      * [hit] as a UTF-8 file the player can load. A file fetched before comes from the cache and
      * spends nothing; otherwise this is the call that uses one of the day's downloads.
      */
-    suspend fun download(hit: SubtitleHit, target: SubtitleTarget? = null): DownloadResult {
+    suspend fun download(
+        hit: SubtitleHit,
+        target: SubtitleTarget? = null,
+        // The file's arrival, for a page that shows its percent (owner, v1.0.18):
+        // reported where the fetch itself is a plain read (SubDL, MSone's site);
+        // a step that cannot say (a cached file, the browser pass) never calls it.
+        onProgress: ((Long, Long) -> Unit)? = null,
+    ): DownloadResult {
         val wanted = translateTarget(hit)
         if (wanted == null) {
             cache.file(hit.provider, hit.id)?.let { return DownloadResult.Done(it, label(hit), fromCache = true) }
@@ -452,10 +459,10 @@ class OnlineSubtitles(
         }
         return when (hit.provider) {
             SubtitleProvider.OpenSubtitles -> downloadOpenSubtitles(hit)
-            SubtitleProvider.Subdl -> downloadSubdl(hit, target)
+            SubtitleProvider.Subdl -> downloadSubdl(hit, target, onProgress)
             // A keyless build's MSone hits came from the public site, and are fetched from it;
             // a build with the key only ever holds gateway hits.
-            SubtitleProvider.Msone -> if (msoneInBuild) downloadMsone(hit, target) else downloadMsoneSite(hit, target)
+            SubtitleProvider.Msone -> if (msoneInBuild) downloadMsone(hit, target) else downloadMsoneSite(hit, target, onProgress)
         }
     }
 
@@ -557,9 +564,9 @@ class OnlineSubtitles(
         }
     }
 
-    private suspend fun downloadSubdl(hit: SubtitleHit, target: SubtitleTarget?): DownloadResult {
+    private suspend fun downloadSubdl(hit: SubtitleHit, target: SubtitleTarget?, onProgress: ((Long, Long) -> Unit)? = null): DownloadResult {
         val parsed = target?.let { MediaName.parse(it.fileName, it.caption) }
-        return when (val body = withBackoff { subdl.fetch(hit.id) }) {
+        return when (val body = withBackoff { subdl.fetch(hit.id, onProgress) }) {
             is Reply.Ok -> save(hit, SubtitleText.from(body.value, hit.fileName, parsed?.season, parsed?.episode, hit.language))
             is Reply.Throttled -> DownloadResult.Failed(SubtitleNotice.Busy)
             else -> DownloadResult.Failed(SubtitleNotice.Offline)
@@ -811,7 +818,7 @@ class OnlineSubtitles(
      * [SubtitleNotice.Offline] like any other no answer; the panel keeps its Open row beside
      * the list, which is the fallback the owner was told about.
      */
-    private suspend fun downloadMsoneSite(hit: SubtitleHit, target: SubtitleTarget?): DownloadResult {
+    private suspend fun downloadMsoneSite(hit: SubtitleHit, target: SubtitleTarget?, onProgress: ((Long, Long) -> Unit)? = null): DownloadResult {
         val parsed = target?.let { MediaName.parse(it.fileName, it.caption) }
         // Bounded as a whole (owner's phone, v1.0.17): the plain read and the browser
         // pass are bounded step by step, but one after the other they left the panel
@@ -823,6 +830,7 @@ class OnlineSubtitles(
                     hit.pageUrl.ifBlank { hit.id },
                     parsed?.season ?: hit.featureSeason,
                     parsed?.episode,
+                    onProgress,
                 )
             }.getOrNull()
         } ?: return DownloadResult.Failed(SubtitleNotice.Offline)

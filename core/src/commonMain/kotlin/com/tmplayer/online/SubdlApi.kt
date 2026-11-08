@@ -94,10 +94,10 @@ class SubdlApi(
     }
 
     /** The zip behind a hit's download path. */
-    suspend fun fetch(path: String): Reply<ByteArray> {
+    suspend fun fetch(path: String, onProgress: ((Long, Long) -> Unit)? = null): Reply<ByteArray> {
         limiter.acquire()
         val url = if (path.startsWith("http")) path else DOWNLOAD + "/" + path.trimStart('/')
-        val response = http.sendLogged(PROVIDER, HttpRequest("GET", url, mapOf("User-Agent" to userAgent)))
+        val response = http.sendLogged(PROVIDER, HttpRequest("GET", url, mapOf("User-Agent" to userAgent), onProgress = onProgress))
             ?: return Reply.Failed(0)
         if (response.code in 200..299) return Reply.Ok(response.body)
         ProviderLog.failed(PROVIDER, "GET", url, "HTTP ${response.code}")

@@ -1680,6 +1680,7 @@
     "clear_cache": "ഓൺലൈൻ സബ്ടൈറ്റിലുകൾ മായ്ക്കുക",
     "download_count": "{count, plural, one {# ഡൗൺലോഡ്} other {# ഡൗൺലോഡുകൾ}}",
     "downloading": "സബ്ടൈറ്റിലുകൾ ഡൗൺലോഡ് ചെയ്യുന്നു…",
+    "downloading_percent": "സബ്ടൈറ്റിലുകൾ ഡൗൺലോഡ് ചെയ്യുന്നു… {percent}%",
     "downloads_left": "{remaining, plural, one {ഇന്ന് {allowed}-ൽ # ഡൗൺലോഡ് ബാക്കി} other {ഇന്ന് {allowed}-ൽ # ഡൗൺലോഡുകൾ ബാക്കി}}",
     "hash_match": "കൃത്യമായ ഒത്തുചേരൽ",
     "hearing_impaired": "കേൾവി പരിമിതർക്ക്",

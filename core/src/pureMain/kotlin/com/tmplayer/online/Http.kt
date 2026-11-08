@@ -8,6 +8,12 @@ data class HttpRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val body: String? = null,
+    /**
+     * The answer's arrival, for a download whose page shows its progress (owner,
+     * v1.0.18): called as the body is read, with the bytes so far and the whole,
+     * where the whole is known. A transport that cannot say never calls it.
+     */
+    val onProgress: ((received: Long, total: Long) -> Unit)? = null,
 )
 
 /** The status, the headers (names in lower case) and the body, read whole. */
