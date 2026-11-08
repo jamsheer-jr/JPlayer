@@ -1083,6 +1083,7 @@
     "first_open_saved": "Open Saved Messages",
     "first_title": "Bring your first video in",
     "live_badge": "LIVE",
+    "live_empty": "No live streams right now",
     "live_remove": "Remove from Live",
     "live_remove_detail": "Hides this stream here. It stays in the channel, and a new post of it shows again",
     "live_side_by_side": "Watch side by side",

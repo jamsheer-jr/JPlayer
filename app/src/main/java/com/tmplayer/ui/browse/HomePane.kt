@@ -196,6 +196,8 @@ internal fun HomePane(
     onPlayStream: (StreamLink) -> Unit = {},
     /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
     onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
+    /** The Live Guide page, from the Live row's heading (item 15, v1.0.16). */
+    onOpenLiveGuide: () -> Unit = {},
     /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
     onRefreshHome: () -> Unit = {},
     /**
@@ -871,6 +873,7 @@ internal fun HomePane(
                         end = end,
                         onPlayStream = onPlayStream,
                         onPlayStreamPair = onPlayStreamPair,
+                        onOpenGuide = onOpenLiveGuide,
                     )
                 }
                 if (touch) {
@@ -2067,65 +2070,44 @@ private fun BuiltInHomeSections(
     end: Dp,
     onPlayStream: (StreamLink) -> Unit,
     onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
+    onOpenGuide: (() -> Unit)? = null,
 ) {
     if (!isTouch()) {
         Column {
             Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
                 SharePlayerPill()
             }
-            LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair)
+            LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair, onOpenGuide)
         }
     } else {
-        LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair)
+        LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair, onOpenGuide)
     }
 }
 
 /**
- * The Live row itself: the streams posted in the built-in films channel, loaded the one
- * way (the invite resolved, the account joined once per run where it is not a member,
- * the recent posts read fresh), the viewer's removals and seen marks applied, and the
- * cards as [StreamCard] draws them, with the hold menu (Save to Downloads for a file
- * link, Remove from Live). Home heads its built-in sections with it, and the Chats list
- * embeds it under the pinned channel entry on a phone (owner, v1.0.14), so the two are
- * the same row by construction, never a second reading of the posts. Nothing is drawn
- * while there is nothing to show.
+ * The Live posts, read the one way (item 15, v1.0.16): the invite resolved, the account
+ * joined once per run where it is not a member, the recent posts read fresh through the
+ * widened window (item 2). The Live row wherever it stands and the Live Guide page both
+ * read through a holder of this kind, so the page is the row's own reading on a page of
+ * its own, never a second way of reading the posts.
  *
  * The posts are read again whenever [LiveRefresh] asks (owner, v1.0.15): arriving at
  * Chats or Home, coming back to the app, a pull or the Home button pressed again. They
  * were read once at the first composition before, so a post added to the channel, or
  * deleted from it, waited for the row to be built anew before the row showed it.
  */
-@Composable
-internal fun LiveStreamsRow(
-    start: Dp,
-    end: Dp,
-    onPlayStream: (StreamLink) -> Unit,
-    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
-    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
-) {
-    var streams by remember { mutableStateOf<List<StreamLink>>(emptyList()) }
-    // The streams the viewer took out of this row (v1.0.11, owner): kept in Settings by the
-    // post each one came from ([HiddenStreams]), so every later load leaves them out the same
-    // way, while a repost (a new post) shows again. The posts are read fresh from Telegram on
-    // every load and kept nowhere else, so a stream whose post is deleted in the channel is
-    // gone from the row on the next load with nothing to clear.
-    val context = LocalContext.current
-    val settings = remember { SettingsStore(context) }
-    val hidden by remember(settings) { settings.hiddenStreams }.collectAsState(initial = emptySet())
-    // The streams already opened once (owner, 2026-11-06): the row marks the rest new
-    // until their first opening, by the post each came from ([SeenStreams]).
-    val seen by remember(settings) { settings.seenStreams }.collectAsState(initial = emptySet())
-    var menuFor by remember { mutableStateOf<StreamLink?>(null) }
-    // A live stream waiting for its side-by-side partner to be picked (item 11c, v1.0.15).
-    var pairFor by remember { mutableStateOf<StreamLink?>(null) }
+internal class LiveStreamsHolder(private val scope: kotlinx.coroutines.CoroutineScope) {
+
+    var streams: List<StreamLink> by mutableStateOf(emptyList())
+        private set
+
     // When the posts were last read, and whether a hand refresh landed while a read was
     // running and is still owed one (owner, v1.0.15: see [LiveRefresh]).
-    var lastReadAt by remember { mutableStateOf(0L) }
-    var owedRead by remember { mutableStateOf(false) }
-    val readLock = remember { kotlinx.coroutines.sync.Mutex() }
-    val readScope = rememberCoroutineScope()
+    private var lastReadAt = 0L
+    private var owedRead = false
+    private val readLock = kotlinx.coroutines.sync.Mutex()
 
-    suspend fun readPosts() {
+    private suspend fun readPosts() {
         val session = Td.awaitConnectedSessionOrNull() ?: return
         val actions = TelegramLinkActions(session.client)
         val channel = BuiltInChannels.J_MOVIES
@@ -2153,7 +2135,7 @@ internal fun LiveStreamsRow(
     // post it was made for may have landed after that read began.
     fun readOnce() {
         if (!readLock.tryLock()) return
-        readScope.launch {
+        scope.launch {
             try {
                 readPosts()
             } finally {
@@ -2166,37 +2148,97 @@ internal fun LiveStreamsRow(
         }
     }
 
-    LaunchedEffect(Unit) { readOnce() }
-    // A read that found no session, or no streams, is tried again when the session
-    // (re)connects (item 2, v1.0.16): the row is composed before TDLib is up on a cold
-    // start, and a first read silently answering nothing left the channel standing in
-    // the Chats list with no streams under it until something else happened to ask.
-    LaunchedEffect(Unit) {
-        Td.connected.collect { connected -> if (connected && streams.isEmpty()) readOnce() }
+    /** Drops [link] at once, as a removal does ahead of its stored write landing. */
+    fun drop(link: StreamLink) {
+        streams = streams.filterNot { it.url == link.url }
     }
-    // The asks (LiveRefresh): arriving at the page or back at the app, and the viewer's own
-    // refreshes. An arrival waits a moment first (TDLib pulls in what it missed on coming
-    // to the front, and the read should land after that, not before it) and is skipped
-    // while the last read is still fresh, so a walk between Home and Chats is not a series
-    // of reads. A forced ask, a hand's refresh, always reads. An empty row waits for no
-    // gap at all (item 2, v1.0.16): it has nothing to show, and the streams it is missing
-    // are the whole reason for the ask.
-    LaunchedEffect(Unit) {
-        LiveRefresh.asked.collect { forced ->
-            if (forced) {
-                if (readLock.isLocked) owedRead = true else readOnce()
-            } else {
-                kotlinx.coroutines.delay(LIVE_ARRIVAL_SETTLE_MS)
-                if (!readLock.isLocked && (streams.isEmpty() || System.currentTimeMillis() - lastReadAt >= LIVE_ARRIVAL_GAP_MS)) readOnce()
-            }
+
+    /**
+     * One [LiveRefresh] ask, answered as the row answers it: a forced ask (a hand's
+     * refresh) always reads; an arrival waits a moment first (TDLib pulls in what it
+     * missed on coming to the front, and the read should land after that, not before it)
+     * and is skipped while the last read is still fresh, so a walk between Home and
+     * Chats is not a series of reads. An empty reading waits for no gap at all (item 2,
+     * v1.0.16): the streams it is missing are the whole reason for the ask.
+     */
+    suspend fun answerAsk(forced: Boolean) {
+        if (forced) {
+            if (readLock.isLocked) owedRead = true else readOnce()
+        } else {
+            kotlinx.coroutines.delay(LIVE_ARRIVAL_SETTLE_MS)
+            if (!readLock.isLocked && (streams.isEmpty() || System.currentTimeMillis() - lastReadAt >= LIVE_ARRIVAL_GAP_MS)) readOnce()
         }
     }
+}
+
+/**
+ * A [LiveStreamsHolder] for this composition: read at once, retried when the session
+ * (re)connects while it still holds nothing (item 2, v1.0.16: the row is composed before
+ * TDLib is up on a cold start), and answering [LiveRefresh] asks for as long as it stands.
+ */
+@Composable
+internal fun rememberLiveStreams(): LiveStreamsHolder {
+    val scope = rememberCoroutineScope()
+    val holder = remember { LiveStreamsHolder(scope) }
+    LaunchedEffect(holder) { holder.readOnce() }
+    LaunchedEffect(holder) {
+        Td.connected.collect { connected -> if (connected && holder.streams.isEmpty()) holder.readOnce() }
+    }
+    LaunchedEffect(holder) {
+        LiveRefresh.asked.collect { forced -> holder.answerAsk(forced) }
+    }
+    return holder
+}
+
+/**
+ * The Live row itself: the streams posted in the built-in films channel, loaded the one
+ * way (the invite resolved, the account joined once per run where it is not a member,
+ * the recent posts read fresh), the viewer's removals and seen marks applied, and the
+ * cards as [StreamCard] draws them, with the hold menu (Save to Downloads for a file
+ * link, Remove from Live). Home heads its built-in sections with it, and the Chats list
+ * embeds it under the pinned channel entry on a phone (owner, v1.0.14), so the two are
+ * the same row by construction, never a second reading of the posts. Nothing is drawn
+ * while there is nothing to show.
+ *
+ * The posts are read again whenever [LiveRefresh] asks (owner, v1.0.15): arriving at
+ * Chats or Home, coming back to the app, a pull or the Home button pressed again. They
+ * were read once at the first composition before, so a post added to the channel, or
+ * deleted from it, waited for the row to be built anew before the row showed it.
+ */
+@Composable
+internal fun LiveStreamsRow(
+    start: Dp,
+    end: Dp,
+    onPlayStream: (StreamLink) -> Unit,
+    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
+    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
+    /** The Live Guide page, offered as this row's See all (item 15, v1.0.16). */
+    onOpenGuide: (() -> Unit)? = null,
+) {
+    // The one read path, shared with the Live Guide page (item 15, v1.0.16): the
+    // holder reads the posts, this row only draws them.
+    val live = rememberLiveStreams()
+    val streams = live.streams
+    // The streams the viewer took out of this row (v1.0.11, owner): kept in Settings by the
+    // post each one came from ([HiddenStreams]), so every later load leaves them out the same
+    // way, while a repost (a new post) shows again. The posts are read fresh from Telegram on
+    // every load and kept nowhere else, so a stream whose post is deleted in the channel is
+    // gone from the row on the next load with nothing to clear.
+    val context = LocalContext.current
+    val settings = remember { SettingsStore(context) }
+    val hidden by remember(settings) { settings.hiddenStreams }.collectAsState(initial = emptySet())
+    // The streams already opened once (owner, 2026-11-06): the row marks the rest new
+    // until their first opening, by the post each came from ([SeenStreams]).
+    val seen by remember(settings) { settings.seenStreams }.collectAsState(initial = emptySet())
+    var menuFor by remember { mutableStateOf<StreamLink?>(null) }
+    // A live stream waiting for its side-by-side partner to be picked (item 11c, v1.0.15).
+    var pairFor by remember { mutableStateOf<StreamLink?>(null) }
 
     val shown = HiddenStreams.visible(streams, hidden)
     val s = LocalStrings.current
     if (shown.isNotEmpty()) {
         Column {
-            RowHeading(s.homeLiveTitle, start = start, end = end, seeAll = null)
+            RowHeading(s.homeLiveTitle, start = start, end = end, seeAll = onOpenGuide)
             LazyRow(
                 contentPadding = PaddingValues(start = start, end = end),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -2259,7 +2301,7 @@ internal fun LiveStreamsRow(
                     menuFor = null
                     // Out of the row at once, and into the stored set on the app's scope, as
                     // the other Home writes run, so leaving Home straight away keeps it.
-                    streams = streams.filterNot { it.url == link.url }
+                    live.drop(link)
                     App.backgroundScope.launch {
                         runCatching { settings.setHiddenStreams(HiddenStreams.plus(settings.hiddenStreamsNow(), link)) }
                     }
@@ -2352,14 +2394,14 @@ private fun OpenLinkPill(onClick: () -> Unit) {
  * always had: this composable serves both, so its layout below is untouched.
  */
 @Composable
-private fun StreamCard(link: StreamLink, isNew: Boolean = false, onClick: () -> Unit, onHold: () -> Unit) {
+internal fun StreamCard(link: StreamLink, isNew: Boolean = false, wide: Boolean = false, onClick: () -> Unit, onHold: () -> Unit) {
     val s = LocalStrings.current
     val touch = isTouch()
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
     Column(
         Modifier
-            .width(if (touch) 272.dp else 200.dp)
+            .then(if (wide) Modifier.fillMaxWidth() else Modifier.width(if (touch) 272.dp else 200.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(Tone.surfaceHigh)
             .border(

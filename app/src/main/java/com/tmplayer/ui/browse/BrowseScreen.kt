@@ -391,6 +391,8 @@ internal fun BrowseScreen(
     var laterShow by remember { mutableStateOf<Pair<com.tmplayer.data.Series, String>?>(null) }
     // A show card held on Home: its menu, with its chat's name (HX20).
     var heldShow by remember { mutableStateOf<Pair<com.tmplayer.data.Series, String>?>(null) }
+    // The Live Guide page stands open (item 15, v1.0.16).
+    var liveGuideOpen by remember { mutableStateOf(false) }
     var confirmClearHistory by remember { mutableStateOf(false) }
     var confirmClearLater by remember { mutableStateOf(false) }
     // Remove from history on a Continue card, asked first under a remote only: a touch screen
@@ -756,6 +758,7 @@ internal fun BrowseScreen(
                                         panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
                                     }
                                 },
+                                onOpenLiveGuide = { liveGuideOpen = true },
                                 // Starred chats get a row each under Recently added (2026-10-23), so
                                 // with none the hint says how to add them; only once the rows are
                                 // built, since it flashed up while they were still coming in.
@@ -970,6 +973,7 @@ internal fun BrowseScreen(
                                         panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
                                     }
                                 },
+                                onOpenLiveGuide = { liveGuideOpen = true },
                             )
                         }
                     }
@@ -1376,6 +1380,25 @@ internal fun BrowseScreen(
 
     // Back leaves select mode before it leaves the page.
     BackHandler(enabled = selecting) { leaveSelecting() }
+
+    // The Live Guide (item 15, v1.0.16) stands over the page it was opened from, and
+    // Back leaves it before anything under it.
+    if (liveGuideOpen) {
+        BackHandler { liveGuideOpen = false }
+        LiveGuidePage(
+            onBack = { liveGuideOpen = false },
+            onPlayStream = { link ->
+                runCatching {
+                    panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
+                }
+            },
+            onPlayStreamPair = { first, second ->
+                runCatching {
+                    panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
+                }
+            },
+        )
+    }
 
     watchedMenu?.let { record ->
         TvMenu(
@@ -2599,6 +2622,8 @@ private fun ChatSection(
     showPin: Boolean = false,
     /** A Live stream pressed under the pin, on a phone: plays in the player, as Home's row does. */
     onPlayStream: (com.tmplayer.data.StreamLink) -> Unit = {},
+    /** The Live Guide page, from the Live heading under the pin (item 15, v1.0.16). */
+    onOpenLiveGuide: () -> Unit = {},
     /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
     onPlayStreamPair: ((com.tmplayer.data.StreamLink, com.tmplayer.data.StreamLink) -> Unit)? = null,
     /** New videos per chat (item 11e, v1.0.15), counted by the caller over the videos Home's
@@ -2759,7 +2784,7 @@ private fun ChatSection(
                     // not, so on a TV the channel stood with its name and no streams.
                     // The same row as Home's and the phone list's, spanning the grid.
                     item(key = "j-movies-live", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-live") {
-                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair)
+                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
                     }
                 }
                 gridItems(chats, key = { it.id }, contentType = { "chat" }) { chat ->
@@ -2805,7 +2830,7 @@ private fun ChatSection(
                     // Home's own Live row, the same loading, cards and rules, not a second
                     // reading of the posts. Nothing stands here while there are no streams.
                     item(key = "j-movies-live", contentType = "j-movies-live") {
-                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair)
+                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
                     }
                 }
 
