@@ -22,6 +22,7 @@ import com.tmplayer.online.MetaInfo
 import com.tmplayer.online.MdlApi
 import com.tmplayer.online.MdlPage
 import com.tmplayer.online.MsoneApi
+import com.tmplayer.online.MsoneSite
 import com.tmplayer.online.OmdbApi
 import com.tmplayer.online.RateLimiter
 import com.tmplayer.online.SkipSegment
@@ -318,6 +319,14 @@ class GarbageInputTest {
                 MsoneApi.parseHealth(text, 0)
                 MsoneApi.parseHits(text)
                 MsoneApi.parseHits("{\"hits\":[{\"id\":$text,\"title\":$text,\"year\":$text,\"translator\":$text,\"downloadUrl\":$text}]}")
+            }
+            survive("MsoneSite", text) {
+                val releases = MsoneSite.parseSearch(text)
+                MsoneSite.match(releases, text, 2020, 1, 2)
+                MsoneSite.match(releases, text, null, null, null)
+                releases.firstOrNull()?.let { MsoneSite.sameTitle(it, text) }
+                MsoneSite.downloadHref(text, "https://malayalamsubtitles.org/languages/english/x-2020/", 1, 2)
+                MsoneSite.downloadHref(text, text, null, null)
             }
         }
         assertNoFailures()
