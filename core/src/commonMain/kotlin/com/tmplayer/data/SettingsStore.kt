@@ -876,8 +876,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     }
 
     /**
-     * Whether cam family copies (the owner's full list: PreDVD, DVDcam, DVDScr, HDTS,
-     * HDTC, HDcam, TS, CAM, and a "clean audio" tag: see [MediaFacts.CAM_SOURCES] and
+     * Whether cam family copies (the owner's full list: PreDVD, PreHD, DVDcam, DVDScr,
+     * HDTS, HDTC, HDcam, TS, CAM, and a "clean audio" tag: see [MediaFacts.CAM_SOURCES] and
      * [MediaFacts.isCam]) are
      * hidden from copies lists, channel lists and search. On by default, so a fresh install
      * hides them unless the viewer turns the switch off in Settings; HDRip is not a cam

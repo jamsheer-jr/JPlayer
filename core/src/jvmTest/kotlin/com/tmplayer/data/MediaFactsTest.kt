@@ -178,9 +178,26 @@ class MediaFactsTest {
             assertTrue(label, MediaFacts.isCamSource(label))
         }
         assertEquals(
-            setOf("PreDVD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM"),
+            setOf("PreDVD", "PreHD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM"),
             MediaFacts.CAM_SOURCES,
         )
+    }
+
+    @Test
+    fun `the owner's PRE-HD names read PreHD and stand in the cam family`() {
+        // His Copies list (2026-11-08): both spellings stood unhidden beside the
+        // WEB-DL copies, at a stated 1080p, so the height never gave them away.
+        val spaced = MediaFacts.read("L2 Empuraan (2025) Tamil PRE-HD - 1080p - x264 - Original Au.mkv")
+        assertEquals("PreHD", spaced.source)
+        assertEquals("1080p", spaced.resolution)
+        assertTrue(MediaFacts.isCamSource(spaced.source))
+        assertTrue(MediaFacts.isCam(spaced))
+        val underscored = MediaFacts.read("L2_Empuraan_2025_Malayalam PRE_HD_1080p_x264_Original.mkv")
+        assertEquals("PreHD", underscored.source)
+        assertEquals("PreHD", MediaFacts.read("Film.2026.PreHD.x264.mkv").source)
+        assertEquals("PreHD", MediaFacts.read("Film 2026 Pre HD x264.mkv").source)
+        // A word that merely starts alike is not the tag.
+        assertNull(MediaFacts.read("Prehistoric Planet 2026 1080p.mkv").source)
     }
 
     @Test

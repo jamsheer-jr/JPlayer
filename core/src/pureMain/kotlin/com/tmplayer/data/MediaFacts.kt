@@ -36,7 +36,7 @@ data class MediaFacts(
     val audio: String? = null,
     /** What the name says about the tracks inside, beyond the first audio. */
     val tracks: List<Track> = emptyList(),
-    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "HDTS", "HDTC", "TS", "HDcam", "CAM", "DVDcam", "DVDScr", "DVD". */
+    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "PreHD", "HDTS", "HDTC", "TS", "HDcam", "CAM", "DVDcam", "DVDScr", "DVD". */
     val source: String? = null,
     /**
      * The name carries the "clean audio" tag: a cam family copy whose sound was replaced
@@ -237,6 +237,7 @@ data class MediaFacts(
             "HDTV" to word("hdtv"),
             "HDRip" to word("""hd[ ._-]?rip"""),
             "PreDVD" to word("""pre[ ._-]?dvd|predvd"""),
+            "PreHD" to word("""pre[ ._-]?hd|prehd"""),
             "HDTS" to word("""hd[ ._-]?ts"""),
             "HDTC" to word("""hd[ ._-]?tc|telecine"""),
             "TS" to word("""telesync|ts"""),
@@ -250,10 +251,12 @@ data class MediaFacts(
         /**
          * The cam family sources: copies filmed or captured before a retail disc exists.
          * The owner's full list (v1.0.16): PreDVD, DVDcam, DVDScr, HDTS, HDTC, HDcam, and
-         * the TS and CAM the family started with. HDRip is not here and never joins: it
-         * is a rip of a broadcast, not a camera copy.
+         * the TS and CAM the family started with. PreHD joins in v1.0.18 (owner: a PRE-HD
+         * copy of a title stood unhidden in the Copies list): a pre-release capture, kin
+         * to PreDVD. HDRip is not here and never joins: it is a rip of a broadcast, not
+         * a camera copy.
          */
-        val CAM_SOURCES: Set<String> = setOf("PreDVD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM")
+        val CAM_SOURCES: Set<String> = setOf("PreDVD", "PreHD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM")
 
         /** Whether [source] is one of the cam family labels in [CAM_SOURCES]. */
         fun isCamSource(source: String?): Boolean = source != null && source in CAM_SOURCES
