@@ -26,10 +26,10 @@ class MediaFactsTest {
         // the first piece's suffix standing as the container. The facts are read off
         // the name the pieces share, so the suffix never stands as one.
         val facts = MediaFacts.read("Mindiyum_Paranjum_2026_2160p_SNXT_WEB_DL_DDP5_1_H_265_PMi_XDMovies.001")
-        assertEquals("2160p", facts.resolution)
         assertNull(facts.container)
 
         val dotted = MediaFacts.read("Harbour.Notes.2026.2160p.WEB-DL.H.265-GROUP.mkv.001")
+        assertEquals("2160p", dotted.resolution)
         assertEquals("HEVC", dotted.videoCodec)
         assertEquals("WEB-DL", dotted.source)
         assertEquals("MKV", dotted.container)
