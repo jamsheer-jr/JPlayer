@@ -15,11 +15,16 @@ package com.tmplayer.data
 object Trickplay {
 
     /**
-     * Scrub pictures are hidden on every device for now: what showed was mostly Telegram's own
-     * thumbnail, not the moment under the finger. The time still shows while scrubbing. Set back
-     * to true to bring the card's pictures and their Settings row back.
+     * Scrub pictures are shown (owner, 2026-11-08: the small screen over the bar stood empty
+     * on his phone and the moment under the finger is the whole point of it). A picture comes
+     * only from bytes already on the device, Telegram's storyboard or a frame decoded out of
+     * the downloaded run, so most positions of a streamed video have one once their part has
+     * arrived; where none can be had the card falls back to the time over the dimmed still,
+     * which never poses as the moment. While this stood false it also hid the Settings row
+     * and read as "no seek thumbnails fit" to the setup wizard's device check, which could
+     * switch a device's setting off at first run with no way back on.
      */
-    const val PICTURES_SHOWN = false
+    const val PICTURES_SHOWN = true
 
     /**
      * Devices with less memory than this get no thumbnails. A "1 GB" device reports a little under
