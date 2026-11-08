@@ -96,11 +96,17 @@ object HomeFeatured {
      */
     const val MIN_BYTES = 400 * SizeFilter.MB
 
-    /** How long a fill waits for the online lookups before it shows what is known complete. */
-    const val FILL_WAIT_MS = 1_500L
+    /**
+     * How long a fill waits for the online lookups before it shows what is known complete.
+     * Four seconds (owner, v1.0.18): on a slow connection the shorter wait gave up before
+     * TMDB answered, and a chip whose candidate pool is small (Movies) was left with no
+     * banner at all. The carousel frame is held while a fill waits, so the longer wait
+     * shows nothing half built; it only lets more answers land.
+     */
+    const val FILL_WAIT_MS = 4_000L
 
     /** Lookups a fill makes at once, under TMDB's spacing, which the tiles share. */
-    const val LOOKUPS_AT_ONCE = 2
+    const val LOOKUPS_AT_ONCE = 4
 
     /** The newest [limit] different films and shows in [entries] (see [HomeFeatured]). */
     fun pick(
