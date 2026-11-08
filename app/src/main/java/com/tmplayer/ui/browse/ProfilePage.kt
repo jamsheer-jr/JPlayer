@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon as M3Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -168,6 +170,9 @@ internal fun ProfilePage(
     val profilePinIds by settings.profilePinIds.collectAsState(initial = emptySet())
     val watchedStore = remember(context) { com.tmplayer.data.WatchedStore(context) }
     var profileMenu by remember { mutableStateOf<ViewerProfile?>(null) }
+    // Manage mode for the switcher (item 4, v1.0.16): while on, a tile tap opens the
+    // profile's own menu instead of switching, and every tile carries a pencil.
+    var managingProfiles by remember { mutableStateOf(false) }
     var pinForProfile by remember { mutableStateOf<ViewerProfile?>(null) }
     var choosePinFor by remember { mutableStateOf<ViewerProfile?>(null) }
     var namingProfile by remember { mutableStateOf(false) }
@@ -204,14 +209,27 @@ internal fun ProfilePage(
         Modifier.fillMaxSize().background(Tone.background),
         contentPadding = PaddingValues(top = statusTop, bottom = LocalBottomChrome.current + 56.dp),
     ) {
-        item(key = "account") {
-            ProfileAccountHeader(account, onAccount)
-        }
-        item(key = "profiles-heading") {
-            ProfileHeading(s.profileProfiles)
-        }
+        // The Netflix shape head (item 4, v1.0.16): the profile tiles stand first,
+        // a row of avatar discs with the name under each; the active tile is ringed
+        // and full, the others dimmed, and a tap switches. Manage turns the same
+        // row into the profiles' menus, pencils on the tiles. The account header
+        // that led the page until now stands below the switcher.
         item(key = "profiles") {
             Column {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    M3Text(
+                        s.profileProfiles,
+                        style = M3MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Tone.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { managingProfiles = !managingProfiles }) {
+                        M3Text(if (managingProfiles) s.commonDone else s.profileManage, color = Tone.accent)
+                    }
+                }
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -221,7 +239,8 @@ internal fun ProfilePage(
                             profile = profile,
                             fallbackName = s.profileDefaultName,
                             active = profile.id == activeProfileId,
-                            onClick = { switchToProfile(profile) },
+                            editing = managingProfiles,
+                            onClick = { if (managingProfiles) profileMenu = profile else switchToProfile(profile) },
                             onLongClick = { profileMenu = profile },
                         )
                     }
@@ -238,6 +257,9 @@ internal fun ProfilePage(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                 )
             }
+        }
+        item(key = "account") {
+            ProfileAccountHeader(account, onAccount)
         }
         item(key = "downloads") {
             ProfileWideCard(
@@ -1084,37 +1106,50 @@ private fun ProfileChatChip(chat: ChatSummary, onClick: () -> Unit) {
 
 /**
  * One viewer profile in the switcher: its initial in a circle, ringed in the accent while it
- * is the active one, its name under it. A tap switches to it (or opens its menu, for the
- * active one); a hold opens the menu that renames it, makes it Simple or full, sets its PIN
- * or deletes it.
+ * is the active one, its name under it. The active tile stands full and the rest dimmed
+ * (item 4, v1.0.16); in Manage mode every tile carries a pencil and a tap opens the menu
+ * that renames it, makes it Simple or full, sets its PIN or deletes it; outside it a tap
+ * switches (or opens the menu, for the active one) and a hold opens the menu.
  */
 @Composable
 private fun ProfileProfileChip(
     profile: ViewerProfile,
     fallbackName: String,
     active: Boolean,
+    editing: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val s = LocalStrings.current
     val name = profile.name.ifBlank { fallbackName }
     Column(
-        Modifier.width(76.dp).combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        Modifier.width(76.dp).combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(if (active) Modifier else Modifier.alpha(0.45f)),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(M3MaterialTheme.colorScheme.surfaceContainerHighest)
-                .then(if (active) Modifier.border(2.dp, Tone.accent, CircleShape) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            M3Text(
-                name.take(1).uppercase(),
-                style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (active) Tone.accent else Tone.text,
-            )
+        Box(Modifier.size(56.dp)) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(M3MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .then(if (active) Modifier.border(2.dp, Tone.accent, CircleShape) else Modifier),
+                contentAlignment = Alignment.Center,
+            ) {
+                M3Text(
+                    name.take(1).uppercase(),
+                    style = M3MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (active) Tone.accent else Tone.text,
+                )
+            }
+            if (editing) {
+                Box(
+                    Modifier.align(Alignment.BottomEnd).size(18.dp).clip(CircleShape).background(Tone.accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    M3Icon(TmIcons.Edit, contentDescription = null, tint = Tone.onAccent, modifier = Modifier.size(11.dp))
+                }
+            }
         }
         M3Text(
             name,
