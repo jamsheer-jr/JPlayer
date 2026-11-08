@@ -118,6 +118,7 @@ import com.tmplayer.data.HomeRow
 import com.tmplayer.data.HomeRows
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.SeriesShelf
+import com.tmplayer.data.ShelfEntry
 import com.tmplayer.data.WatchLaterRecord
 import com.tmplayer.data.WatchedRecord
 import com.tmplayer.data.WatchedWhen
@@ -945,6 +946,7 @@ internal fun BrowseScreen(
                                 showPin = tab.isChats && chatFilter == ChatFilter.All && query.isBlank(),
                                 paging = chatPaging,
                                 onMoreChats = onMoreChats,
+                                newVideoCounts = newVideoCounts,
                                 onPlayStream = { link ->
                                     runCatching {
                                         panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
@@ -2586,6 +2588,9 @@ private fun ChatSection(
     onPlayStream: (com.tmplayer.data.StreamLink) -> Unit = {},
     /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
     onPlayStreamPair: ((com.tmplayer.data.StreamLink, com.tmplayer.data.StreamLink) -> Unit)? = null,
+    /** New videos per chat (item 11e, v1.0.15), counted by the caller over the videos Home's
+     * rows already hold; a chat with no entry shows no badge. */
+    newVideoCounts: Map<Long, Int> = emptyMap(),
 ) {
     val s = LocalStrings.current
     val rowsAreFullBleed = isTouch()
