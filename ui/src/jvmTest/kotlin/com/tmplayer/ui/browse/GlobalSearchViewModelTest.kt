@@ -384,10 +384,14 @@ class GlobalSearchViewModelTest {
         assertTrue(model.state.value.shown.any { it.lead.messageId == 73L })
         model.setHideShortVideos(false)
         assertEquals(0, model.state.value.shortHidden)
+        // The clip is far shorter than the film, so search never folded it into the
+        // film's card (SameTitle.sameLength): off, it stands as its own card again,
+        // and the film's card still holds only its long copy.
         assertEquals(
-            listOf(71L, 72L),
+            listOf(71L),
             model.state.value.shown.first { it.lead.messageId == 71L }.copies.map { it.messageId },
         )
+        assertTrue(model.state.value.shown.any { it.lead.messageId == 72L })
     }
 
     @Test
