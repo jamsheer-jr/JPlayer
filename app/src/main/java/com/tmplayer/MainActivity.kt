@@ -1087,6 +1087,12 @@ private fun Root() {
     // page, not to Home (owner, v1.0.15). Recorded by openChat from the screen that asked;
     // the browser stays the default, as it is for every chat opened from it.
     var mediaCameFrom by remember { mutableStateOf<Screen>(Screen.Chats) }
+    // The browser was opened through the Profile page (item 8, v1.0.16): its History,
+    // Favourites and Home jumps land on the browser, and Back at the browser's root
+    // returns to the Profile page rather than walking the tabs to Home. One shot:
+    // the return spends it, and the bottom bar or opening a chat spends it too,
+    // since those are the viewer leaving for somewhere of their own choosing.
+    var browseCameFromProfile by remember { mutableStateOf(false) }
     // On a television, the rail item to put the remote back on when Back from Settings or
     // Downloads returns to the browser: the place it was pressed, not the first tile of the page.
     var railReturn by remember { mutableStateOf<com.tmplayer.ui.browse.RailReturn?>(null) }
@@ -1412,6 +1418,9 @@ private fun Root() {
         // Where Back from this chat goes (see mediaCameFrom): the screen that asked, kept
         // across a hop from one chat into another, so the first asker is the return.
         if (screen !is Screen.Media) mediaCameFrom = screen
+        // Opening a chat spends a Profile browsing return (item 8, v1.0.16): the chat's
+        // own Back, through mediaCameFrom, is the return from here.
+        browseCameFromProfile = false
         screen = Screen.Media(chat)
         scope.launch { settings.rememberChatOpened(chat.id) }
     }
@@ -1869,7 +1878,14 @@ private fun Root() {
             val activity = LocalActivity.current
             val onHomeTab = pickedTab == null || pickedTab.isHome
             BackHandler {
-                if (!onHomeTab) {
+                if (browseCameFromProfile) {
+                    // Back to the Profile page this browsing was opened from (item 8,
+                    // v1.0.16); deeper handlers (an open search, a detail stack) are
+                    // registered after this one and answer first while they stand.
+                    browseCameFromProfile = false
+                    exitArmed = false
+                    screen = Screen.Profile
+                } else if (!onHomeTab) {
                     pickedTabKey = BrowseSection.encode(BrowseSection.of(BrowseTab.Home))
                     exitArmed = false
                 } else if (exitArmed) {
@@ -2033,19 +2049,28 @@ private fun Root() {
             watchedCount = watchedVideos.size,
             downloadCount = activeDownloadCount,
             updateVersion = offeredUpdate,
-            onHome = { browseTo(BrowseSection.of(BrowseTab.Home)) },
+            onHome = {
+                browseCameFromProfile = false
+                browseTo(BrowseSection.of(BrowseTab.Home))
+            },
             onChats = {
+                browseCameFromProfile = false
                 val back = BrowseSection.decode(lastChatsKey)
                 browseTo(back ?: BrowseSection.of(BrowseTab.Chats))
             },
             onSearch = {
+                browseCameFromProfile = false
                 screen = Screen.Chats
                 touchChrome.searchAsked = true
             },
             onSettings = openSettings,
-            onFavourites = { browseTo(BrowseSection.of(BrowseTab.Favorites)) },
+            onFavourites = {
+                browseCameFromProfile = false
+                browseTo(BrowseSection.of(BrowseTab.Favorites))
+            },
             onDownloads = openDownloads,
             onHistory = { tab ->
+                browseCameFromProfile = false
                 scope.launch { settings.setHistoryTab(tab.name) }
                 browseTo(BrowseSection.of(BrowseTab.History))
             },
@@ -2296,12 +2321,19 @@ private fun Root() {
                         settingsPage = SettingsPage.Account
                     },
                     onUpdate = { showUpdate = true },
-                    onFavourites = { browseTo(BrowseSection.of(BrowseTab.Favorites)) },
+                    onFavourites = {
+                        browseCameFromProfile = true
+                        browseTo(BrowseSection.of(BrowseTab.Favorites))
+                    },
                     onHistory = { tab ->
                         scope.launch { settings.setHistoryTab(tab.name) }
+                        browseCameFromProfile = true
                         browseTo(BrowseSection.of(BrowseTab.History))
                     },
-                    onHome = { browseTo(BrowseSection.of(BrowseTab.Home)) },
+                    onHome = {
+                        browseCameFromProfile = true
+                        browseTo(BrowseSection.of(BrowseTab.Home))
+                    },
                     onOpenChat = { openChat(it) },
                     onResume = { resumeMedia(it) },
                     onRestart = { record ->
