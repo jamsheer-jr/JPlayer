@@ -2,11 +2,13 @@ package com.tmplayer.player
 
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
@@ -166,14 +168,14 @@ class PlayerEndRail(
         Column(
             Modifier
                 .width(if (isTouch()) 132.dp else 176.dp)
-                .androidx.compose.foundation.clickable(onClick = onClick),
+                .clickable(onClick = onClick),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             MediaPreview(
                 miniThumbnail = item.miniThumbnail,
                 thumbnailFileId = item.thumbnailFileId,
                 fallbackLabel = item.title,
-                modifier = Modifier.fillMaxWidth().androidx.compose.foundation.layout.aspectRatio(16f / 9f),
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
             )
             Text(
                 item.title,
