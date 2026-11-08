@@ -1071,7 +1071,7 @@ internal fun CopiesSheet(
     // picture first, the biggest of it next, the copies stating no quality last. The copy
     // playing stays listed wherever it lands (VideoCopies.oneOfEachFile keeps it in the list
     // upstream), so its heading stands even when it is the only copy under it. The owner's
-    // levels (HD+, SD+) belong to the quality chooser, not to this list (owner, v1.0.18:
+    // levels (HD+, FHD, QHD) belong to the quality chooser, not to this list (owner, v1.0.18:
     // "Copies avide alla, ath pazhe pole thanne").
     val tiers: List<Pair<String?, List<MediaItem>>> = remember(visible) {
         VideoCopies.tiersOf(visible) { it }

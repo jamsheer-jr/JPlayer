@@ -374,37 +374,37 @@ class VideoCopiesTest {
     fun `the chooser lists each level once, lowest first, with its best copy and the playing level marked`() {
         val hdBig = video(2, 60, "Night.Train.2019.1080p.BluRay.mkv", size = 2_000L shl 20)
         val choices = VideoCopies.tierChoices(listOf(uhd, hd, sd, hdBig), hd.id)
-        // The levels (owner, v1.0.18): the light 720p stands at SD+, the 1080p copies at HD.
-        assertEquals(listOf("SD+", "HD", "UHD"), choices.map { it.tier })
+        // The levels (owner, v1.0.18): the light 720p stands at SD, the 1080p copies at HD+.
+        assertEquals(listOf("SD", "HD+", "UHD"), choices.map { it.tier })
         assertEquals(hd.id, choices[1].copy.id)
         assertEquals(listOf(false, true, false), choices.map { it.current })
         val unknown = video(1, 99, "Mystery.File.mkv")
-        assertEquals(listOf("SD+"), VideoCopies.tierChoices(listOf(sd, unknown), sd.id).map { it.tier })
+        assertEquals(listOf("SD"), VideoCopies.tierChoices(listOf(sd, unknown), sd.id).map { it.tier })
     }
 
     @Test
-    fun `the chooser reads a heavy 720p as HD and a heavy 1080p as HD+`() {
+    fun `the chooser reads a heavy 720p as HD and a heavy 1080p as FHD`() {
         // The owner's own screenshot (v1.0.18): the levels are judged on each
         // resolution's size, so a 720p of 3.69 GB stands at HD and a 1080p of
-        // 3.54 GB at HD+, where the badge's plain height bands said SD and HD.
+        // 3.54 GB at FHD, where the badge's plain height bands said SD and HD.
         val gb = 1024L * 1024 * 1024
         val heavy720 = video(1, 70, "Film.2026.720p.mkv", size = 3 * gb)
         val heavy1080 = video(1, 71, "Film.2026.1080p.mkv", size = 3 * gb)
         val choices = VideoCopies.tierChoices(listOf(heavy720, heavy1080), heavy1080.id)
-        assertEquals(listOf("HD", "HD+"), choices.map { it.tier })
+        assertEquals(listOf("HD", "FHD"), choices.map { it.tier })
         assertEquals(heavy720.id, choices[0].copy.id)
         assertEquals(heavy1080.id, choices[1].copy.id)
         assertEquals(listOf(false, true), choices.map { it.current })
     }
 
     @Test
-    fun `the chooser gives an episode only its three levels`() {
+    fun `the chooser reads an episode on the same levels as a film`() {
         val gb = 1024L * 1024 * 1024
         val ep720 = video(1, 72, "Show.S01E01.720p.mkv", size = 3 * gb)
         val ep1080 = video(1, 73, "Show.S01E01.1080p.mkv", size = 300L shl 20)
         val ep2160 = video(1, 74, "Show.S01E01.2160p.mkv")
         val choices = VideoCopies.tierChoices(listOf(ep720, ep1080, ep2160), ep720.id, series = true)
-        assertEquals(listOf("SD", "HD", "UHD"), choices.map { it.tier })
+        assertEquals(listOf("HD", "HD+", "UHD"), choices.map { it.tier })
         assertEquals(listOf(true, false, false), choices.map { it.current })
     }
 
@@ -473,12 +473,16 @@ class VideoCopiesTest {
     fun `a movie copy stands at the level its height and size say`() {
         val gb = 1024L * 1024 * 1024
         assertEquals(VideoCopies.CopyLevel.Uhd, VideoCopies.levelOf(video(1, 20, "Film.2026.2160p.mkv", size = 900L shl 20)))
-        assertEquals(VideoCopies.CopyLevel.HdPlus, VideoCopies.levelOf(video(1, 21, "Film.2026.1080p.mkv", size = 3 * gb)))
-        assertEquals(VideoCopies.CopyLevel.HdPlus, VideoCopies.levelOf(video(1, 22, "Film.2026.1080p.mkv", size = 2 * gb)))
-        assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.levelOf(video(1, 23, "Film.2026.1080p.mkv", size = 1500L shl 20)))
-        // A heavy 720p is promoted to HD; a light one stays SD+.
+        // 1440p stands at QHD (owner, v1.0.18: QHD joins the list).
+        assertEquals(VideoCopies.CopyLevel.Qhd, VideoCopies.levelOf(video(1, 35, "Film.2026.1440p.mkv", size = 3 * gb)))
+        // At 1080p the high copies (2 GB and up) are FHD; the lighter ones HD+.
+        assertEquals(VideoCopies.CopyLevel.Fhd, VideoCopies.levelOf(video(1, 21, "Film.2026.1080p.mkv", size = 3 * gb)))
+        assertEquals(VideoCopies.CopyLevel.Fhd, VideoCopies.levelOf(video(1, 22, "Film.2026.1080p.mkv", size = 2 * gb)))
+        assertEquals(VideoCopies.CopyLevel.HdPlus, VideoCopies.levelOf(video(1, 23, "Film.2026.1080p.mkv", size = 1500L shl 20)))
+        // At 720p a copy of 1.5 GB and up is HD; a lighter one is SD.
         assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.levelOf(video(1, 24, "Film.2026.720p.mkv", size = 2 * gb)))
-        assertEquals(VideoCopies.CopyLevel.SdPlus, VideoCopies.levelOf(video(1, 25, "Film.2026.720p.mkv", size = 900L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.levelOf(video(1, 36, "Film.2026.720p.mkv", size = 1536L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.levelOf(video(1, 25, "Film.2026.720p.mkv", size = 900L shl 20)))
         // Under 720p is SD at any of the owner's sizes.
         assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.levelOf(video(1, 26, "Film.2026.480p.mkv", size = 400L shl 20)))
         assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.levelOf(video(1, 27, "Film.2026.480p.mkv", size = 900L shl 20)))
@@ -488,9 +492,9 @@ class VideoCopiesTest {
     }
 
     @Test
-    fun `an episode copy stands at one of three levels, with no floor`() {
+    fun `an episode copy stands at the same levels, with no floor`() {
         assertEquals(VideoCopies.CopyLevel.Uhd, VideoCopies.seriesLevelOf(video(1, 30, "Show.S01E01.2160p.mkv")))
-        assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.seriesLevelOf(video(1, 31, "Show.S01E01.1080p.mkv", size = 300L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.HdPlus, VideoCopies.seriesLevelOf(video(1, 31, "Show.S01E01.1080p.mkv", size = 300L shl 20)))
         assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.seriesLevelOf(video(1, 32, "Show.S01E01.720p.mkv")))
         assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.seriesLevelOf(video(1, 33, "Show.S01E01.360p.mkv", size = 150L shl 20)))
         assertEquals(VideoCopies.CopyLevel.Unknown, VideoCopies.seriesLevelOf(video(1, 34, "Show.S01E01.mkv")))

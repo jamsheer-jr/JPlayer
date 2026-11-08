@@ -2858,8 +2858,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     /**
      * A tap on the quality badge (phone): the quality chooser (J Player, 2026-11-06), an
-     * MX style list of the levels this video's copies have (SD, SD+, HD, HD+, UHD: the
-     * owner's levels, v1.0.18), each with its best copy's height
+     * MX style list of the levels this video's copies have (SD, HD, HD+, FHD, QHD,
+     * UHD: the owner's levels, v1.0.18), each with its best copy's height
      * and size, instead of cycling blind to the next tier. Choosing a level switches through
      * the same switch the copies list makes, so the place carries over and the pick is
      * remembered the same way. One tier only, or none known: Telegram's own qualities, when

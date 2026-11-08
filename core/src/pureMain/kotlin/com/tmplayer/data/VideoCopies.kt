@@ -269,14 +269,14 @@ object VideoCopies {
 
     /**
      * The quality chooser's rows (J Player, 2026-11-06: the badge tap opens a chooser instead of
-     * cycling blind). The rows are the owner's levels (owner, v1.0.18: the levels he named,
-     * HD+ and SD+ among them, belong here, in this chooser, judged on each resolution's size
-     * by [levelOf], or by [seriesLevelOf] for an episode): every level [copies] actually has,
-     * lowest first, each with its own best copy by the order copies are always offered in
-     * (tallest picture, then the better codec, then largest file), and the level playing
-     * marked. A copy under a movie's floor ([CopyLevel.Below]) still stands here at SD: the
-     * chooser offers what the video has, and a film whose only copy is 360p still has a
-     * quality to name. Copies whose height is not known take no part.
+     * cycling blind). The rows are the owner's levels (owner, v1.0.18: the levels he named
+     * belong here, in this chooser, judged on each resolution's size by [levelOf], or by
+     * [seriesLevelOf] for an episode): every level [copies] actually has, lowest first, each
+     * with its own best copy by the order copies are always offered in (tallest picture, then
+     * the better codec, then largest file), and the level playing marked. A copy under a
+     * movie's floor ([CopyLevel.Below]) still stands here at SD: the chooser offers what the
+     * video has, and a film whose only copy is 360p still has a quality to name. Copies whose
+     * height is not known take no part.
      */
     fun tierChoices(copies: List<MediaItem>, currentId: String, series: Boolean = false): List<TierChoice> {
         val level: (MediaItem) -> CopyLevel = if (series) ::seriesLevelOf else ::levelOf
@@ -286,7 +286,7 @@ object VideoCopies {
             else -> found
         }
         val current = copies.firstOrNull { it.id == currentId }?.let { shown(it) }
-        return listOf(CopyLevel.Sd, CopyLevel.SdPlus, CopyLevel.Hd, CopyLevel.HdPlus, CopyLevel.Uhd).mapNotNull { wanted ->
+        return listOf(CopyLevel.Sd, CopyLevel.Hd, CopyLevel.HdPlus, CopyLevel.Fhd, CopyLevel.Qhd, CopyLevel.Uhd).mapNotNull { wanted ->
             val best = copies
                 .filter { shown(it) == wanted }
                 .maxWithOrNull(
@@ -321,50 +321,56 @@ object VideoCopies {
     }
 
     /**
-     * The owner's levels for a movie's copies (2026-11-08), best first: UHD is 4K;
-     * at 1080p the high copies (2 GB and up) are HD+ and the rest HD; at 720p a copy
-     * of 2 GB and up is promoted to HD and the rest are SD+; under 720p is SD, at
-     * whatever size (400 MB, 700 MB, 900 MB alike, the owner's own examples); under
-     * 480p is [Below], the lowest reading a copy gets. A copy whose
-     * height nothing states is [Unknown]: no level is read into it from its size.
+     * The owner's levels for a copy (owner, 2026-11-08, final table given the same
+     * evening), best first: UHD is 4K; QHD is 1440p; at 1080p the high copies
+     * (2 GB and up) are FHD and the lighter ones HD+; at 720p a copy of 1.5 GB
+     * and up is HD and the rest SD; 480p and under is SD at whatever size, as
+     * before; under 480p a movie's copy is [Below], the lowest reading it gets.
+     * A copy whose height nothing states is [Unknown]: no level is read into
+     * it from its size.
      */
     enum class CopyLevel(val label: String) {
         Uhd("UHD"),
+        Qhd("QHD"),
+        Fhd("FHD"),
         HdPlus("HD+"),
         Hd("HD"),
-        SdPlus("SD+"),
         Sd("SD"),
         Below(""),
         Unknown(""),
     }
 
-    /** 2 GB in bytes: the size at and over which a copy counts as its level's high one. */
+    /** 2 GB in bytes: at 1080p, the size at and over which a copy reads FHD, not HD+. */
     private const val LEVEL_HIGH_BYTES = 2L * 1024 * 1024 * 1024
+
+    /** 1.5 GB in bytes: at 720p, the size at and over which a copy reads HD, not SD. */
+    private const val LEVEL_720_BYTES = 1536L * 1024 * 1024
 
     /** Which of the owner's levels [item] stands at, by its stated height, then its size. */
     fun levelOf(item: MediaItem): CopyLevel {
         val height = heightOf(item) ?: return CopyLevel.Unknown
-        val high = item.sizeBytes >= LEVEL_HIGH_BYTES
         return when {
             height >= 2000 -> CopyLevel.Uhd
-            height >= 1000 -> if (high) CopyLevel.HdPlus else CopyLevel.Hd
-            height >= 600 -> if (high) CopyLevel.Hd else CopyLevel.SdPlus
+            height >= 1300 -> CopyLevel.Qhd
+            height >= 1000 -> if (item.sizeBytes >= LEVEL_HIGH_BYTES) CopyLevel.Fhd else CopyLevel.HdPlus
+            height >= 600 -> if (item.sizeBytes >= LEVEL_720_BYTES) CopyLevel.Hd else CopyLevel.Sd
             height >= 400 -> CopyLevel.Sd
             else -> CopyLevel.Below
         }
     }
 
     /**
-     * Which level an episode's copy stands at (owner, 2026-11-08): a series reads its
-     * copies in three levels only, by height alone: 2160p is UHD, 1080p is HD, and 720p
-     * and everything under it is SD. No size split, no floor: an episode is small by
-     * nature, and a 360p episode is still the episode.
+     * Which level an episode's copy stands at (owner, 2026-11-08): the same table
+     * as a movie's, on the same heights and sizes, but with no floor: an episode
+     * is small by nature, and a 360p episode still reads SD, still the episode.
      */
     fun seriesLevelOf(item: MediaItem): CopyLevel {
         val height = heightOf(item) ?: return CopyLevel.Unknown
         return when {
             height >= 2000 -> CopyLevel.Uhd
-            height >= 1000 -> CopyLevel.Hd
+            height >= 1300 -> CopyLevel.Qhd
+            height >= 1000 -> if (item.sizeBytes >= LEVEL_HIGH_BYTES) CopyLevel.Fhd else CopyLevel.HdPlus
+            height >= 600 -> if (item.sizeBytes >= LEVEL_720_BYTES) CopyLevel.Hd else CopyLevel.Sd
             else -> CopyLevel.Sd
         }
     }
