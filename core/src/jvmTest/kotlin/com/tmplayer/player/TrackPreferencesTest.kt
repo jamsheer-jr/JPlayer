@@ -131,20 +131,38 @@ class TrackPreferencesTest {
 
     @Test
     fun `settings fill what the file and the series leave open`() {
-        // A resume that knew only its speed says nothing about tracks.
+        // A resume that knew only its speed says nothing about tracks. The subtitle
+        // want is the preferred order's head (item 14, v1.0.16): Malayalam first on
+        // an untouched install, where the app's language stood before.
         val plan = TrackRules.plan(ResumeState(speed = 1.5f), TrackChoice(), japaneseAudio, "en")
         assertEquals("ja", plan.audioLanguage)
         assertEquals(TrackSource.Settings, plan.audioSource)
-        assertEquals(SubtitlePlan.On("en", fallBack = true), plan.subtitles)
+        assertEquals(SubtitlePlan.On("ml", fallBack = true), plan.subtitles)
+        assertEquals(listOf("ml", "en"), plan.subtitleOrder)
         assertEquals(TrackSource.Settings, plan.subtitleSource)
     }
 
     @Test
-    fun `automatic everywhere leaves the file's defaults`() {
+    fun `automatic everywhere takes the preferred order, Malayalam first`() {
+        // Item 14, v1.0.16, the owner's order overruling the old file-defaults plan:
+        // with nothing remembered and nothing picked, a video opens with the highest
+        // preferred language it has; with none of them, its own pick stands
+        // (fallBack false), where SubtitlePlan.FileDefault stood before.
         val plan = TrackRules.plan(null, TrackChoice(), TrackPreferences(), "en")
         assertNull(plan.audioLanguage)
         assertEquals(TrackSource.FileDefaults, plan.audioSource)
-        assertEquals(SubtitlePlan.FileDefault, plan.subtitles)
+        assertEquals(SubtitlePlan.On("ml", fallBack = false), plan.subtitles)
+        assertEquals(listOf("ml", "en"), plan.subtitleOrder)
+    }
+
+    @Test
+    fun `the stored order reads back, cleaned and deduplicated`() {
+        assertEquals(listOf("en", "ml"), TrackPreferences.from(null, null, null, "en,ml,en,,xx").subtitleOrder)
+        assertEquals(TrackPreferences.DEFAULT_ORDER, TrackPreferences.from(null, null, null, "").subtitleOrder)
+        assertEquals(TrackPreferences.DEFAULT_ORDER, TrackPreferences.from(null, null, null, null).subtitleOrder)
+        // A single picked language leads the wanted list, the order behind it.
+        val prefs = TrackPreferences(subtitleLanguage = "ta", subtitleOrder = listOf("ml", "en"))
+        assertEquals(listOf("ta", "ml", "en"), prefs.wantedSubtitleLanguages("en"))
     }
 
     @Test
@@ -194,6 +212,22 @@ class TrackPreferencesTest {
         assertEquals(SubtitlePick.Track(0), TrackRules.pickSubtitle(plan, "eng", tracks))
         assertEquals(SubtitlePick.None, TrackRules.pickSubtitle(plan, "eng", tracks.drop(1)))
         assertEquals(SubtitlePick.None, TrackRules.pickSubtitle(plan, null, tracks.drop(1)))
+    }
+
+    @Test
+    fun `the order is tried after the plan's own language`() {
+        // Item 14, v1.0.16: Tamil is in no track; of the order, Malayalam stands
+        // above English in the first, English above Malayalam in the second.
+        assertEquals(
+            SubtitlePick.Track(2),
+            TrackRules.pickSubtitle(SubtitlePlan.On("ta"), null, tracks, order = listOf("ml", "en")),
+        )
+        assertEquals(
+            SubtitlePick.Track(1),
+            TrackRules.pickSubtitle(SubtitlePlan.On("ta"), null, tracks, order = listOf("en", "ml")),
+        )
+        // No order: the plan's language alone, as before.
+        assertEquals(SubtitlePick.Leave, TrackRules.pickSubtitle(SubtitlePlan.On("ta"), null, tracks))
     }
 
     @Test

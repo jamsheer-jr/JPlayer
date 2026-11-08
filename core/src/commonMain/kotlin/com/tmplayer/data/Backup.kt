@@ -253,6 +253,7 @@ object Backups {
         "subtitle_edge" to Kind.TEXT,
         "subtitle_face" to Kind.TEXT,
         "subtitle_mode" to Kind.TEXT,
+        "subtitle_language_order" to Kind.TEXT,
         "subtitle_lift" to Kind.FLOAT,
         "subtitle_position" to Kind.TEXT,
         "subtitle_size" to Kind.TEXT,

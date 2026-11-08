@@ -4995,7 +4995,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             )
         }
         val builder = exo.trackSelectionParameters.buildUpon()
-        when (val pick = TrackRules.pickSubtitle(trackPlan.subtitles, audio, described)) {
+        when (val pick = TrackRules.pickSubtitle(trackPlan.subtitles, audio, described, trackPlan.subtitleOrder)) {
             SubtitlePick.Leave -> return
             SubtitlePick.None -> {
                 if (text.none { (group, index) -> group.isTrackSelected(index) }) return
@@ -6261,11 +6261,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val ids = withTimeoutOrNull(3_000) {
             withContext(Dispatchers.IO) { OnlineMetadata.current?.idsFor(currentItem()) }
         } ?: com.tmplayer.online.VideoIds()
+        // The search is asked in the viewer's preferred language order (item 14,
+        // v1.0.16), so its answers come back ordered that way too.
+        val subtitleOrder = runCatching { settings.trackPreferencesNow().subtitleOrder }
+            .getOrDefault(com.tmplayer.player.TrackPreferences.DEFAULT_ORDER)
         return SubtitleTarget(
             fileName = mediaTitle,
             sizeBytes = size,
             hash = hash,
-            languages = OnlineSubtitles.languagesFor(tracks.textLanguage),
+            languages = OnlineSubtitles.languagesInOrder(subtitleOrder, tracks.textLanguage),
             imdb = ids.imdb,
             tmdb = ids.tmdb,
         )

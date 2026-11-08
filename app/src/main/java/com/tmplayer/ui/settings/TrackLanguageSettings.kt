@@ -14,8 +14,8 @@ import com.tmplayer.ui.components.ChoiceSheet
 import com.tmplayer.ui.components.FocusOnOpen
 import com.tmplayer.ui.i18n.LocalStrings
 
-/** Which of the three app-wide track settings is open over the page. */
-enum class TrackLanguagePicker { Audio, Subtitle, Mode }
+/** Which of the app-wide track settings is open over the page. */
+enum class TrackLanguagePicker { Audio, Subtitle, Mode, Order }
 
 /**
  * Settings, the preferred audio language, the preferred subtitle language and when subtitles come
@@ -43,8 +43,13 @@ fun TrackLanguageSheet(
         TrackLanguagePicker.Audio -> s.settingsAudioLanguage
         TrackLanguagePicker.Subtitle -> s.settingsSubtitleLanguage
         TrackLanguagePicker.Mode -> s.settingsSubtitleMode
+        TrackLanguagePicker.Order -> s.settingsSubtitleOrder
     }
-    ChoiceSheet(title = title, note = s.settingsTrackLanguagesNote, onDismiss = onClose, onClose = onClose) {
+    ChoiceSheet(
+        title = title,
+        note = if (picker == TrackLanguagePicker.Order) s.settingsSubtitleOrderDetail else s.settingsTrackLanguagesNote,
+        onDismiss = onClose, onClose = onClose,
+    ) {
         ChoiceList {
             when (picker) {
                 TrackLanguagePicker.Audio -> {
@@ -87,6 +92,30 @@ fun TrackLanguageSheet(
                     val selected = prefs.mode == mode
                     ChoiceLine(title = mode.label, detail = mode.detail, selected = selected, modifier = Modifier.landing(selected)) {
                         pick(prefs.copy(mode = mode))
+                    }
+                }
+                // The order itself (item 14, v1.0.16): every language the app knows,
+                // the chosen ones ticked with their place. A tap takes a language out,
+                // or puts it in at the end, so the order is built by choosing; the
+                // sheet stays open, since an order is more than one tap.
+                TrackLanguagePicker.Order -> {
+                    ChoiceLine(
+                        title = s.settingsSubtitleOrderReset,
+                        selected = prefs.subtitleOrder == TrackPreferences.DEFAULT_ORDER,
+                    ) { onChange(prefs.copy(subtitleOrder = TrackPreferences.DEFAULT_ORDER)) }
+                    languages.forEach { code ->
+                        val place = prefs.subtitleOrder.indexOf(code)
+                        ChoiceLine(
+                            title = TrackLanguages.name(code),
+                            detail = if (place >= 0) (place + 1).toString() else null,
+                            selected = place >= 0,
+                        ) {
+                            onChange(
+                                prefs.copy(
+                                    subtitleOrder = if (place >= 0) prefs.subtitleOrder - code else prefs.subtitleOrder + code,
+                                ),
+                            )
+                        }
                     }
                 }
             }

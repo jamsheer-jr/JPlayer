@@ -145,6 +145,7 @@ fun settingsSearchEntries(s: Strings): List<SettingsSearchEntry> = buildList {
     add("subtitles.style", SettingsPage.Subtitles, s.settingsSubtitleStyle)
     add("subtitles.mode", SettingsPage.Subtitles, s.settingsSubtitleMode)
     add("subtitles.language", SettingsPage.Subtitles, s.settingsSubtitleLanguage)
+    add("subtitles.order", SettingsPage.Subtitles, s.settingsSubtitleOrder, s.settingsSubtitleOrderDetail)
     add("subtitles.learnt", SettingsPage.Subtitles, s.settingsLearntLanguages)
     // The online subtitles section (OnlineSubtitlesSettings): its page, no row targets.
     add("subtitles.msone", SettingsPage.Subtitles, s.msoneTitle)
@@ -302,7 +303,7 @@ val settingsSearchAnchors: Set<String> = setOf(
     "playback.download_first", "playback.downmix", "playback.even_volume",
     "playback.background_audio", "playback.pip_on_leave", "playback.audio_language",
     "playback.trickplay", "playback.controls_timeout", "playback.resume_rewind",
-    "subtitles.style", "subtitles.mode", "subtitles.language", "subtitles.learnt",
+    "subtitles.style", "subtitles.mode", "subtitles.language", "subtitles.order", "subtitles.learnt",
     "gestures.haptics", "gestures.tap_plays", "gestures.double_tap", "gestures.double_tap_pause",
     "gestures.hold_speed", "gestures.seek", "gestures.brightness", "gestures.volume",
     "library.size_limits", "library.open_last_chat", "library.forget_last_chat",

@@ -317,6 +317,7 @@ private val VIDEO_DECODER = stringPreferencesKey("video_decoder")
 // The app-wide languages, under the series memory. See [TrackPreferences].
 private val PREFERRED_AUDIO = stringPreferencesKey("preferred_audio_language")
 private val PREFERRED_SUBTITLE = stringPreferencesKey("preferred_subtitle_language")
+private val SUBTITLE_LANGUAGE_ORDER = stringPreferencesKey("subtitle_language_order")
 private val SUBTITLE_MODE = stringPreferencesKey("subtitle_mode")
 
 /**
@@ -2230,11 +2231,15 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             value.audioLanguage?.let { code -> it[PREFERRED_AUDIO] = code } ?: it.remove(PREFERRED_AUDIO)
             value.subtitleKey.ifEmpty { null }?.let { key -> it[PREFERRED_SUBTITLE] = key } ?: it.remove(PREFERRED_SUBTITLE)
             it[SUBTITLE_MODE] = value.mode.key
+            // The subtitle language order (item 14, v1.0.16); the default order is no
+            // setting at all, so a backup of defaults stays empty.
+            if (value.subtitleOrder == TrackPreferences.DEFAULT_ORDER) it.remove(SUBTITLE_LANGUAGE_ORDER)
+            else it[SUBTITLE_LANGUAGE_ORDER] = value.subtitleOrder.joinToString(",")
         }
     }
 
     private fun trackPreferencesOf(prefs: Preferences) =
-        TrackPreferences.from(prefs[PREFERRED_AUDIO], prefs[PREFERRED_SUBTITLE], prefs[SUBTITLE_MODE])
+        TrackPreferences.from(prefs[PREFERRED_AUDIO], prefs[PREFERRED_SUBTITLE], prefs[SUBTITLE_MODE], prefs[SUBTITLE_LANGUAGE_ORDER])
 
     // ---- size filter ------------------------------------------------------------------------
 

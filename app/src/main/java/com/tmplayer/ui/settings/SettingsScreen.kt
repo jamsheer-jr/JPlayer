@@ -1324,6 +1324,16 @@ fun SettingsScreen(
                         onClick = { trackPicker = TrackLanguagePicker.Subtitle },
                     )
                 }
+                // The order those languages are tried in (item 14, v1.0.16).
+                item {
+                    ActionRow(
+                        title = s.settingsSubtitleOrder,
+                        modifier = Modifier.jumpTarget(searchTargets["subtitles.order"]),
+                        subtitle = trackPrefs.subtitleOrder.joinToString(", ") { com.tmplayer.player.TrackLanguages.name(it) },
+                        icon = TmIcons.Language,
+                        onClick = { trackPicker = TrackLanguagePicker.Order },
+                    )
+                }
                 // What each series learnt from the player, and Forget: the per series memory
                 // above the languages chosen here, made visible.
                 item {

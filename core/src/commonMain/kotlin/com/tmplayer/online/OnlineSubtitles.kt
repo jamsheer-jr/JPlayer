@@ -899,6 +899,14 @@ class OnlineSubtitles(
         fun languagesFor(preferred: String?): List<String> =
             listOfNotNull(preferred, Translator.messages.tag, "en").mapNotNull(::iso1).distinct()
 
+        /**
+         * The search's languages with the viewer's preferred order leading (item 14,
+         * v1.0.16), then the playing track's language, the app's and English: [search]
+         * orders its hits by this list, so a top-language result stands first.
+         */
+        fun languagesInOrder(order: List<String>, preferred: String?): List<String> =
+            (order + listOfNotNull(preferred, Translator.messages.tag, "en")).mapNotNull(::iso1).distinct()
+
         /** A track or UI language as OpenSubtitles' two letter code; Portuguese keeps its two kinds. */
         internal fun iso1(code: String?): String? {
             val raw = code?.trim()?.replace('_', '-')?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() } ?: return null

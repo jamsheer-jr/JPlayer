@@ -17,8 +17,9 @@ import com.tmplayer.i18n.Translator
  */
 enum class SubtitleMode(val key: String, private val labelText: () -> String, private val detailText: () -> String) {
     /**
-     * The default, and what the app did before these settings: a track the file marks as its
-     * default comes on, which most anime and film releases rely on, and nothing else does.
+     * The default: a track in the viewer's preferred language comes on where the file
+     * has one (item 14, v1.0.16); with none, the track the file marks as its default
+     * comes on, which most anime and film releases rely on, and nothing else does.
      */
     AsTheVideoSays("file", { L.settingsSubtitleModeFile }, { L.settingsSubtitleModeFileDetail }),
     OffUnlessChosen("off", { L.settingsSubtitleModeOff }, { L.settingsSubtitleModeOffDetail }),
@@ -46,6 +47,13 @@ data class TrackPreferences(
     /** "Off" picked as the subtitle language: never on by themselves, whatever [mode] says. */
     val subtitlesOff: Boolean = false,
     val mode: SubtitleMode = SubtitleMode.AsTheVideoSays,
+    /**
+     * The preferred subtitle languages in order (item 14, v1.0.16): at a video's start
+     * the first of these the video has is the one that comes on, ahead of any single
+     * language want of the file's own. Malayalam, then English, until the viewer
+     * edits the order in Settings.
+     */
+    val subtitleOrder: List<String> = DEFAULT_ORDER,
 ) {
     /** The stored form of the subtitle language row: empty for Automatic, [OFF], or a code. */
     val subtitleKey: String get() = if (subtitlesOff) OFF else subtitleLanguage.orEmpty()
@@ -61,15 +69,29 @@ data class TrackPreferences(
             else -> L.settingsSubtitleLanguageAuto
         }
 
+    /**
+     * The subtitle languages Settings wants for a video, in the order they are tried
+     * (item 14, v1.0.16): a single picked language leads, then the viewer's order,
+     * then the app's own language, each once.
+     */
+    fun wantedSubtitleLanguages(uiLanguage: String): List<String> =
+        (listOfNotNull(subtitleLanguage) + subtitleOrder + listOfNotNull(TrackLanguages.normalise(uiLanguage)))
+            .mapNotNull(TrackLanguages::normalise).distinct()
+
     companion object {
         const val OFF = "off"
 
-        /** Reads the three stored values back, anything unreadable falling back to Automatic. */
-        fun from(audio: String?, subtitle: String?, mode: String?) = TrackPreferences(
+        /** The order an untouched install works by: Malayalam first, then English. */
+        val DEFAULT_ORDER = listOf("ml", "en")
+
+        /** Reads the stored values back, anything unreadable falling back to Automatic. */
+        fun from(audio: String?, subtitle: String?, mode: String?, order: String? = null) = TrackPreferences(
             audioLanguage = TrackLanguages.normalise(audio),
             subtitleLanguage = subtitle?.takeIf { it != OFF }?.let(TrackLanguages::normalise),
             subtitlesOff = subtitle == OFF,
             mode = SubtitleMode.from(mode),
+            subtitleOrder = order?.split(',')?.mapNotNull(TrackLanguages::normalise)?.distinct()
+                ?.takeIf { it.isNotEmpty() } ?: DEFAULT_ORDER,
         )
     }
 }
@@ -101,6 +123,12 @@ data class TrackPlan(
     val audioSource: TrackSource,
     val subtitles: SubtitlePlan,
     val subtitleSource: TrackSource,
+    /**
+     * The Settings language order the subtitle pick tries after the plan's own
+     * language (item 14, v1.0.16); only a plan from Settings carries one, since a
+     * remembered choice for the file or its series is the whole want already.
+     */
+    val subtitleOrder: List<String> = emptyList(),
 )
 
 /** One subtitle track as the pick sees it. */
@@ -155,33 +183,39 @@ object TrackRules {
             }
             else -> settingsPlan(prefs, uiLanguage) to TrackSource.Settings
         }
-        return TrackPlan(audio, audioSource, subtitles, subtitleSource)
+        return TrackPlan(
+            audio, audioSource, subtitles, subtitleSource,
+            subtitleOrder = if (subtitleSource == TrackSource.Settings) prefs.wantedSubtitleLanguages(uiLanguage) else emptyList(),
+        )
     }
 
     private fun settingsPlan(prefs: TrackPreferences, uiLanguage: String): SubtitlePlan {
         if (prefs.subtitlesOff) return SubtitlePlan.Off()
-        val wanted = prefs.subtitleLanguage ?: TrackLanguages.normalise(uiLanguage)
+        // The preferred order leads (item 14, v1.0.16): the first of the wanted
+        // languages the video has is the one that comes on. "As the video sets it"
+        // keeps its difference from Always in the fallback: with no wanted language
+        // in the file, the file's own pick stands rather than its first track.
+        val wanted = prefs.wantedSubtitleLanguages(uiLanguage)
         return when (prefs.mode) {
-            SubtitleMode.AsTheVideoSays -> SubtitlePlan.FileDefault
+            SubtitleMode.AsTheVideoSays -> SubtitlePlan.On(wanted.firstOrNull(), fallBack = false)
             SubtitleMode.OffUnlessChosen -> SubtitlePlan.Off(allowForced = true)
-            SubtitleMode.Always -> SubtitlePlan.On(wanted, fallBack = true)
-            SubtitleMode.ForeignAudio -> SubtitlePlan.IfForeignAudio(
-                wanted,
-                listOfNotNull(prefs.subtitleLanguage, TrackLanguages.normalise(uiLanguage)).toSet(),
-            )
+            SubtitleMode.Always -> SubtitlePlan.On(wanted.firstOrNull(), fallBack = true)
+            SubtitleMode.ForeignAudio -> SubtitlePlan.IfForeignAudio(wanted.firstOrNull(), wanted.toSet())
         }
     }
 
     /**
      * Which subtitle track [plan] wants among [tracks], once the player has listed them and
-     * [audioLanguage] is what is playing.
+     * [audioLanguage] is what is playing. [order] is the plan's language order
+     * (item 14, v1.0.16): after the plan's own language, each of the order's languages
+     * is tried in turn, so the highest preferred language the file has is the pick.
      */
-    fun pickSubtitle(plan: SubtitlePlan, audioLanguage: String?, tracks: List<SubtitleTrackInfo>): SubtitlePick {
+    fun pickSubtitle(plan: SubtitlePlan, audioLanguage: String?, tracks: List<SubtitleTrackInfo>, order: List<String> = emptyList()): SubtitlePick {
         if (tracks.isEmpty()) return SubtitlePick.Leave
         return when (plan) {
             SubtitlePlan.FileDefault -> SubtitlePick.Leave
             is SubtitlePlan.Off -> if (plan.allowForced) forcedFor(audioLanguage, tracks) else SubtitlePick.None
-            is SubtitlePlan.On -> inLanguage(plan.language, tracks)?.let(SubtitlePick::Track)
+            is SubtitlePlan.On -> inLanguages(listOfNotNull(plan.language) + order, tracks)?.let(SubtitlePick::Track)
                 ?: if (plan.fallBack) fallBack(tracks) else SubtitlePick.Leave
             is SubtitlePlan.IfForeignAudio -> {
                 val audio = TrackLanguages.normalise(audioLanguage)
@@ -190,10 +224,18 @@ object TrackRules {
                 if (audio == null || audio in plan.viewerLanguages) {
                     forcedFor(audioLanguage, tracks)
                 } else {
-                    inLanguage(plan.language, tracks)?.let(SubtitlePick::Track) ?: fallBack(tracks)
+                    inLanguages(listOfNotNull(plan.language) + order, tracks)?.let(SubtitlePick::Track) ?: fallBack(tracks)
                 }
             }
         }
+    }
+
+    /** The first of [languages] the tracks hold, in the languages' own order. */
+    private fun inLanguages(languages: List<String>, tracks: List<SubtitleTrackInfo>): Int? {
+        for (language in languages.distinct()) {
+            inLanguage(language, tracks)?.let { return it }
+        }
+        return null
     }
 
     private fun inLanguage(language: String?, tracks: List<SubtitleTrackInfo>): Int? {
