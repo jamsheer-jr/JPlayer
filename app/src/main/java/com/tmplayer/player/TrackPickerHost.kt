@@ -27,6 +27,25 @@ interface TrackPickerHost {
     fun attachOnlineSubtitle(file: File, label: String)
 
     /**
+     * The track id of the subtitle standing as the companion over the playing track
+     * (dual subtitles), or null while none does. The companion is drawn by the app, so
+     * the player never selects it; the picker reads the choice back from here.
+     */
+    fun companionTrackId(): String? = null
+
+    /**
+     * Takes the loaded subtitle [file] on as the companion, remembered under the track
+     * id it was picked by; a null [file] takes the companion off again.
+     */
+    fun takeCompanion(trackId: String?, file: File?) {}
+
+    /**
+     * The file a loaded subtitle track stands for, named by its format id; null when
+     * the id names none of the files loaded onto this video (an embedded track).
+     */
+    fun loadedSubtitleFile(formatId: String?): File? = null
+
+    /**
      * The way on when the online search found nothing: pick a subtitle file from the device.
      * Null where there is no picker (a television, the fixture).
      */

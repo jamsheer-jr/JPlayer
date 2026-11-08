@@ -76,6 +76,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withStarted
 import com.tmplayer.App
 import com.tmplayer.R
+import com.tmplayer.cast.WebVtt
 import com.tmplayer.data.ChatRepository
 import com.tmplayer.data.CopyHandoff
 import com.tmplayer.data.PartyLinks
@@ -157,6 +158,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -346,6 +348,27 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     /** The lines on screen, for a [subtitleTwin] that comes up while one is showing. */
     private var shownCues: List<Cue> = emptyList()
+
+    /** The main track's lines as the player last handed them over, kept so a companion's lines can be laid over them. */
+    private var mainCues: List<Cue> = emptyList()
+
+    /** The companion subtitle's file, while one stands (dual subtitles); null for none. */
+    private var companionFile: File? = null
+
+    /** The track id the standing companion was picked by, so the picker can mark its row. */
+    private var companionId: String? = null
+
+    /** The companion file's every line, parsed once when it is taken on. */
+    private var companionCueList: List<WebVtt.Cue> = emptyList()
+
+    /** The companion's lines live at the last position the follower looked at. */
+    private var companionActive: List<WebVtt.Cue> = emptyList()
+
+    /** The companion's lines showing right now, built from [companionActive]. */
+    private var companionNow: List<Cue> = emptyList()
+
+    /** Follows the position while a companion stands, keeping its lines over the main track's. */
+    private var companionJob: Job? = null
 
     /** A bundled font the subtitles needed because the system has none for their script. */
     private var subtitleScriptFace: android.graphics.Typeface? = null
@@ -3602,6 +3625,63 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         subtitleTwin?.setCues(cues)
     }
 
+    /**
+     * Lays the lines on screen: the companion's over the main track's, in the one subtitle
+     * view, so the panel's styling, the drag and the lift all treat the pair as one
+     * (dual subtitles, owner v1.0.20: the second line is drawn by the app into the same
+     * layer, never as a view of its own).
+     */
+    private fun renderCues() {
+        showCues(companionNow + mainCues)
+    }
+
+    /**
+     * Takes [file] on as the companion subtitle shown together with the track the player
+     * plays, or takes the companion off again when [file] is null. The player itself can
+     * only ever render one text track (Media3 1.11.1), so the companion's lines are the
+     * app's own work: the file is parsed once, and a follower keeps the lines for the
+     * position reached laid over the main track's (see [renderCues]).
+     */
+    fun setCompanionSubtitle(file: File?) {
+        companionJob?.cancel()
+        companionJob = null
+        companionFile = file
+        companionCueList = emptyList()
+        companionActive = emptyList()
+        companionNow = emptyList()
+        if (file == null) {
+            renderCues()
+            return
+        }
+        companionJob = lifecycleScope.launch {
+            val parsed = withContext(Dispatchers.IO) {
+                runCatching { WebVtt.cues(file.readBytes(), ExternalSubtitle.extensionOf(file.name)) }
+                    .getOrDefault(emptyList())
+            }
+            if (companionFile != file) return@launch
+            companionCueList = parsed
+            while (isActive) {
+                followCompanion()
+                delay(250)
+            }
+        }
+    }
+
+    /**
+     * Lays the companion file's lines for the position reached over the main track's,
+     * with the subtitle sync offset applied the same way the renderer applies it to the
+     * main track (a positive offset holds every line back by that much).
+     */
+    private fun followCompanion() {
+        val exo = player ?: return
+        val at = exo.currentPosition - syncDelays.subtitleMs
+        val active = companionCueList.filter { at >= it.startMs && at < it.endMs }
+        if (active == companionActive) return
+        companionActive = active
+        companionNow = active.map { Cue.Builder().setText(it.text).build() }
+        renderCues()
+    }
+
     /** Fits the subtitles again after 3D changed, as the picture's next layout would. */
     private fun refitSubtitles() {
         touchSurface?.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)?.let(::fitSubtitlesTo)
@@ -4645,7 +4725,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     private val playerListener = object : Player.Listener {
         override fun onCues(cueGroup: CueGroup) {
-            showCues(scaledForPicture(cueGroup.cues))
+            mainCues = scaledForPicture(cueGroup.cues)
+            renderCues()
             if (!firstCuesLogged && cueGroup.cues.isNotEmpty()) {
                 firstCuesLogged = true
                 val pictures = cueGroup.cues.count { it.bitmap != null }
@@ -5206,7 +5287,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         feedback?.zoomGone()
         // The listener is gone before the release, so the player's own "no cues" never arrives:
         // the line on screen would stay frozen over the next video's opening.
-        showCues(emptyList())
+        mainCues = emptyList()
+        companionId = null
+        setCompanionSubtitle(null)
     }
 
     /**
@@ -6314,6 +6397,24 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     override fun attachOnlineSubtitle(file: File, label: String) = subtitleFiles.attachFile(file, label)
+
+    override fun companionTrackId(): String? = companionId
+
+    override fun takeCompanion(trackId: String?, file: File?) {
+        // The id kept is the loaded file's own, which the picker matches its rows against:
+        // a format id can carry a prefix of the player's, the file's id never changes.
+        companionId = if (file == null) null else trackId?.let { asked ->
+            subtitleFiles.files.firstOrNull { config -> ExternalSubtitle.isTrackId(asked, config.id.orEmpty()) }?.id ?: asked
+        }
+        setCompanionSubtitle(file)
+    }
+
+    override fun loadedSubtitleFile(formatId: String?): File? {
+        formatId ?: return null
+        val config = subtitleFiles.files
+            .firstOrNull { candidate -> ExternalSubtitle.isTrackId(formatId, candidate.id.orEmpty()) } ?: return null
+        return config.uri.path?.let { path -> File(path) }
+    }
 
     /**
      * MSone on open (item 10, v1.0.15): in a build without the gateway key, MSone's public site
