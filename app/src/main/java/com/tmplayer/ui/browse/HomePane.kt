@@ -321,6 +321,11 @@ internal fun HomePane(
             showChats = showChannels.mapTo(HashSet()) { it.id },
         )
     }
+    // The full catalog, uncut by the chip (owner, v1.0.18): the Categories list, the
+    // category pages and the language tiles read these, so a category lists the same
+    // from every chip. Cut to the chip, the New & Hot shape held only Trending now
+    // and New this week, and the rest of the categories read as missing.
+    val allCatalog = remember(rows) { rows.filterIsInstance<HomeRow.Catalog>() }
     // Recently added is the featured carousel at the top as well as a row, on a phone and a
     // television alike: its frame is held from the first frame whenever the row is, so nothing
     // below it moves when it fills, and given up (the rows moving up) once its fill finds no
@@ -435,21 +440,25 @@ internal fun HomePane(
     // The Categories index sheet (phone, v1.0.13): opened from the category row's last pill.
     var categoriesOpen by remember { mutableStateOf(false) }
     val catalogRow = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
-    // A category page opened from the Categories list (owner, v1.0.17): the row's key
-    // in the chip's shape, so a Shows home opens the shows' cut of the category. A
-    // language's page ("langpage-<code>", from the language tiles) merges that
-    // language's film and series rows into the one page.
+    // A category page opened from the Categories list (owner, v1.0.17): read from
+    // the full catalog, not the chip's cut (v1.0.18), so the page is the whole
+    // category from every chip. A language's page ("langpage-<code>", from the
+    // language tiles) merges that language's film and series rows into the one
+    // page; a language with no shelf of its own (too few titles to stand as one)
+    // opens on the titles whose own names carry the language (owner, v1.0.18:
+    // every language the chats hold opens).
     var categoryKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val categoryRow = categoryKey?.let { key ->
         if (key.startsWith("langpage-")) {
             val code = key.removePrefix("langpage-")
-            val films = chipRows.firstOrNull { it.key == "catalog-lang-$code" } as? HomeRow.Catalog
-            val shows = chipRows.firstOrNull { it.key == "catalog-series-lang-$code" } as? HomeRow.Catalog
-            val merged = (films?.all.orEmpty() + shows?.all.orEmpty()).distinctBy { it.key }
+            val films = allCatalog.firstOrNull { it.key == "catalog-lang-$code" }
+            val shows = allCatalog.firstOrNull { it.key == "catalog-series-lang-$code" }
+            var merged = (films?.all.orEmpty() + shows?.all.orEmpty()).distinctBy { it.key }
+            if (merged.isEmpty()) merged = languageTaggedEntries(allCatalog, code)
             if (merged.isEmpty()) null
             else HomeRow.Catalog(key, com.tmplayer.data.HomeRows.languageName(code) ?: code, merged.take(com.tmplayer.data.HomeRows.LIMIT), all = merged)
         } else {
-            chipRows.firstOrNull { it.key == key } as? HomeRow.Catalog
+            allCatalog.firstOrNull { it.key == key }
         }
     }
     // A category asked for from the search page's browse sections (owner, v1.0.17).
@@ -961,22 +970,31 @@ internal fun HomePane(
                     // name; a tap opens that language's page, films and shows
                     // together, the way the streaming apps lay languages out.
                     item(key = LANGUAGE_TILES_KEY, contentType = LANGUAGE_TILES_KEY) {
-                        val languageTiles = remember(chipRows) {
+                        val languageTiles = remember(allCatalog) {
                             val codes = LinkedHashSet<String>()
-                        chipRows.filterIsInstance<HomeRow.Catalog>().forEach { row ->
-                            when {
-                                row.kind.startsWith("series-lang-") -> codes += row.kind.removePrefix("series-lang-")
-                                row.kind.startsWith("lang-") -> codes += row.kind.removePrefix("lang-")
+                            allCatalog.forEach { row ->
+                                when {
+                                    row.kind.startsWith("series-lang-") -> codes += row.kind.removePrefix("series-lang-")
+                                    row.kind.startsWith("lang-") -> codes += row.kind.removePrefix("lang-")
+                                }
+                            }
+                            // Every language the chats hold gets a tile (owner,
+                            // v1.0.18): one with too few titles for a shelf of its
+                            // own is still found by the language its titles' names
+                            // carry, on the Movies and Series rows.
+                            val filmsAll = allCatalog.firstOrNull { it.kind == "movies" }?.all.orEmpty()
+                            val showsAll = allCatalog.firstOrNull { it.kind == "series" }?.all.orEmpty()
+                            (filmsAll + showsAll).forEach { entry -> entryLanguageOf(entry)?.let { codes += it } }
+                            codes.mapNotNull { code ->
+                                val films = allCatalog.firstOrNull { it.key == "catalog-lang-$code" }
+                                val shows = allCatalog.firstOrNull { it.key == "catalog-series-lang-$code" }
+                                val first = (films?.all.orEmpty() + shows?.all.orEmpty()).firstOrNull()
+                                    ?: languageTaggedEntries(allCatalog, code).firstOrNull()
+                                    ?: return@mapNotNull null
+                                val name = com.tmplayer.data.HomeRows.languageName(code) ?: return@mapNotNull null
+                                Triple(code, name, first)
                             }
                         }
-                        codes.mapNotNull { code ->
-                            val films = chipRows.firstOrNull { it.key == "catalog-lang-$code" } as? HomeRow.Catalog
-                            val shows = chipRows.firstOrNull { it.key == "catalog-series-lang-$code" } as? HomeRow.Catalog
-                            val first = (films?.all.orEmpty() + shows?.all.orEmpty()).firstOrNull() ?: return@mapNotNull null
-                            val name = com.tmplayer.data.HomeRows.languageName(code) ?: return@mapNotNull null
-                            Triple(code, name, first)
-                        }
-                    }
                         if (languageTiles.size >= 2) {
                             Column(Modifier.padding(top = 10.dp)) {
                                 M3Text(
@@ -1285,13 +1303,13 @@ internal fun HomePane(
     }
 
     // The Categories list on Home itself (phone, owner, v1.0.17): every category the
-    // chats actually hold, in the shape of
-    // the chip standing (the Shows home lists the shows' categories, the Movies home
-    // the movies'), and a tap opens that category's own page, banner first, the way
-    // the streaming apps do it. Which shelves Home builds and their order stay in
-    // Settings, Home, Categories, exactly as they were.
+    // chats actually hold, and a tap opens that category's own page, banner first,
+    // the way the streaming apps do it. The list reads the full catalog, not the
+    // chip's cut (v1.0.18): on the New & Hot chip the cut held only Trending now
+    // and New this week, and the rest read as missing. Which shelves Home builds
+    // and their order stay in Settings, Home, Categories, exactly as they were.
     if (categoriesOpen) {
-        val navRows = chipRows.filterIsInstance<HomeRow.Catalog>()
+        val navRows = allCatalog
         ChoiceSheet(
             title = s.homeCategories,
             note = s.homeCategoriesNote,
@@ -1789,6 +1807,31 @@ private fun RowSeeAll(
             }
         }
     }
+}
+
+/**
+ * The language a tile's own names carry (v1.0.18): a file by its copies' names, a
+ * show by its cover's or an episode's, the same reading the shelves' own language
+ * rows fall back to. Null where no name states one.
+ */
+private fun entryLanguageOf(entry: ShelfEntry): String? = when (entry) {
+    is ShelfEntry.File -> com.tmplayer.data.VideoCopies.languagesOf(entry.item).firstOrNull()
+    is ShelfEntry.Show -> com.tmplayer.data.VideoCopies.languagesOf(entry.series.cover).firstOrNull()
+        ?: entry.series.episodes.firstOrNull()?.let { episode ->
+            com.tmplayer.data.VideoCopies.languagesOf(episode.item).firstOrNull()
+                ?: episode.copies.firstOrNull()?.let { com.tmplayer.data.VideoCopies.languagesOf(it).firstOrNull() }
+        }
+}
+
+/**
+ * Every Movies and Series tile whose names carry [code] (v1.0.18): the entries of
+ * a language page for a language with no shelf of its own, too few titles to
+ * stand as one, which still opens (owner: every language the chats hold opens).
+ */
+private fun languageTaggedEntries(catalog: List<HomeRow.Catalog>, code: String): List<ShelfEntry> {
+    val films = catalog.firstOrNull { it.kind == "movies" }?.all.orEmpty()
+    val shows = catalog.firstOrNull { it.kind == "series" }?.all.orEmpty()
+    return (films + shows).filter { entryLanguageOf(it) == code }.distinctBy { it.key }
 }
 
 /**
