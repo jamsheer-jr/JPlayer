@@ -247,6 +247,11 @@ fun SeasonTabs(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    /**
+     * A hold on a season's tab (item 36, v1.0.15): marks the whole season watched in one
+     * tap. Null leaves the tabs tap only, as on surfaces that offer no marking.
+     */
+    onHoldSeason: ((SeriesSeason) -> Unit)? = null,
 ) {
     val s = LocalStrings.current
     val tv = !isTouch()
@@ -285,7 +290,21 @@ fun SeasonTabs(
                         role = Role.Tab
                         this.selected = chosen
                     }
-                    .clickable(interactionSource = interactions, indication = null) { onSelect(season.number) }
+                    .then(
+                        when {
+                            onHoldSeason != null && tv ->
+                                Modifier.okHold(interactions, { onSelect(season.number) }, { onHoldSeason(season) })
+                            onHoldSeason != null ->
+                                Modifier.combinedClickable(
+                                    interactionSource = interactions,
+                                    indication = androidx.compose.foundation.LocalIndication.current,
+                                    onClick = { onSelect(season.number) },
+                                    onLongClick = { onHoldSeason(season) },
+                                )
+                            else ->
+                                Modifier.clickable(interactionSource = interactions, indication = null) { onSelect(season.number) }
+                        },
+                    )
                     .padding(horizontal = if (tv) 20.dp else 16.dp, vertical = if (tv) 10.dp else 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -784,6 +803,12 @@ fun SeriesPanel(
     seasonPicker: @Composable (selected: Int, onSelect: (Int) -> Unit) -> Unit = { selected, onSelect ->
         SeasonTabs(series.seasons, selected, onSelect)
     },
+    /**
+     * A hold on a season, marking the whole season watched (item 36, v1.0.15). Offered only
+     * with the default tabs: a platform with its own picker keeps its own gestures, and the
+     * page menu's Mark lines cover the same act there. Null leaves holds out.
+     */
+    onMarkSeason: ((SeriesSeason) -> Unit)? = null,
     /** At the top end over the backdrop, for the platform's own close or back control. */
     trailing: @Composable () -> Unit = {},
     /**
@@ -1412,7 +1437,11 @@ fun SeriesPanel(
             }
             item(key = "seasons") {
                 Column(Modifier.fillMaxWidth().padding(pad), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    seasonPicker(shown.number) { season = it }
+                    if (onMarkSeason != null) {
+                        SeasonTabs(series.seasons, shown.number, { season = it }, onHoldSeason = onMarkSeason)
+                    } else {
+                        seasonPicker(shown.number) { season = it }
+                    }
                     if (ranges.isNotEmpty()) EpisodeRanges(ranges = ranges, selected = rangeAt, onSelect = { rangeAt = it })
                     QualityPicker(heights, selected = pickedHeight?.takeIf { it in heights }, onSelect = { pickedHeight = it })
                     Spacer(Modifier.height(2.dp))

@@ -226,6 +226,18 @@ private fun SeriesPage(
                 downloadedIds = downloadedIds,
                 chatTitle = chatTitle,
                 showActions = showActions,
+                // A hold on a season tab marks the whole season watched in one tap (item 36,
+                // v1.0.15): the page menu's own season choice, taken without the menu. The
+                // bulk path is the watched store's, under the acting profile (the store is
+                // the profile's), and Watch later is crossed off only by a whole-show mark,
+                // the menu's rule, never by a season's.
+                onMarkSeason = showActions.onMark?.let { mark ->
+                    { held ->
+                        val choice = com.tmplayer.data.ShowMarks.choices(series, held, watch::finishedEpisode)
+                            .firstOrNull { it.watched && it.scope == com.tmplayer.data.ShowMarks.Scope.Season }
+                        if (choice != null) mark(choice)
+                    }
+                },
                 heroTrailerAutoplay = heroTrailerAutoplay,
                 contentPadding = if (touch) {
                     PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)
