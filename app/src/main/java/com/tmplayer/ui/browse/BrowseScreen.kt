@@ -393,6 +393,10 @@ internal fun BrowseScreen(
     var heldShow by remember { mutableStateOf<Pair<com.tmplayer.data.Series, String>?>(null) }
     // The Live Guide page stands open (item 15, v1.0.16).
     var liveGuideOpen by remember { mutableStateOf(false) }
+    // A tab picked on the bar leaves the guide (owner, 2026-11-08: on the Live page the
+    // bottom buttons read as dead, because the bar switched the page underneath while
+    // the guide went on standing over it).
+    LaunchedEffect(picked) { liveGuideOpen = false }
     var confirmClearHistory by remember { mutableStateOf(false) }
     var confirmClearLater by remember { mutableStateOf(false) }
     // Remove from history on a Continue card, asked first under a remote only: a touch screen
