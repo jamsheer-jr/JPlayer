@@ -397,6 +397,10 @@ internal fun BrowseScreen(
     // bottom buttons read as dead, because the bar switched the page underneath while
     // the guide went on standing over it).
     LaunchedEffect(picked) { liveGuideOpen = false }
+    // Home pressed again while already on Home is a pick of the same tab, so the
+    // effect above never hears it: the guide closes on the reselect itself (owner,
+    // v1.0.20: on the Live See all page the Home button did nothing).
+    RefreshOnReselect(TouchDestination.Home) { liveGuideOpen = false }
     var confirmClearHistory by remember { mutableStateOf(false) }
     var confirmClearLater by remember { mutableStateOf(false) }
     // Remove from history on a Continue card, asked first under a remote only: a touch screen
