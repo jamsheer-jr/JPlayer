@@ -4560,6 +4560,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         intent = intent(this, next, title).putExtra(EXTRA_OUTSIDE_APP_TASK, outside)
         readItem(intent)
         forgetTheLastVideo()
+        stepOpen = true
         openItem()
     }
 
@@ -5852,6 +5853,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     /** Set once [playEpisode] has written the place and stopped the player: nothing later saves. */
     private var savedForHandOver = false
+
+    /**
+     * An episode step is opening in this player (item 4, v1.0.17): the loading sheet
+     * stays down for it and the wait rides on the picture's own buffering spinner, so
+     * no window stands between episodes, as the owner asked. Set by [continueUnseen]
+     * as the step opens; cleared as the open settles ([hideStatus]) or fails
+     * ([showError], which raises its own sheet).
+     */
+    private var stepOpen = false
 
     /**
      * An episode started from the corner window lands in the window's own task, not the app's,
@@ -8931,6 +8941,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         !FormFactor.isTv(this) && orientation == ScreenOrientation.Landscape
 
     private fun showStatus(message: String) {
+        // An episode step opens unseen (item 4, v1.0.17): the sheet stays down and
+        // the buffering spinner over the picture carries the wait. The words are
+        // still kept, so anything reading them later finds the latest state.
+        if (stepOpen) {
+            statusMessage = message
+            return
+        }
         openingFilm = true
         slowStartUp = false
         watchOpening()
@@ -9162,6 +9179,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      *   certain to fail again is worse than offering none.
      */
     private fun showError(message: String, retryable: Boolean = true, freeUp: Boolean = false) {
+        stepOpen = false
         failurePinned = true
         val beyond = beyondDevice
         beyondDevice = false
@@ -9640,6 +9658,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     private fun hideStatus() {
+        stepOpen = false
         slowStartUp = false
         stalledMidPlay = false
         failedRetryable = false
