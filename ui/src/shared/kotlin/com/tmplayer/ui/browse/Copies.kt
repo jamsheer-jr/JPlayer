@@ -619,12 +619,14 @@ private fun CopyOption(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = ink)
                 if (best) {
+                    // Drawn large since the owner missed the small one (2026-11-08): a badge
+                    // nobody sees marks nothing.
                     Text(
                         s.detailBestCopy,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Tone.onAccent,
-                        modifier = Modifier.clip(RoundedCornerShape(percent = 50)).background(Tone.accent).padding(horizontal = 7.dp, vertical = 2.dp),
+                        modifier = Modifier.clip(RoundedCornerShape(percent = 50)).background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
                     )
                 }
             }

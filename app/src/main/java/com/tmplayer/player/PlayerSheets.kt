@@ -1129,12 +1129,12 @@ internal fun CopiesSheet(
                     if (copy.id == bestId) {
                         Text(
                             s.detailBestCopy,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                             color = Tone.onAccent,
                             modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 16.dp)
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
-                                .background(Tone.accent).padding(horizontal = 7.dp, vertical = 2.dp),
+                                .background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
                         )
                     }
                     }
