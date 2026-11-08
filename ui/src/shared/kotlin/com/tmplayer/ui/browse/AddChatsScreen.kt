@@ -108,6 +108,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
+import com.tmplayer.data.AddedChat
 import com.tmplayer.data.AddedChats
 import com.tmplayer.data.ChatBrief
 import com.tmplayer.data.ChatCount
