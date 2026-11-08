@@ -194,6 +194,8 @@ internal fun HomePane(
     onDetails: (MediaItem, String) -> Unit = onHoldMedia,
     /** A live or file stream from the built-in channel's posts (v1.0.10): plays in the player. */
     onPlayStream: (StreamLink) -> Unit = {},
+    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
+    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
     /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
     onRefreshHome: () -> Unit = {},
     /**
@@ -855,6 +857,7 @@ internal fun HomePane(
                         start = start,
                         end = end,
                         onPlayStream = onPlayStream,
+                        onPlayStreamPair = onPlayStreamPair,
                     )
                 }
                 if (touch) {
@@ -2050,16 +2053,17 @@ private fun BuiltInHomeSections(
     start: Dp,
     end: Dp,
     onPlayStream: (StreamLink) -> Unit,
+    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
 ) {
     if (!isTouch()) {
         Column {
             Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
                 SharePlayerPill()
             }
-            LiveStreamsRow(start, end, onPlayStream)
+            LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair)
         }
     } else {
-        LiveStreamsRow(start, end, onPlayStream)
+        LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair)
     }
 }
 
@@ -2083,6 +2087,8 @@ internal fun LiveStreamsRow(
     start: Dp,
     end: Dp,
     onPlayStream: (StreamLink) -> Unit,
+    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
+    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
 ) {
     var streams by remember { mutableStateOf<List<StreamLink>>(emptyList()) }
     // The streams the viewer took out of this row (v1.0.11, owner): kept in Settings by the
@@ -2097,6 +2103,8 @@ internal fun LiveStreamsRow(
     // until their first opening, by the post each came from ([SeenStreams]).
     val seen by remember(settings) { settings.seenStreams }.collectAsState(initial = emptySet())
     var menuFor by remember { mutableStateOf<StreamLink?>(null) }
+    // A live stream waiting for its side-by-side partner to be picked (item 11c, v1.0.15).
+    var pairFor by remember { mutableStateOf<StreamLink?>(null) }
     // When the posts were last read, and whether a hand refresh landed while a read was
     // running and is still owed one (owner, v1.0.15: see [LiveRefresh]).
     var lastReadAt by remember { mutableStateOf(0L) }
@@ -2206,6 +2214,20 @@ internal fun LiveStreamsRow(
                 } else {
                     null
                 },
+                // Two live streams at once (item 11c, v1.0.15): this one and a partner
+                // picked from the row's other live streams, in the menu that follows.
+                if (link.live && onPlayStreamPair != null && shown.any { it.live && it.url != link.url }) {
+                    MenuAction(
+                        label = s.homeLiveSideBySide,
+                        icon = TmIcons.List,
+                        detail = s.homeLiveSideBySideDetail,
+                    ) {
+                        menuFor = null
+                        pairFor = link
+                    }
+                } else {
+                    null
+                },
                 MenuAction(
                     label = s.homeLiveRemove,
                     icon = TmIcons.Delete,
@@ -2222,6 +2244,23 @@ internal fun LiveStreamsRow(
                 },
             ),
             onDismiss = { menuFor = null },
+        )
+    }
+    pairFor?.let { first ->
+        TvMenu(
+            title = s.homeLiveSideBySidePick,
+            actions = shown
+                .filter { it.live && it.url != first.url }
+                .map { second ->
+                    MenuAction(
+                        label = second.name,
+                        icon = TmIcons.Play,
+                    ) {
+                        pairFor = null
+                        onPlayStreamPair?.invoke(first, second)
+                    }
+                },
+            onDismiss = { pairFor = null },
         )
     }
 }

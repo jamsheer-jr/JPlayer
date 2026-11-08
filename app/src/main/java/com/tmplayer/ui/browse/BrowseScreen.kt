@@ -736,6 +736,12 @@ internal fun BrowseScreen(
                                         panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
                                     }
                                 },
+                                // Two live streams side by side (item 11c, v1.0.15).
+                                onPlayStreamPair = { first, second ->
+                                    runCatching {
+                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
+                                    }
+                                },
                                 // Starred chats get a row each under Recently added (2026-10-23), so
                                 // with none the hint says how to add them; only once the rows are
                                 // built, since it flashed up while they were still coming in.
@@ -942,6 +948,11 @@ internal fun BrowseScreen(
                                 onPlayStream = { link ->
                                     runCatching {
                                         panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
+                                    }
+                                },
+                                onPlayStreamPair = { first, second ->
+                                    runCatching {
+                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
                                     }
                                 },
                             )
@@ -2573,6 +2584,8 @@ private fun ChatSection(
     showPin: Boolean = false,
     /** A Live stream pressed under the pin, on a phone: plays in the player, as Home's row does. */
     onPlayStream: (com.tmplayer.data.StreamLink) -> Unit = {},
+    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
+    onPlayStreamPair: ((com.tmplayer.data.StreamLink, com.tmplayer.data.StreamLink) -> Unit)? = null,
 ) {
     val s = LocalStrings.current
     val rowsAreFullBleed = isTouch()
@@ -2767,7 +2780,7 @@ private fun ChatSection(
                     // Home's own Live row, the same loading, cards and rules, not a second
                     // reading of the posts. Nothing stands here while there are no streams.
                     item(key = "j-movies-live", contentType = "j-movies-live") {
-                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream)
+                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair)
                     }
                 }
 

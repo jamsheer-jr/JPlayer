@@ -477,6 +477,16 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private var streamUrl: String? = null
     private var streamLive = false
 
+    /**
+     * A second live stream to open beside the first (item 11c, v1.0.15), when the player
+     * was opened on a pair from the Live row; [split] owns its player and its pane.
+     */
+    private var stream2Url: String? = null
+    private var stream2Live = false
+    private var stream2Dash = false
+    private var stream2Name: String = ""
+    private var split: SplitStream? = null
+
     /** A stream address that is a DASH manifest (.mpd), so its reader is named up front too. */
     private var streamDash = false
 
@@ -1853,6 +1863,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         streamUrl = from.getStringExtra(EXTRA_STREAM_URL)?.takeIf { it.isNotBlank() }
         streamLive = streamUrl != null && from.getBooleanExtra(EXTRA_STREAM_LIVE, false)
         streamDash = streamUrl != null && from.getBooleanExtra(EXTRA_STREAM_DASH, false)
+        stream2Url = from.getStringExtra(EXTRA_STREAM2_URL)?.takeIf { it.isNotBlank() }
+        stream2Live = stream2Url != null && from.getBooleanExtra(EXTRA_STREAM2_LIVE, false)
+        stream2Dash = stream2Url != null && from.getBooleanExtra(EXTRA_STREAM2_DASH, false)
+        stream2Name = from.getStringExtra(EXTRA_STREAM2_NAME).orEmpty()
         pressedAt = from.getLongExtra(EXTRA_PRESSED_AT, 0L)
         openedAt = SystemClock.elapsedRealtime()
         startStages.set(0)
@@ -2000,6 +2014,10 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             openStream()
             return
         }
+        // A file opening in place ends any split (item 11c, v1.0.15): the pair was the
+        // two streams', and the second player goes with its pane.
+        split?.stop()
+        player?.volume = 1f
         if (fileId <= 0) {
             showError(L.playerNothingToPlay, retryable = false)
             return
@@ -2321,6 +2339,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         castClient = client
         attachMediaSession(exo)
         attachSurface(exo)
+        startSplitIfAsked()
         cast?.let { c ->
             c.ready = true
             if (c.connected && !c.casting) c.begin(resumeMs.takeIf { it > 0 })
@@ -6008,6 +6027,38 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         }
     }
 
+    /**
+     * Opens the second stream of a pair beside this one (item 11c, v1.0.15), once the main
+     * player stands. Only a stream pair asks; a file opening in place takes any split
+     * down (see [openItem]). The main player's sound is the split's to borrow: the split
+     * silences it while the second stream has the sound, and gives it back on close, on
+     * failure and here.
+     */
+    private fun startSplitIfAsked() {
+        val url = stream2Url ?: return
+        if (streamUrl == null) return
+        val link = com.tmplayer.data.StreamLink(
+            url = url,
+            live = stream2Live,
+            dash = stream2Dash,
+            name = stream2Name,
+            source = chatTitle,
+            chatId = 0L,
+            messageId = 0L,
+        )
+        val helper = split ?: SplitStream(
+            activity = this,
+            root = findViewById(R.id.player_root),
+            onAudioSwap = { secondHasAudio -> player?.volume = if (secondHasAudio) 0f else 1f },
+            onClosed = { player?.volume = 1f },
+            onFailed = {
+                player?.volume = 1f
+                showGestureFeedback(L.playerSplitFailed)
+            },
+        ).also { split = it }
+        helper.start(link)
+    }
+
     /** Skips [deltaMs], clamped so a burst of remote presses can't run off either end. */
     fun skipBy(deltaMs: Long) {
         if (refuseSeek()) return
@@ -9533,6 +9584,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     override fun onDestroy() {
+        // The split's second player (item 11c, v1.0.15) goes with the screen.
+        split?.stop()
+        split = null
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             runCatching { unregisterReceiver(pipToggleReceiver) }
         }
@@ -9884,6 +9938,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         /** Whether that stream is live: an HLS address, joined at its live edge. */
         private const val EXTRA_STREAM_LIVE = "stream_live"
         private const val EXTRA_STREAM_DASH = "stream_dash"
+
+        /** A second live stream beside the first (item 11c, v1.0.15): the pair's other half. */
+        private const val EXTRA_STREAM2_URL = "stream2_url"
+        private const val EXTRA_STREAM2_LIVE = "stream2_live"
+        private const val EXTRA_STREAM2_DASH = "stream2_dash"
+        private const val EXTRA_STREAM2_NAME = "stream2_name"
         /** How long the note about a missing piece stays up as the video starts. */
         private const val PIECES_NOTICE_MS = 6_000L
 
@@ -10219,6 +10279,18 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 putExtra(EXTRA_STREAM_DASH, link.dash)
                 putExtra(EXTRA_TITLE, link.name)
                 putExtra(EXTRA_CHAT_TITLE, link.source.ifBlank { com.tmplayer.data.BuiltInChannels.J_MOVIES.name })
+            }
+
+        /**
+         * The player on two live streams at once (item 11c, v1.0.15): [first] opens as any
+         * stream does, and [second] is carried for the split pane beside it.
+         */
+        fun streamPairIntent(context: Context, first: com.tmplayer.data.StreamLink, second: com.tmplayer.data.StreamLink): Intent =
+            streamIntent(context, first).apply {
+                putExtra(EXTRA_STREAM2_URL, second.url)
+                putExtra(EXTRA_STREAM2_LIVE, second.live)
+                putExtra(EXTRA_STREAM2_DASH, second.dash)
+                putExtra(EXTRA_STREAM2_NAME, second.name)
             }
     }
 }
