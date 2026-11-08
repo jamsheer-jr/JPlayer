@@ -15,7 +15,7 @@ class HomeNetflixShapeTest {
 
     private var nextId = 1L
 
-    private fun video(chatId: Long, fileName: String) = MediaItem(
+    private fun video(chatId: Long, fileName: String, date: Int = 1) = MediaItem(
         chatId = chatId,
         messageId = nextId++,
         fileId = 1,
@@ -25,7 +25,7 @@ class HomeNetflixShapeTest {
         mimeType = "video/mp4",
         thumbnailFileId = 0,
         miniThumbnail = null,
-        date = 1,
+        date = date,
         fileName = fileName,
     )
 
@@ -148,10 +148,10 @@ class HomeNetflixShapeTest {
 
     @Test
     fun `top picks joins what was watched with what rates well`() {
-        val sharedRated = video(1, "Shared Rated 2024.mp4")
-        val sharedPlain = video(1, "Shared Plain 2024.mp4")
-        val ratedOnly = video(1, "Rated Only 2024.mp4")
-        val neither = video(1, "Neither 2024.mp4")
+        val sharedRated = video(1, "Shared Rated 2024.mp4", date = 4)
+        val sharedPlain = video(1, "Shared Plain 2024.mp4", date = 3)
+        val ratedOnly = video(1, "Rated Only 2024.mp4", date = 2)
+        val neither = video(1, "Neither 2024.mp4", date = 1)
         val films = listOf(sharedRated, sharedPlain, ratedOnly, neither)
         val meta = mapOf(
             sharedRated.id to TitleMeta(listOf("Action"), 6.0),
@@ -170,8 +170,10 @@ class HomeNetflixShapeTest {
         )
         val picks = rows.filterIsInstance<HomeRow.Catalog>().filter { it.kind == "top-picks" }
         assertEquals(1, picks.size)
-        // Most shared genres first, then best rated: the two Action titles lead, the
-        // well rated Drama follows, and the Comedy title stands in neither reading.
+        // Most shared genres first, then best rated, and a tie in the row's own
+        // newest first order, which the fixture's dates set (the rated Action title
+        // is the newest of the four): the two Action titles lead, the well rated
+        // Drama follows, and the Comedy title stands in neither reading.
         assertEquals(
             listOf(sharedRated.messageId, sharedPlain.messageId, ratedOnly.messageId),
             picks.single().entries.map { (it as ShelfEntry.File).item.messageId },
