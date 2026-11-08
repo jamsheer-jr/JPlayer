@@ -63,6 +63,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme as M3
+import androidx.compose.material3.TextButton
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tmplayer.data.AuthState
@@ -446,14 +447,33 @@ private fun TouchPhonePane(
     val submit = { if (ready) submission.start { onSubmit(entry.full) } }
 
     Pane {
-        // The brand band opens the pane, the first screen included: with no way back behind it
-        // (onBack null) the band carries the mark alone, and an arrow that leaves the app is not
-        // what a back arrow means anywhere else.
-        SignInBrandHeader(onBack = onBack)
-        Text(s.loginPhoneTitle, style = MaterialTheme.typography.headlineLarge)
+        // The first screen is the app's front door (owner, 2026-11-08: change the login UI
+        // itself), so it opens with the full lockup, large and centred, and the title and blurb
+        // centred under it; the other panes keep the medium band ([SignInBrandHeader]). With no
+        // way back behind the first screen (onBack null) the band carries the mark alone, and an
+        // arrow that leaves the app is not what a back arrow means anywhere else.
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            if (onBack != null) {
+                Box(Modifier.align(Alignment.CenterStart)) {
+                    BackArrow(onBack = onBack)
+                }
+            }
+            com.tmplayer.ui.components.BrandLockup(
+                size = com.tmplayer.ui.components.BrandSize.Large,
+                layout = com.tmplayer.ui.components.BrandLayout.Stacked,
+            )
+        }
+        Text(
+            s.loginPhoneTitle,
+            style = MaterialTheme.typography.headlineLarge,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
         Text(
             s.loginPhoneBlurb,
             style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
         )
 
         // Telegram's own order: the country, then the code beside the number. A code that no
@@ -534,7 +554,9 @@ private fun TouchPhonePane(
         ) {
             Text(s.loginSendCode)
         }
-        TmSecondaryButton(onClick = onUseQr, modifier = Modifier.paneAction()) {
+        // The QR way in is the quiet alternative on the new front door: a plain text action
+        // under the one big button, not a second filled pill competing with it.
+        TextButton(onClick = onUseQr, modifier = Modifier.paneAction()) {
             Text(s.loginUseQr)
         }
     }
