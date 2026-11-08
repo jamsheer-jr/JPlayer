@@ -303,6 +303,13 @@ internal fun HomePane(
             Column(Modifier.fillMaxSize().padding(top = under)) {
                 tvHeader?.invoke(false)
                 if (touch) PhoneHomeBrand(Modifier.padding(start = start, top = BRAND_TOP), onArt = false)
+                // Home loading is a page, never a black wait (owner, 2026-11-08: on a
+                // cold open the content sat black and read as a crash; it is the same
+                // page a return from the QR scanner lands on when the process was
+                // killed under the camera). The skeleton stands in the rows' own
+                // shapes, banner first, then shelves of posters, so the page reads
+                // as Home filling in and nothing shifts far when the rows land.
+                HomeLoadingSkeleton(start = start, end = end)
             }
             return
         }
@@ -3152,6 +3159,40 @@ private class FeaturedFill {
     fun completed(): Set<String> {
         version
         return synchronized(done) { done.toSet() }
+    }
+}
+
+/**
+ * Home's shape while its first rows are still being built: the banner's place, then
+ * two shelves of posters, in the measures the real rows take, so a cold open shows
+ * Home filling in rather than a black page (owner, 2026-11-08).
+ */
+@Composable
+private fun HomeLoadingSkeleton(start: androidx.compose.ui.unit.Dp, end: androidx.compose.ui.unit.Dp) {
+    val shimmer = com.tmplayer.ui.components.rememberShimmer()
+    Column(
+        Modifier.fillMaxSize().padding(start = start, end = end, top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        com.tmplayer.ui.components.SkeletonBox(
+            shimmer,
+            Modifier.fillMaxWidth().height(190.dp),
+            androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        )
+        repeat(2) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                com.tmplayer.ui.components.SkeletonBox(shimmer, Modifier.width(130.dp).height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    repeat(4) {
+                        com.tmplayer.ui.components.SkeletonBox(
+                            shimmer,
+                            Modifier.width(126.dp).height(189.dp),
+                            androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
