@@ -132,8 +132,6 @@ class TrackPickerFragment : Fragment() {
     private enum class Group(val heading: () -> String?) {
         Tracks({ null }),
         Online({ null }),
-        /** The second subtitle of a pair shown together (item 11a, v1.0.15). */
-        Second({ L.tracksSectionSecond }),
         Timing({ L.tracksSectionTiming }),
         Look({ L.tracksSectionLook }),
     }
@@ -259,43 +257,31 @@ class TrackPickerFragment : Fragment() {
                 }
                 return@buildList
             }
+            // The pair playing together, where there is one (see [pickTrack]): the main
+            // track is the first of the pair in this list's order, the companion the
+            // second, and the companion's row says so.
+            val chosenPair = if (trackType == C.TRACK_TYPE_TEXT) {
+                options.filter { it.group != null && isSelected(player.currentTracks, it) }
+            } else {
+                emptyList()
+            }
+            val companion = chosenPair.getOrNull(1)
             options.forEachIndexed { index, option ->
                 val selected = isSelected(player.currentTracks, option)
+                val isCompanion = companion != null && option.group != null &&
+                    option.group === companion.group && option.trackIndex == companion.trackIndex
                 add(
                     Line(
                         key = "track$index",
                         title = option.label,
-                        detail = listOfNotNull(if (selected) L.tracksPlayingNow else null, option.detail)
-                            .ifEmpty { null }?.joinToString("  ·  "),
+                        detail = listOfNotNull(
+                            if (isCompanion) L.tracksDual else null,
+                            if (selected && !isCompanion) L.tracksPlayingNow else null,
+                            option.detail,
+                        ).ifEmpty { null }?.joinToString("  ·  "),
                         selected = selected,
-                    ) { choose(option) },
+                    ) { pickTrack(option) },
                 )
-            }
-            // The second subtitle (item 11a, v1.0.15): the same tracks again under their
-            // own heading, for the one shown together with the main one. The main track is
-            // the first of the pair in this list's order; picking a new main track above
-            // clears the second, as choose() clears every override of the type.
-            if (trackType == C.TRACK_TYPE_TEXT) {
-                val chosen = options.filter { it.group != null && isSelected(player.currentTracks, it) }
-                val main = chosen.firstOrNull()
-                val second = chosen.getOrNull(1)
-                options.forEachIndexed { index, option ->
-                    if (option.group == null) return@forEachIndexed
-                    val isSecond = second != null && option.group === second.group && option.trackIndex == second.trackIndex
-                    add(
-                        Line(
-                            key = "second$index",
-                            title = option.label,
-                            detail = when {
-                                isSecond -> L.tracksSecondShowing
-                                main != null && option.group === main.group && option.trackIndex == main.trackIndex -> L.tracksPlayingNow
-                                else -> option.detail
-                            },
-                            selected = isSecond,
-                            group = Group.Second,
-                        ) { chooseSecond(option) },
-                    )
-                }
             }
             if (trackType == C.TRACK_TYPE_TEXT) {
                 addAll(openLines())
@@ -415,14 +401,41 @@ class TrackPickerFragment : Fragment() {
     }
 
     /**
-     * Picks (or unpicks) the second subtitle (item 11a, v1.0.15): the pair is rebuilt as
-     * two overrides of the text type, the main track first, so both render together in the
-     * one subtitle view, the second's lines above the main one's as the view stacks them,
-     * with the panel's styling and lift applying to the pair as one. Picking the track
-     * that is already the second takes it off again; picking with nothing playing makes
-     * the pick the only track. Which of the pair is called the main one is the first in
-     * the panel's order, so after a pair is set the two may trade names here while the
-     * pair on screen is unchanged.
+     * The one tap rule for the subtitle list (owner, v1.0.16): there is no second list
+     * and no dual toggle, the list itself is the whole control. A tap picks the track
+     * as the subtitle, as [choose] always did; a tap on another track while one is
+     * playing makes that track the companion shown together with the first (see
+     * [chooseSecond]); a tap on the companion takes the companion off again, leaving
+     * the main track playing. Sound, and the Off row, keep [choose] as they are.
+     */
+    private fun pickTrack(option: Option) {
+        val player = host?.player
+        if (trackType != C.TRACK_TYPE_TEXT || option.group == null || player == null) {
+            choose(option)
+            return
+        }
+        val chosen = optionsOf(player).filter { it.group != null && isSelected(player.currentTracks, it) }
+        val main = chosen.firstOrNull()
+        val companion = chosen.getOrNull(1)
+        val isCompanion = companion != null && option.group === companion.group && option.trackIndex == companion.trackIndex
+        val isMain = main != null && option.group === main.group && option.trackIndex == main.trackIndex
+        when {
+            isCompanion -> chooseSecond(option)
+            isMain || main == null -> choose(option)
+            else -> chooseSecond(option)
+        }
+    }
+
+    /**
+     * Picks (or unpicks) the companion subtitle shown together with the main one: the
+     * pair is rebuilt as two overrides of the text type, the main track first, so both
+     * render together in the one subtitle view, the companion's lines above the main
+     * one's as the view stacks them, with the panel's styling and lift applying to the
+     * pair as one. Picking the track that is already the companion takes it off again;
+     * picking with nothing playing makes the pick the only track. Which of the pair is
+     * called the main one is the first in the panel's order, so after a pair is set the
+     * two may trade names here while the pair on screen is unchanged. Reached only
+     * through [pickTrack]: the one list carries the whole dual choice (owner, v1.0.16).
      */
     private fun chooseSecond(option: Option) {
         val player = host?.player
@@ -654,7 +667,7 @@ class TrackPickerFragment : Fragment() {
         /** Bumped by every in-place change, so the touch controls redraw what they read from the host. */
         version: Int = 0,
     ) {
-        val (choose, adjust) = lines.partition { it.group == Group.Tracks || it.group == Group.Online || it.group == Group.Second }
+        val (choose, adjust) = lines.partition { it.group == Group.Tracks || it.group == Group.Online }
         // On a touch screen the timing and the look are controls rather than lines: one stepper
         // for Earlier and Later, the size and position as segments, the box as a switch. Six
         // look-alike lines that each nudged or cycled something read as a puzzle under a finger.
