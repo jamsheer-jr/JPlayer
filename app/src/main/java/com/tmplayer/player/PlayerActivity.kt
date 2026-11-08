@@ -2858,8 +2858,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     /**
      * A tap on the quality badge (phone): the quality chooser (J Player, 2026-11-06), an
-     * MX style list of the tiers this video's copies have, each with its best copy's height
-     * and size, instead of cycling blind to the next tier. Choosing a tier switches through
+     * MX style list of the levels this video's copies have (SD, SD+, HD, HD+, UHD: the
+     * owner's levels, v1.0.18), each with its best copy's height
+     * and size, instead of cycling blind to the next tier. Choosing a level switches through
      * the same switch the copies list makes, so the place carries over and the pick is
      * remembered the same way. One tier only, or none known: Telegram's own qualities, when
      * there are any, open in the copies sheet; otherwise the badge just names what plays.
@@ -2869,7 +2870,13 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             openStreamQuality()
             return
         }
-        val choices = VideoCopies.tierChoices(copies, currentItem().id)
+        val current = currentItem()
+        val parsed = com.tmplayer.data.MediaName.parse(current.fileName, current.caption)
+        val choices = VideoCopies.tierChoices(
+            copies,
+            current.id,
+            series = parsed.episode != null || parsed.season != null,
+        )
         if (choices.size < 2) {
             if (telegramQualities().isNotEmpty()) openCopies()
             else playingBadge()?.let { showGestureFeedback(it) }

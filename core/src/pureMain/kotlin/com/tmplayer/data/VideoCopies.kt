@@ -253,28 +253,38 @@ object VideoCopies {
             )
     }
 
-    /** One row of the quality chooser: a tier, the copy choosing it plays, and whether it is playing. */
+    /** One row of the quality chooser: a level, the copy choosing it plays, and whether it is playing. */
     data class TierChoice(val tier: String, val copy: MediaItem, val current: Boolean)
 
     /**
      * The quality chooser's rows (J Player, 2026-11-06: the badge tap opens a chooser instead of
-     * cycling blind): every tier [copies] actually has, lowest first, each with its own best copy
-     * by the order copies are always offered in (tallest picture, then the better codec, then
-     * largest file), and the tier playing marked. Copies whose height is not known take no part.
+     * cycling blind). The rows are the owner's levels (owner, v1.0.18: the levels he named,
+     * HD+ and SD+ among them, belong here, in this chooser, judged on each resolution's size
+     * by [levelOf], or by [seriesLevelOf] for an episode): every level [copies] actually has,
+     * lowest first, each with its own best copy by the order copies are always offered in
+     * (tallest picture, then the better codec, then largest file), and the level playing
+     * marked. A copy under a movie's floor ([CopyLevel.Below]) still stands here at SD: the
+     * chooser offers what the video has, and a film whose only copy is 360p still has a
+     * quality to name. Copies whose height is not known take no part.
      */
-    fun tierChoices(copies: List<MediaItem>, currentId: String): List<TierChoice> {
-        fun tierOf(item: MediaItem): String? = heightOf(item)?.let { badgeForHeight(it) }
-        val currentTier = copies.firstOrNull { it.id == currentId }?.let { tierOf(it) }
-        return TIERS.mapNotNull { tier ->
+    fun tierChoices(copies: List<MediaItem>, currentId: String, series: Boolean = false): List<TierChoice> {
+        val level: (MediaItem) -> CopyLevel = if (series) ::seriesLevelOf else ::levelOf
+        fun shown(item: MediaItem): CopyLevel? = when (val found = level(item)) {
+            CopyLevel.Unknown -> null
+            CopyLevel.Below -> CopyLevel.Sd
+            else -> found
+        }
+        val current = copies.firstOrNull { it.id == currentId }?.let { shown(it) }
+        return listOf(CopyLevel.Sd, CopyLevel.SdPlus, CopyLevel.Hd, CopyLevel.HdPlus, CopyLevel.Uhd).mapNotNull { wanted ->
             val best = copies
-                .filter { tierOf(it) == tier }
+                .filter { shown(it) == wanted }
                 .maxWithOrNull(
                     compareBy<MediaItem> { heightOf(it) ?: 0 }
                         .thenBy { MediaFacts.codecRank(MediaFacts.of(it).videoCodec) }
                         .thenBy { it.sizeBytes },
                 )
                 ?: return@mapNotNull null
-            TierChoice(tier, best, tier == currentTier)
+            TierChoice(wanted.label, best, wanted == current)
         }
     }
 
@@ -304,7 +314,7 @@ object VideoCopies {
      * at 1080p the high copies (2 GB and up) are HD+ and the rest HD; at 720p a copy
      * of 2 GB and up is promoted to HD and the rest are SD+; under 720p is SD, at
      * whatever size (400 MB, 700 MB, 900 MB alike, the owner's own examples); under
-     * 480p is [Below], under the floor a movie's copies do not go. A copy whose
+     * 480p is [Below], the lowest reading a copy gets. A copy whose
      * height nothing states is [Unknown]: no level is read into it from its size.
      */
     enum class CopyLevel(val label: String) {
@@ -346,35 +356,6 @@ object VideoCopies {
             height >= 1000 -> CopyLevel.Hd
             else -> CopyLevel.Sd
         }
-    }
-
-    /**
-     * [rows] grouped under the owner's levels, in the order copies are always offered
-     * (the [tiersOf] order inside every group, so the two groupings never disagree about
-     * which copy stands first). A movie's rows are classed by [levelOf] and the ones
-     * under its floor ([CopyLevel.Below]) are left out, except the ones [keepBelow]
-     * holds back: the copy playing, or the copy a page was opened from, stays listed
-     * under its own last group, as it does under [tiersOf]. A series' rows ([series])
-     * are classed by [seriesLevelOf], which has no floor and drops nothing.
-     */
-    fun <T> levelTiersOf(
-        rows: List<T>,
-        copyOf: (T) -> MediaItem,
-        keepBelow: (T) -> Boolean = { false },
-        series: Boolean = false,
-    ): List<Pair<CopyLevel, List<T>>> {
-        val level: (MediaItem) -> CopyLevel = if (series) ::seriesLevelOf else ::levelOf
-        val sorted = rows.sortedWith(
-            compareByDescending<T> { heightOf(copyOf(it)) ?: 0 }
-                .thenByDescending { MediaFacts.codecRank(MediaFacts.of(copyOf(it)).videoCodec) }
-                .thenByDescending { copyOf(it).sizeBytes },
-        )
-        return sorted
-            .filter { level(copyOf(it)) != CopyLevel.Below || keepBelow(it) }
-            .groupBy { level(copyOf(it)) }
-            .entries
-            .sortedBy { it.key.ordinal }
-            .map { it.key to it.value }
     }
 
     /**

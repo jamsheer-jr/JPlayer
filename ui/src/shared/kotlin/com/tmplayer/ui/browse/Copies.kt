@@ -477,19 +477,14 @@ private fun CopyChooser(
     // Sorted and grouped the one way copies are always offered ([VideoCopies.tiersOf]), the
     // grouping the player's Copies sheet shares, so the two lists never disagree: quality
     // first, as each group's one heading; the copies whose name states none come last.
-    // Copies group under the owner's levels (item 22, v1.0.17): a movie's under its five
-    // levels with their floor, an episode's under the series' three. Either way the key a
-    // group carries is the heading it stands under, with null for the copies stating no
-    // quality, headed as they always were.
+    // The key a group carries is the heading it stands under: its first copy's stated
+    // quality, with null for the copies stating no quality, headed as they always were.
+    // (The owner's levels belong to the player's quality chooser, not to this list:
+    // owner, v1.0.18.)
     val tiers: List<Pair<String?, List<Pair<MediaItem, List<MediaItem>>>>> = remember(files, item.id) {
         val mapped = files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }
-        val parsed = com.tmplayer.data.MediaName.parse(item.fileName, item.caption)
-        VideoCopies.levelTiersOf(
-            mapped,
-            { it.first },
-            keepBelow = { it.first.id == item.id },
-            series = parsed.episode != null || parsed.season != null,
-        ).map { (level, group) -> (level.label.takeIf { it.isNotEmpty() }) to group }
+        VideoCopies.tiersOf(mapped) { it.first }
+            .map { (height, group) -> (height?.let { group.first().first.copyQuality() }) to group }
     }
     val rows = remember(tiers) { tiers.flatMap { it.second } }
     // The best copy standing (item 13, v1.0.16): the first row of the first group, the

@@ -371,14 +371,49 @@ class VideoCopiesTest {
     }
 
     @Test
-    fun `the chooser lists each tier once, lowest first, with its best copy and the playing tier marked`() {
+    fun `the chooser lists each level once, lowest first, with its best copy and the playing level marked`() {
         val hdBig = video(2, 60, "Night.Train.2019.1080p.BluRay.mkv", size = 2_000L shl 20)
         val choices = VideoCopies.tierChoices(listOf(uhd, hd, sd, hdBig), hd.id)
-        assertEquals(listOf("SD", "HD", "UHD"), choices.map { it.tier })
+        // The levels (owner, v1.0.18): the light 720p stands at SD+, the 1080p copies at HD.
+        assertEquals(listOf("SD+", "HD", "UHD"), choices.map { it.tier })
         assertEquals(hd.id, choices[1].copy.id)
         assertEquals(listOf(false, true, false), choices.map { it.current })
         val unknown = video(1, 99, "Mystery.File.mkv")
-        assertEquals(listOf("SD"), VideoCopies.tierChoices(listOf(sd, unknown), sd.id).map { it.tier })
+        assertEquals(listOf("SD+"), VideoCopies.tierChoices(listOf(sd, unknown), sd.id).map { it.tier })
+    }
+
+    @Test
+    fun `the chooser reads a heavy 720p as HD and a heavy 1080p as HD+`() {
+        // The owner's own screenshot (v1.0.18): the levels are judged on each
+        // resolution's size, so a 720p of 3.69 GB stands at HD and a 1080p of
+        // 3.54 GB at HD+, where the badge's plain height bands said SD and HD.
+        val gb = 1024L * 1024 * 1024
+        val heavy720 = video(1, 70, "Film.2026.720p.mkv", size = 3 * gb)
+        val heavy1080 = video(1, 71, "Film.2026.1080p.mkv", size = 3 * gb)
+        val choices = VideoCopies.tierChoices(listOf(heavy720, heavy1080), heavy1080.id)
+        assertEquals(listOf("HD", "HD+"), choices.map { it.tier })
+        assertEquals(heavy720.id, choices[0].copy.id)
+        assertEquals(heavy1080.id, choices[1].copy.id)
+        assertEquals(listOf(false, true), choices.map { it.current })
+    }
+
+    @Test
+    fun `the chooser gives an episode only its three levels`() {
+        val gb = 1024L * 1024 * 1024
+        val ep720 = video(1, 72, "Show.S01E01.720p.mkv", size = 3 * gb)
+        val ep1080 = video(1, 73, "Show.S01E01.1080p.mkv", size = 300L shl 20)
+        val ep2160 = video(1, 74, "Show.S01E01.2160p.mkv")
+        val choices = VideoCopies.tierChoices(listOf(ep720, ep1080, ep2160), ep720.id, series = true)
+        assertEquals(listOf("SD", "HD", "UHD"), choices.map { it.tier })
+        assertEquals(listOf(true, false, false), choices.map { it.current })
+    }
+
+    @Test
+    fun `the chooser still names a film whose only copy is under the floor`() {
+        val tiny = video(1, 75, "Film.2026.360p.mkv", size = 300L shl 20)
+        val choices = VideoCopies.tierChoices(listOf(tiny), tiny.id)
+        assertEquals(listOf("SD"), choices.map { it.tier })
+        assertEquals(listOf(true), choices.map { it.current })
     }
 
     @Test
@@ -459,22 +494,6 @@ class VideoCopiesTest {
         assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.seriesLevelOf(video(1, 32, "Show.S01E01.720p.mkv")))
         assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.seriesLevelOf(video(1, 33, "Show.S01E01.360p.mkv", size = 150L shl 20)))
         assertEquals(VideoCopies.CopyLevel.Unknown, VideoCopies.seriesLevelOf(video(1, 34, "Show.S01E01.mkv")))
-    }
-
-    @Test
-    fun `level groups drop a movie copy under the floor and keep an episode one`() {
-        val hdMovie = video(1, 40, "Film.2026.1080p.mkv", size = 1500L shl 20)
-        val tinyMovie = video(1, 41, "Film.2026.360p.mkv", size = 300L shl 20)
-        val movieGroups = VideoCopies.levelTiersOf(listOf(tinyMovie, hdMovie), { it })
-        assertEquals(listOf(VideoCopies.CopyLevel.Hd), movieGroups.map { it.first })
-        // Held back, the floored copy stands in its own last group.
-        val held = VideoCopies.levelTiersOf(listOf(tinyMovie, hdMovie), { it }, keepBelow = { it.id == tinyMovie.id })
-        assertEquals(listOf(VideoCopies.CopyLevel.Hd, VideoCopies.CopyLevel.Below), held.map { it.first })
-        val epHd = video(1, 42, "Show.S01E01.1080p.mkv")
-        val epTiny = video(1, 43, "Show.S01E01.360p.mkv", size = 150L shl 20)
-        val seriesGroups = VideoCopies.levelTiersOf(listOf(epTiny, epHd), { it }, series = true)
-        assertEquals(listOf(VideoCopies.CopyLevel.Hd, VideoCopies.CopyLevel.Sd), seriesGroups.map { it.first })
-        assertEquals(listOf(epTiny.id), seriesGroups[1].second.map { it.id })
     }
 
     @Test
