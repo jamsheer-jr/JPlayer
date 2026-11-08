@@ -166,6 +166,25 @@ internal fun HomeThemed(content: @Composable () -> Unit) {
     )
 }
 
+/**
+ * The row a full page (See all, a category) was opened on, held for as long as its
+ * [key] stands: Home's rows are rebuilt under an open page (a refresh landing, a
+ * deepening arriving, a re-read on reconnect), and a rebuild that has not reached
+ * this row again yet reads as no row at all, which closed the page under the
+ * viewer, so Back from a title opened in it landed on plain Home instead of the
+ * page (owner, v1.0.18: "aa catagory ilekkan pokendath, homilekk alla"). A row
+ * found again takes the held one's place at once, so the page still follows the
+ * shelves; only an absence borrows the held row. Cleared with its key.
+ */
+@Composable
+private fun <T : Any> rememberHeldRow(key: String?, found: T?): T? {
+    var held by remember { mutableStateOf<T?>(null) }
+    LaunchedEffect(key, found) {
+        if (key == null) held = null else if (found != null) held = found
+    }
+    return if (key == null) null else found ?: held
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun HomePane(
@@ -439,7 +458,10 @@ internal fun HomePane(
     var catalogKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     // The Categories index sheet (phone, v1.0.13): opened from the category row's last pill.
     var categoriesOpen by remember { mutableStateOf(false) }
-    val catalogRow = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
+    val catalogFound = catalogKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Catalog }
+    // Held while its page stands (see rememberHeldRow): a rebuild under the page
+    // must not close it and drop Back on plain Home.
+    val catalogRow = rememberHeldRow(catalogKey, catalogFound)
     // A category page opened from the Categories list (owner, v1.0.17): read from
     // the full catalog, not the chip's cut (v1.0.18), so the page is the whole
     // category from every chip. A language's page ("langpage-<code>", from the
@@ -448,7 +470,7 @@ internal fun HomePane(
     // opens on the titles whose own names carry the language (owner, v1.0.18:
     // every language the chats hold opens).
     var categoryKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
-    val categoryRow = categoryKey?.let { key ->
+    val categoryFound = categoryKey?.let { key ->
         if (key.startsWith("langpage-")) {
             val code = key.removePrefix("langpage-")
             val films = allCatalog.firstOrNull { it.key == "catalog-lang-$code" }
@@ -461,6 +483,9 @@ internal fun HomePane(
             allCatalog.firstOrNull { it.key == key }
         }
     }
+    // Held while its page stands (see rememberHeldRow): Back from a title opened
+    // in the page returns to this page, never to plain Home (owner, v1.0.18).
+    val categoryRow = rememberHeldRow(categoryKey, categoryFound)
     // A category asked for from the search page's browse sections (owner, v1.0.17).
     val categoryAsked by CategoryOpenRequest.pending.collectAsStateWithLifecycle()
     LaunchedEffect(categoryAsked) {
@@ -478,7 +503,8 @@ internal fun HomePane(
     val linkContext = LocalContext.current
     val linkSettings = remember { SettingsStore(linkContext) }
     val linkHistory by remember(linkSettings) { linkSettings.linkHistory }.collectAsState(initial = emptyList())
-    val seeAllRow = seeAllKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Recent }
+    val seeAllFound = seeAllKey?.let { key -> rows.firstOrNull { it.key == key } as? HomeRow.Recent }
+    val seeAllRow = rememberHeldRow(seeAllKey, seeAllFound)
     // The row whose tiles the remote goes back to once its page closes.
     var returnTo by remember { mutableStateOf<String?>(null) }
     val listState = com.tmplayer.ui.components.rememberAheadListState(column = true)
