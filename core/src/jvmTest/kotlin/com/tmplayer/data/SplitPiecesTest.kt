@@ -89,6 +89,9 @@ class SplitPiecesTest {
             // split ZIP of a film is an archive's pieces, never a video's.
             "Night_Train_2019_2160p_WEB_DL_mkv_zip.001",
             "Night_Train_2019_mkv_7z.002",
+            // And the archive written before the video's extension, either spelling.
+            "Night.Train.2019.zip.mkv.001",
+            "Night_Train_2019_zip_mkv.012",
         ).forEach { assertNull(it, SplitPieces.pieceOf(it)) }
     }
 
@@ -106,6 +109,20 @@ class SplitPiecesTest {
             assertFalse(it, MediaMapper.looksLikeVideo(it, "application/octet-stream"))
             assertFalse(it, MediaMapper.looksLikeVideo(it, "video/x-matroska"))
         }
+        // The archive before the extension reads as a volume in both spellings too.
+        listOf("Film.zip.mkv.001", "Film_zip_mkv.012").forEach {
+            assertTrue(it, SplitPieces.isArchiveVolume(it))
+            assertFalse(it, MediaMapper.looksLikeVideo(it, "application/octet-stream"))
+        }
+    }
+
+    @Test
+    fun `an archive word inside a title is only a word`() {
+        // The refusal reads the name's last two words only: a title that merely
+        // holds the word cuts and joins like any other video.
+        val piece = SplitPieces.pieceOf("The.Zip.Line.2026.1080p.mkv.003")
+        assertEquals(3, piece?.number)
+        assertFalse(SplitPieces.isArchiveVolume("The.Zip.Line.2026.1080p.mkv.003"))
     }
 
     @Test

@@ -297,10 +297,14 @@ object SplitPieces {
 
     private fun piece(base: String, digits: String, certain: Boolean): SplitPiece? {
         if (base.isBlank()) return null
-        // The cut file's own last word, dots or underscores alike ("Film.mkv.zip",
-        // "Film_mkv_zip"): an archive was cut, not a video, and no piece of it is
-        // a piece of a video. Unpacking stays the archive tool's work, not a player's.
-        if (base.split(SEPARATORS).lastOrNull()?.lowercase() in ARCHIVES) return null
+        // The cut file's own last words, dots or underscores alike: an archive word
+        // in either of the last two ("Film.mkv.zip", "Film_mkv_zip", and the same
+        // archive written the other way round, "Film.zip.mkv", "Film_zip_mkv")
+        // names an archive that was cut, not a video, and no piece of it is a piece
+        // of a video. An archive word earlier in the name is a title word and says
+        // nothing ("The.Zip.2026.mkv" still cuts and joins). Unpacking stays the
+        // archive tool's work, not a player's.
+        if (base.split(SEPARATORS).takeLast(2).any { it.lowercase() in ARCHIVES }) return null
         val number = digits.toIntOrNull() ?: return null
         return SplitPiece(base = base, number = number, certain = certain)
     }
@@ -322,9 +326,13 @@ object SplitPieces {
         "iso", "img", "exe", "apk",
     )
 
-    /** ".7z.001", ".zip.002", ".part1.rar", ".r00", ".z01", ".rar". */
+    /**
+     * ".7z.001", ".zip.002", ".part1.rar", ".r00", ".z01", ".rar", and the archive
+     * written before the video's extension (".zip.mkv.001", the mirror of the plain
+     * ".mkv.zip.001"): the archive word sits in the last two words either way.
+     */
     private val ARCHIVE_VOLUME = Regex(
-        """\.(7z|zip|rar|tar|gz|tgz|bz2|xz|zst)\.(part)?\d{1,4}$|\.part\d{1,4}\.rar$|\.[rz]\d{2}$|\.(rar|7z|zip)$""",
+        """\.(7z|zip|rar|tar|gz|tgz|bz2|xz|zst)\.(part)?\d{1,4}$|\.(zip|7z|rar)\.[a-z0-9]{2,4}\.\d{1,4}$|\.part\d{1,4}\.rar$|\.[rz]\d{2}$|\.(rar|7z|zip)$""",
     )
 
     private val SEPARATORS = Regex("""[._\s-]+""")
