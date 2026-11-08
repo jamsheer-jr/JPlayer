@@ -2754,6 +2754,13 @@ private fun ChatSection(
                     item(key = "j-movies-pin", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-pin") {
                         JMoviesPin(onJMoviesPin)
                     }
+                    // The channel's Live streams under the pin on the grid too (item 2,
+                    // v1.0.16): the phone's list had them and the television's grid did
+                    // not, so on a TV the channel stood with its name and no streams.
+                    // The same row as Home's and the phone list's, spanning the grid.
+                    item(key = "j-movies-live", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-live") {
+                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair)
+                    }
                 }
                 gridItems(chats, key = { it.id }, contentType = { "chat" }) { chat ->
                     ChatRow(

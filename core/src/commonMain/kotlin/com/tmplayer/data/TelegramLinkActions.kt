@@ -174,9 +174,9 @@ class TelegramLinkActions(private val td: TdlClient) {
      * own text or its caption. A chat the account cannot read (not a member, or gone) gives
      * an empty list rather than an error: the card simply has nothing new to say.
      */
-    suspend fun recentPosts(chatId: Long): List<ChannelPost> = withContext(Dispatchers.IO) {
+    suspend fun recentPosts(chatId: Long, limit: Int = RECENT_POSTS): List<ChannelPost> = withContext(Dispatchers.IO) {
         if (chatId == 0L) return@withContext emptyList()
-        val history = td.getChatHistory(chatId, 0, 0, RECENT_POSTS, false).valueOrNull
+        val history = td.getChatHistory(chatId, 0, 0, limit, false).valueOrNull
             ?: return@withContext emptyList()
         history.messages.filterNotNull().map { message ->
             val photo = (message.content as? dev.g000sha256.tdl.dto.MessagePhoto)?.photo
@@ -233,6 +233,14 @@ class TelegramLinkActions(private val td: TdlClient) {
          * newest stream links, and few enough that a Home visit stays one cheap call.
          */
         const val RECENT_POSTS = 30
+
+        /**
+         * The posts the Live read takes (item 2, v1.0.16): the channel's stream posts are
+         * older than its newest file posts, and at thirty they fell out of the window, so
+         * the channel stood in the Chats list with no streams under it. A hundred posts
+         * is still one cheap call, and the row shows at most ten streams from them.
+         */
+        const val LIVE_POSTS = 100
     }
 }
 

@@ -2130,7 +2130,7 @@ internal fun LiveStreamsRow(
         // The resolved id is kept process wide: duplicate folding leads with this channel's
         // own post of a file wherever copies fold (owner, 2026-11-06).
         BuiltInChannels.jMoviesChatId = chatId
-        val posts = runCatching { actions.recentPosts(chatId) }.getOrDefault(emptyList())
+        val posts = runCatching { actions.recentPosts(chatId, TelegramLinkActions.LIVE_POSTS) }.getOrDefault(emptyList())
         streams = StreamLinks.inPosts(posts, chatId, preview.title.ifBlank { channel.name })
         lastReadAt = System.currentTimeMillis()
     }
@@ -2154,18 +2154,27 @@ internal fun LiveStreamsRow(
     }
 
     LaunchedEffect(Unit) { readOnce() }
+    // A read that found no session, or no streams, is tried again when the session
+    // (re)connects (item 2, v1.0.16): the row is composed before TDLib is up on a cold
+    // start, and a first read silently answering nothing left the channel standing in
+    // the Chats list with no streams under it until something else happened to ask.
+    LaunchedEffect(Unit) {
+        Td.connected.collect { connected -> if (connected && streams.isEmpty()) readOnce() }
+    }
     // The asks (LiveRefresh): arriving at the page or back at the app, and the viewer's own
     // refreshes. An arrival waits a moment first (TDLib pulls in what it missed on coming
     // to the front, and the read should land after that, not before it) and is skipped
     // while the last read is still fresh, so a walk between Home and Chats is not a series
-    // of reads. A forced ask, a hand's refresh, always reads.
+    // of reads. A forced ask, a hand's refresh, always reads. An empty row waits for no
+    // gap at all (item 2, v1.0.16): it has nothing to show, and the streams it is missing
+    // are the whole reason for the ask.
     LaunchedEffect(Unit) {
         LiveRefresh.asked.collect { forced ->
             if (forced) {
                 if (readLock.isLocked) owedRead = true else readOnce()
             } else {
                 kotlinx.coroutines.delay(LIVE_ARRIVAL_SETTLE_MS)
-                if (!readLock.isLocked && System.currentTimeMillis() - lastReadAt >= LIVE_ARRIVAL_GAP_MS) readOnce()
+                if (!readLock.isLocked && (streams.isEmpty() || System.currentTimeMillis() - lastReadAt >= LIVE_ARRIVAL_GAP_MS)) readOnce()
             }
         }
     }
