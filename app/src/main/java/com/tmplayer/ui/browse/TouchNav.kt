@@ -282,9 +282,12 @@ internal fun TouchNavHost(
     if (spec != null && !spec.hidden) lastShown[0] = spec
 
     // A press on the button of the page already on screen takes that page back to its top, as a
-    // tab bar does everywhere else; a press on any other button goes there.
+    // tab bar does everywhere else; a press on any other button goes there. The page on
+    // screen is read from the bar's own book as the press lands, not from the copy the
+    // bar was last drawn with (item 17, v1.0.16): the drawn copy is for the highlight,
+    // and a decision is worth the live one.
     fun retap(destination: TouchDestination, go: () -> Unit): () -> Unit = {
-        if (lastShown[0].current == destination) chrome.reselected.tryEmit(destination) else go()
+        if (chrome.specs[pageKey]?.current == destination) chrome.reselected.tryEmit(destination) else go()
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -439,9 +442,13 @@ internal fun RefreshOnReselect(destination: TouchDestination, action: () -> Unit
     val chrome = LocalTouchChrome.current ?: return
     val onScreen = LocalPageOnScreen.current
     val act by rememberUpdatedState(action)
-    LaunchedEffect(chrome, onScreen, destination) {
-        if (!onScreen) return@LaunchedEffect
-        chrome.reselected.collect { if (it == destination) act() }
+    val onScreenNow by rememberUpdatedState(onScreen)
+    // The collection stands for as long as the page is composed, and the on-screen
+    // check is made as each press lands (item 17, v1.0.16): a collection that only
+    // starts once the page is on screen can be mid-restart, pager settling around
+    // it, exactly when the press comes, and a press offered to no collector is gone.
+    LaunchedEffect(chrome, destination) {
+        chrome.reselected.collect { if (it == destination && onScreenNow) act() }
     }
 }
 
@@ -456,9 +463,11 @@ internal fun ScrollToTopOnReselect(destination: TouchDestination, toTop: suspend
     val onScreen = LocalPageOnScreen.current
     val reduced = rememberReducedMotion() || Motion.reduced
     val action by rememberUpdatedState(toTop)
-    LaunchedEffect(chrome, onScreen, destination, reduced) {
-        if (!onScreen) return@LaunchedEffect
-        chrome.reselected.collect { if (it == destination) action(!reduced) }
+    val onScreenNow by rememberUpdatedState(onScreen)
+    // Collected for as long as the page is composed, the on-screen check made as
+    // each press lands, as [RefreshOnReselect] collects (item 17, v1.0.16).
+    LaunchedEffect(chrome, destination, reduced) {
+        chrome.reselected.collect { if (it == destination && onScreenNow) action(!reduced) }
     }
 }
 

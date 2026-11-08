@@ -2050,6 +2050,13 @@ private fun Root() {
             downloadCount = activeDownloadCount,
             updateVersion = offeredUpdate,
             onHome = {
+                // A press the bar took for a move to Home while Home is already up
+                // (item 17, v1.0.16): the bar's own reselect decision reads its book,
+                // and this is the same fact read from the shell's own state, so a
+                // reselect the bar missed still reaches Home's handlers.
+                if (screen is Screen.Chats && (pickedTab == null || pickedTab.isHome)) {
+                    touchChrome.reselected.tryEmit(com.tmplayer.ui.browse.TouchDestination.Home)
+                }
                 browseCameFromProfile = false
                 browseTo(BrowseSection.of(BrowseTab.Home))
             },
