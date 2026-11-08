@@ -583,17 +583,20 @@ class TrackPickerFragment : Fragment() {
                             if (busy != null) return@Line
                             busy = hit
                             scope.launch {
-                                when (val done = online.download(hit, target)) {
-                                    is DownloadResult.Done -> {
-                                        host?.attachOnlineSubtitle(done.file, done.label)
-                                        close()
+                                try {
+                                    when (val done = online.download(hit, target)) {
+                                        is DownloadResult.Done -> {
+                                            host?.attachOnlineSubtitle(done.file, done.label)
+                                            close()
+                                        }
+                                        is DownloadResult.Failed -> {
+                                            override = done.notice
+                                            if (msone && !online.msoneInBuild) failedHit = hit
+                                        }
                                     }
-                                    is DownloadResult.Failed -> {
-                                        override = done.notice
-                                        if (msone && !online.msoneInBuild) failedHit = hit
-                                    }
+                                } finally {
+                                    busy = null
                                 }
-                                busy = null
                             }
                         },
                     )

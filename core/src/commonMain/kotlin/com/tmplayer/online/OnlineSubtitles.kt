@@ -9,6 +9,7 @@ import com.tmplayer.i18n.TrackCodes
 import com.tmplayer.platform.Logger
 import dev.g000sha256.tdl.TdlClient
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -755,11 +756,19 @@ class OnlineSubtitles(
      */
     private suspend fun downloadMsoneSite(hit: SubtitleHit, target: SubtitleTarget?): DownloadResult {
         val parsed = target?.let { MediaName.parse(it.fileName, it.caption) }
-        val bytes = msoneSite.fetchSubtitle(
-            hit.pageUrl.ifBlank { hit.id },
-            parsed?.season ?: hit.featureSeason,
-            parsed?.episode,
-        ) ?: return DownloadResult.Failed(SubtitleNotice.Offline)
+        // Bounded as a whole (owner's phone, v1.0.17): the plain read and the browser
+        // pass are bounded step by step, but one after the other they left the panel
+        // sitting on "Downloading" past a minute. Past the bound the answer is the
+        // honest failure, whose page offers the release in the browser instead.
+        val bytes = withTimeoutOrNull(MSONE_SITE_DOWNLOAD_MS) {
+            runCatching {
+                msoneSite.fetchSubtitle(
+                    hit.pageUrl.ifBlank { hit.id },
+                    parsed?.season ?: hit.featureSeason,
+                    parsed?.episode,
+                )
+            }.getOrNull()
+        } ?: return DownloadResult.Failed(SubtitleNotice.Offline)
         val name = hit.pageUrl.substringBefore('?').trimEnd('/').substringAfterLast('/').ifBlank { "msone" } + ".srt"
         val text = SubtitleText.from(bytes, name, parsed?.season ?: hit.featureSeason, parsed?.episode, language = hit.language)
         return save(hit, text, hit.id)
@@ -886,6 +895,9 @@ class OnlineSubtitles(
 
         /** The shortest title OpenSubtitles accepts as a query. */
         internal const val MIN_QUERY = 3
+
+        /** The whole of an MSone site download, plain read and browser pass together. */
+        private const val MSONE_SITE_DOWNLOAD_MS = 50_000L
 
         /** What typed as the SubDL key shows or hides MSone's search instead. */
         private const val MSONE_CODE = "msone"

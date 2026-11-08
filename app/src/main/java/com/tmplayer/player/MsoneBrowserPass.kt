@@ -34,7 +34,7 @@ import java.util.Locale
 object MsoneBrowserPass {
 
     /** The whole pass gets this long, clicks and fetch included. */
-    private const val TOTAL_MS = 30_000L
+    private const val TOTAL_MS = 20_000L
 
     /** A second click when the first built the download area without firing it. */
     private const val RECLICK_MS = 6_000L
@@ -83,6 +83,18 @@ object MsoneBrowserPass {
                     capture(url)
                     // The file is fetched by the capture; the view itself needs nothing.
                     return WebResourceResponse("application/octet-stream", null, ByteArrayInputStream(ByteArray(0)))
+                }
+
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    val url = request.url?.toString().orEmpty()
+                    // The control's script may send the whole view at the file: a
+                    // navigation, not a request the interceptor above ever sees. Take
+                    // the address for the capture and keep the view where it is.
+                    if (request.isForMainFrame && (isSubtitleFile(url) || url.contains("download", ignoreCase = true))) {
+                        capture(url)
+                        return true
+                    }
+                    return false
                 }
 
                 override fun onPageFinished(view: WebView, url: String?) {
