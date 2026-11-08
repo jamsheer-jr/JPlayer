@@ -510,10 +510,15 @@ class TrackPickerFragment : Fragment() {
         var override by remember { mutableStateOf<SubtitleNotice?>(null) }
         var target by remember { mutableStateOf<SubtitleTarget?>(null) }
         var busy by remember { mutableStateOf<SubtitleHit?>(null) }
+        // The MSone site hit whose download failed (item 5, v1.0.16): its release page can
+        // be opened in the browser, where the download and the Open row remain the way on.
+        var failedHit by remember { mutableStateOf<SubtitleHit?>(null) }
+        val pageContext = LocalContext.current
 
         LaunchedEffect(attempt) {
             result = null
             override = null
+            failedHit = null
             val wanted = host?.onlineTarget()
             target = wanted
             if (msone && force && online.msoneInBuild) online.msoneStatus(force = true)
@@ -582,7 +587,10 @@ class TrackPickerFragment : Fragment() {
                                         host?.attachOnlineSubtitle(done.file, done.label)
                                         close()
                                     }
-                                    is DownloadResult.Failed -> override = done.notice
+                                    is DownloadResult.Failed -> {
+                                        override = done.notice
+                                        if (msone && !online.msoneInBuild) failedHit = hit
+                                    }
                                 }
                                 busy = null
                             }
@@ -593,6 +601,21 @@ class TrackPickerFragment : Fragment() {
                     add(Line("retry", L.msoneCheckAgain, icon = TmIcons.Refresh, group = Group.Online) { force = true; attempt++ })
                 } else if (notice == SubtitleNotice.Offline || notice == SubtitleNotice.Busy || notice == SubtitleNotice.MsoneBusy) {
                     add(Line("retry", L.commonTryAgain, icon = TmIcons.Refresh, group = Group.Online) { attempt++ })
+                }
+                // A release the app could not fetch (item 5, v1.0.16): its page in the
+                // browser is never a dead end, the file it downloads loads through Open.
+                val failed = failedHit
+                if (msone && !online.msoneInBuild && failed != null) {
+                    add(Line("open-browser", L.onlineOpenInBrowser, icon = TmIcons.OpenExternal, group = Group.Online) {
+                        runCatching {
+                            pageContext.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(failed.pageUrl.ifBlank { failed.id }),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    })
                 }
                 // Nothing found online: a file of the viewer's own is the way on, where there is a
                 // picker. For MSone also whenever it cannot search, paused or stopped included.

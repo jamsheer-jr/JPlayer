@@ -55,6 +55,12 @@ class OnlineSubtitles(
      * their own under Settings. Blank and only a viewer's own key works, as before.
      */
     private val buildSubdlKey: String = "",
+    /**
+     * The platform's browser pass for MSone's release pages (item 5, v1.0.16), handed to
+     * [MsoneSiteApi]: a release page address in, the subtitle file's bytes out, null where
+     * the page would not give them up. Null where the platform has none.
+     */
+    private val pageBrowser: (suspend (String) -> ByteArray?)? = null,
 ) {
     private val userAgent = "TMPlayer v$appVersion"
     private val api = OpenSubtitlesApi(
@@ -66,7 +72,7 @@ class OnlineSubtitles(
     )
     private val subdl = SubdlApi(http, RateLimiter(200, now, sleep), userAgent)
     private val msone = MsoneApi(http, RateLimiter(500, now, sleep), userAgent, msoneKey)
-    private val msoneSite = MsoneSiteApi(http, RateLimiter(1_000, now, sleep), userAgent)
+    private val msoneSite = MsoneSiteApi(http, RateLimiter(1_000, now, sleep), userAgent, pageBrowser)
     private val translator = SubtitleTranslator(http)
 
     /** Whether this build can reach MSone through the gateway: it has the gateway's key. */

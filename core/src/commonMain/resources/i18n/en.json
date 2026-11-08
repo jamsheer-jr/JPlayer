@@ -1686,6 +1686,7 @@
     "notice_subdl_refused": "SubDL didn't accept your key. Check it under Settings, Online subtitles",
     "notice_unavailable": "Online subtitles are unavailable right now. Subtitles already downloaded still work",
     "notice_unreadable": "That subtitle file couldn't be read. Try another one",
+    "open_in_browser": "Open in browser",
     "password": "Password",
     "results_title": "Subtitles online",
     "search_online": "Search online",

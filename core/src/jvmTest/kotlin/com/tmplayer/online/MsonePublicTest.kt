@@ -202,4 +202,36 @@ class MsonePublicTest {
         val done = online.download(hit, film)
         assertEquals(DownloadResult.Failed(SubtitleNotice.Offline), done)
     }
+
+    @Test
+    fun `a page with no plain link falls to the browser pass`() = runBlocking {
+        // Item 5, v1.0.16: the real release page's shape, as seen in a browser on
+        // 2026-11-08: no download anchor anywhere, only the script driven control.
+        // The plain read finds nothing; the platform's browser pass answers the bytes.
+        val browsing = OnlineSubtitles(
+            "", store, cache, "1.0.0", http, now = { clock }, sleep = { clock += it },
+            pageBrowser = { url ->
+                assertTrue(url.endsWith("/languages/english/resident-evil-2026/"))
+                srt("browser line").toByteArray()
+            },
+        )
+        http.on("?s=", html(200, filmsPage))
+        http.on("/languages/", html(200, """<a href="#">Subtitle</a>"""))
+        val hit = browsing.searchMsoneSite(film).hits[0]
+        val done = browsing.download(hit, film)
+        assertTrue(done is DownloadResult.Done)
+        assertTrue((done as DownloadResult.Done).file.readText().contains("browser line"))
+    }
+
+    @Test
+    fun `a browser pass with nothing keeps the honest failure`() = runBlocking {
+        val browsing = OnlineSubtitles(
+            "", store, cache, "1.0.0", http, now = { clock }, sleep = { clock += it },
+            pageBrowser = { null },
+        )
+        http.on("?s=", html(200, filmsPage))
+        http.on("/languages/", html(200, """<a href="#">Subtitle</a>"""))
+        val hit = browsing.searchMsoneSite(film).hits[0]
+        assertEquals(DownloadResult.Failed(SubtitleNotice.Offline), browsing.download(hit, film))
+    }
 }

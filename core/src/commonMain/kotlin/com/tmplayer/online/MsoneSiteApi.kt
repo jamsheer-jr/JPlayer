@@ -18,6 +18,13 @@ class MsoneSiteApi(
     private val http: HttpTransport,
     private val limiter: RateLimiter,
     private val userAgent: String,
+    /**
+     * The platform's browser pass for a release page whose download exists only once
+     * its own script runs (item 5, v1.0.16); null where the platform has none (the
+     * desktop, the tests). It is handed the release page's address and answers the
+     * subtitle file's bytes, or null where the page would not give them up.
+     */
+    private val browserPass: (suspend (String) -> ByteArray?)? = null,
 ) {
     /**
      * The releases the site's search lists for [terms] (a title, with its year where known), in
@@ -43,17 +50,26 @@ class MsoneSiteApi(
      * The one download step, kept behind this narrow shape on purpose: a release page address
      * in, the subtitle file's bytes out (a `.srt`, or a `.zip` the caller opens with
      * [SubtitleText.from], which picks the episode's file inside), null when anything on the
-     * way fails. The page is read for the anchor [MsoneSite.downloadHref] trusts, that address
-     * is fetched, and its bytes are the answer.
+     * way fails.
      *
-     * UNVERIFIED (2026-11-08): release pages are Cloudflare gated from the build machine (a
-     * 403 challenge, then connection failures), so the anchor shape this reads for has never
-     * been seen on a real release page. Where the gate refuses the app too, this answers null
-     * and the honest fallback stands: the viewer downloads the file in a browser and loads it
-     * through the panel's Open row.
+     * Two ways, in order. The plain read first: the page is read for the anchor
+     * [MsoneSite.downloadHref] trusts, and that address is fetched. Then, where the platform
+     * offers one, the browser pass (item 5, v1.0.16): a real browser look (2026-11-08) showed
+     * the site's release pages carry NO plain download link at all, only a script driven
+     * control, so the plain read can never fire there and the page's own script has to run.
+     * The pass loads the page in a WebView, triggers the control and fetches what it asks
+     * for; its bytes are checked the same way before they are believed.
      */
     suspend fun fetchSubtitle(pageUrl: String, season: Int?, episode: Int?): ByteArray? {
         if (!releasePage(pageUrl)) return null
+        plainFetch(pageUrl, season, episode)?.let { return it }
+        val browsed = browserPass?.invoke(pageUrl) ?: return null
+        if (browsed.isEmpty() || browsed.size > SubtitleText.MAX_BYTES) return null
+        return browsed
+    }
+
+    /** The plain read of [fetchSubtitle]: the page's trusted anchor, fetched. */
+    private suspend fun plainFetch(pageUrl: String, season: Int?, episode: Int?): ByteArray? {
         val page = get(pageUrl) ?: return null
         if (page.code !in 200..299) {
             ProviderLog.status(PROVIDER, "GET", pageUrl, page)

@@ -197,6 +197,8 @@ class App : Application() {
             apiKey = BuildConfig.OPENSUBTITLES_API_KEY,
             msoneKey = BuildConfig.MSONE_GATEWAY_KEY,
             buildSubdlKey = BuildConfig.SUBDL_API_KEY,
+            // The browser pass for MSone's script driven release pages (item 5, v1.0.16).
+            pageBrowser = { pageUrl -> com.tmplayer.player.MsoneBrowserPass.fetch(this, pageUrl) },
             store = OnlineSubtitlesStore(java.io.File(filesDir, "online/account.properties")),
             cache = SubtitleCache(java.io.File(cacheDir, "online-subtitles")),
             appVersion = BuildConfig.VERSION_NAME,
