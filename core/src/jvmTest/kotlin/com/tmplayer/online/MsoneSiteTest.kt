@@ -207,6 +207,53 @@ class MsoneSiteTest {
     }
 
     @Test
+    fun `the download buttons own package address is the download`() {
+        // The site's real shape (read from its own pages, 2026-11-08): the button's href is
+        // "#" and its click code names a download manager package; menu links carrying the
+        // same word stand earlier in the page and are not the download.
+        val page = """
+            <html><body>
+            <a href="https://malayalamsubtitles.org/send/">Send a subtitle</a>
+            <a id="review-button"
+               class="button" rel="nofollow" href="#"
+               onclick="window.location.href='https://malayalamsubtitles.org/?wpdmdl=24881'; return false;">
+               Subtitle </a>
+            </body></html>
+        """.trimIndent()
+        assertEquals(
+            "https://malayalamsubtitles.org/?wpdmdl=24881",
+            MsoneSite.downloadHref(page, releaseUrl, null, null),
+        )
+    }
+
+    @Test
+    fun `the button beats a stray archive and a direct file beats a looser package`() {
+        val buttonAndZip = """
+            <a href="/wp-content/uploads/2026/10/other.zip">Other</a>
+            <a id="review-button" href="#" onclick="window.location.href='https://malayalamsubtitles.org/?wpdmdl=77'; return false;">Subtitle</a>
+        """.trimIndent()
+        assertEquals(
+            "https://malayalamsubtitles.org/?wpdmdl=77",
+            MsoneSite.downloadHref(buttonAndZip, releaseUrl, null, null),
+        )
+        val fileAndLoose = """
+            <a href="/files/one.srt">One</a>
+            <a href="#" onclick="window.location.href='https://malayalamsubtitles.org/?wpdmdl=78'; return false;">Subtitle</a>
+        """.trimIndent()
+        assertEquals(
+            "https://malayalamsubtitles.org/files/one.srt",
+            MsoneSite.downloadHref(fileAndLoose, releaseUrl, null, null),
+        )
+    }
+
+    @Test
+    fun `a package with no proper number gives nothing`() {
+        assertNull(MsoneSite.downloadHref("""<a id="review-button" href="#" onclick="go('?wpdmdl=abc')">x</a>""", releaseUrl, null, null))
+        assertNull(MsoneSite.downloadHref("""<a id="review-button" href="#" onclick="go('?wpdmdl=123456789012345')">x</a>""", releaseUrl, null, null))
+        assertNull(MsoneSite.downloadHref("""<a id="review-button" href="#" onclick="go('?other=12')">x</a>""", releaseUrl, null, null))
+    }
+
+    @Test
     fun `a page with no trusted download anchor gives nothing`() {
         assertNull(MsoneSite.downloadHref("<a href=\"https://elsewhere.example/x.srt\">x</a>", releaseUrl, null, null))
         assertNull(MsoneSite.downloadHref("<a href=\"/about/\">About</a>", releaseUrl, null, null))

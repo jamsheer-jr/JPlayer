@@ -52,12 +52,13 @@ class MsoneSiteApi(
      * [SubtitleText.from], which picks the episode's file inside), null when anything on the
      * way fails.
      *
-     * Two ways, in order. The plain read first: the page is read for the anchor
-     * [MsoneSite.downloadHref] trusts, and that address is fetched. Then, where the platform
-     * offers one, the browser pass (item 5, v1.0.16): a real browser look (2026-11-08) showed
-     * the site's release pages carry NO plain download link at all, only a script driven
-     * control, so the plain read can never fire there and the page's own script has to run.
-     * The pass loads the page in a WebView, triggers the control and fetches what it asks
+     * Two ways, in order. The plain read first: the page is read for the address
+     * [MsoneSite.downloadHref] trusts, and that address is fetched. The site's release pages
+     * carry no plain download link in an href; the address stands in the download button's
+     * click code as a download manager package, and the reader takes it from there (found
+     * 2026-11-08 from the page's own HTML, after downloads on a phone never started). Then,
+     * where the platform offers one, the browser pass (item 5, v1.0.16) stays as the second
+     * way: it loads the page in a WebView, triggers the control and fetches what it asks
      * for; its bytes are checked the same way before they are believed.
      */
     suspend fun fetchSubtitle(pageUrl: String, season: Int?, episode: Int?, onProgress: ((Long, Long) -> Unit)? = null): ByteArray? {

@@ -61,6 +61,16 @@ object MsoneSite {
 
     private val HREF = Regex("""<a\b[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)')""", RegexOption.IGNORE_CASE)
 
+    private val ANCHOR_TAG = Regex("""<a\b[^>]*>""", RegexOption.IGNORE_CASE)
+
+    private val ONCLICK = Regex("""onclick\s*=\s*(?:"([^"]*)"|'([^']*)')""", RegexOption.IGNORE_CASE)
+
+    /** The site's download button, by the id its pages give it. */
+    private val REVIEW_BUTTON = Regex("""id\s*=\s*["']review-button["']""", RegexOption.IGNORE_CASE)
+
+    /** A download manager package number inside a click handler's address. */
+    private val WPDM_ID = Regex("""wpdmdl=(\d{1,10})\b""")
+
     private val RELEASE_PATH = Regex("""/languages/[^/]+/[^/]+/?$""")
 
     private val SLUG_YEAR = Regex("""-(19\d\d|20\d\d)$""")
@@ -189,15 +199,32 @@ object MsoneSite {
 
     /**
      * The subtitle's download address on a release page, or null when the page names none this
-     * reader trusts. The shape read for, stated plainly: an anchor whose address ends in `.srt`
-     * (the file itself), or one ending in `.zip` (an archive the app opens for the subtitle
-     * inside, episode wise where the file names say). A direct file beats an archive; where
-     * several of one kind stand and the episode is known, the one whose file name numbers that
-     * episode wins. Only https addresses on the site itself are taken.
+     * reader trusts. The shapes read for, stated plainly: the page's own download button, an
+     * anchor whose click code carries a download manager package (`?wpdmdl=` followed by its
+     * number, the address the button itself sends a browser to, answered with the file); an
+     * anchor whose address ends in `.srt` (the file itself); or one ending in `.zip` (an archive
+     * the app opens for the subtitle inside, episode wise where the file names say). The button
+     * beats a stray file link, a direct file beats a looser button and an archive; where several
+     * of one kind stand and the episode is known, the one whose file name numbers that episode
+     * wins. Only https addresses on the site itself are taken.
      */
     fun downloadHref(pageHtml: String, pageUrl: String, season: Int?, episode: Int?): String? {
         if (pageHtml.isBlank()) return null
         val base = runCatching { URI(pageUrl) }.getOrNull() ?: return null
+        var button: String? = null
+        var looseButton: String? = null
+        for (tag in ANCHOR_TAG.findAll(pageHtml)) {
+            val text = tag.value
+            val click = ONCLICK.find(text)?.let { m ->
+                listOf(m.groupValues.getOrNull(1), m.groupValues.getOrNull(2)).firstOrNull { !it.isNullOrBlank() }
+            } ?: continue
+            val id = WPDM_ID.find(click)?.groupValues?.getOrNull(1) ?: continue
+            if (REVIEW_BUTTON.containsMatchIn(text)) {
+                if (button == null) button = "$BASE/?wpdmdl=$id"
+            } else if (looseButton == null) {
+                looseButton = "$BASE/?wpdmdl=$id"
+            }
+        }
         val files = ArrayList<String>()
         val archives = ArrayList<String>()
         for (anchor in HREF.findAll(pageHtml)) {
@@ -213,7 +240,7 @@ object MsoneSite {
                 path.endsWith(".zip") -> archives += uri.toString()
             }
         }
-        return pick(files, season, episode) ?: pick(archives, season, episode)
+        return button ?: pick(files, season, episode) ?: looseButton ?: pick(archives, season, episode)
     }
 
     /** The candidate naming [episode] where one does, else the first; null for an empty list. */

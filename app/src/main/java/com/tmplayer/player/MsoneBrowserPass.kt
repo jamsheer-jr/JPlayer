@@ -26,12 +26,13 @@ import java.util.Locale
  * [com.tmplayer.online.MsoneSiteApi]'s second way in. A real browser look (2026-11-08)
  * showed the site's release pages carry no plain download link at all: the only control
  * is a script driven anchor labelled with the Malayalam word for Subtitle, href "#", and
- * the download address exists only after the page's own script runs. So the page is
- * loaded here in a WebView that never goes on screen, the control is clicked by script,
- * and whatever the page then asks for (a request or a download whose address ends in
- * .srt or .zip) is captured and fetched with the WebView session's cookies through a
- * plain connection. Bounded end to end; anything that does not arrive in time, or a
- * device with no WebView at all, answers null and the caller keeps its honest failure.
+ * the download address stands in its click code as a download manager package the plain
+ * reader now reads for itself first. So the page is loaded here in a WebView that never
+ * goes on screen, the control is clicked by script, and whatever the page then asks for
+ * (a request or a download whose address ends in .srt or .zip, or the package address
+ * itself) is captured and fetched with the WebView session's cookies through a plain
+ * connection. Bounded end to end; anything that does not arrive in time, or a device
+ * with no WebView at all, answers null and the caller keeps its honest failure.
  */
 object MsoneBrowserPass {
 
@@ -51,13 +52,27 @@ object MsoneBrowserPass {
      */
     private const val FETCH_MS = 12_000L
 
-    /** The release page's subtitle control, by its own label: the Malayalam word for Subtitle. */
+    /**
+     * The release page's subtitle control, found by its own marks, never by a loose word: the
+     * Malayalam word for Subtitle also stands in the page's menu links, and an earlier script
+     * that clicked the first element containing it clicked a menu link and wandered the site
+     * while the download never started (owner's phone, 2026-11-08). The button carries the id
+     * `review-button` and a click handler naming its download package; failing those, only an
+     * element whose whole label is the word counts.
+     */
     private const val CLICK_SCRIPT = """
         (function() {
+          var btn = document.querySelector('#review-button');
+          if (btn) { btn.click(); return 'clicked'; }
           var links = document.querySelectorAll('a, button');
-          for (var i = 0; i < links.length; i++) {
+          var i;
+          for (i = 0; i < links.length; i++) {
+            var oc = links[i].getAttribute('onclick') || '';
+            if (oc.indexOf('wpdmdl') >= 0) { links[i].click(); return 'clicked'; }
+          }
+          for (i = 0; i < links.length; i++) {
             var text = (links[i].textContent || '').trim();
-            if (text.indexOf('പരിഭാഷ') >= 0) { links[i].click(); return 'clicked'; }
+            if (text === 'പരിഭാഷ') { links[i].click(); return 'clicked'; }
           }
           return 'none';
         })();
@@ -103,7 +118,7 @@ object MsoneBrowserPass {
                     // The control's script may send the whole view at the file: a
                     // navigation, not a request the interceptor above ever sees. Take
                     // the address for the capture and keep the view where it is.
-                    if (request.isForMainFrame && (isSubtitleFile(url) || url.contains("download", ignoreCase = true))) {
+                    if (request.isForMainFrame && (isSubtitleFile(url) || url.contains("download", ignoreCase = true) || url.contains("wpdmdl="))) {
                         capture(url)
                         return true
                     }
