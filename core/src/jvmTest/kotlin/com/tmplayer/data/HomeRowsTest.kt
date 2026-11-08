@@ -73,10 +73,12 @@ class HomeRowsTest {
             layout = HomeLayout(catalogRows = true),
         )
         val catalog = rows.filterIsInstance<HomeRow.Catalog>()
-        assertEquals(listOf("catalog-movies", "catalog-lang-ml"), catalog.map { it.key })
+        // The three Malayalam-named films also stand in Malayalam Audio (v1.0.17).
+        assertEquals(listOf("catalog-movies", "catalog-ml-audio", "catalog-lang-ml"), catalog.map { it.key })
         assertEquals(6, catalog[0].entries.size)
         assertEquals(3, catalog[1].entries.size)
-        assertEquals("Malayalam", catalog[1].label)
+        assertEquals(3, catalog[2].entries.size)
+        assertEquals("Malayalam", catalog[2].label)
         // Off in the layout, no shelves: the rows are the ones they have always been.
         val plain = HomeRows.build(
             continueWatching = emptyList(),
@@ -120,17 +122,19 @@ class HomeRowsTest {
         )
         val catalog = rows.filterIsInstance<HomeRow.Catalog>()
         // Two titles make no Comedy shelf (fewer than three), and the unrated film is in none.
+        // The five titles at 8.0 and above also stand in Hidden Gems (v1.0.17).
         assertEquals(
-            listOf("catalog-movies", "catalog-genre-action", "catalog-genre-drama", "catalog-top-rated"),
+            listOf("catalog-movies", "catalog-gems", "catalog-genre-action", "catalog-genre-drama", "catalog-top-rated"),
             catalog.map { it.key },
         )
-        assertEquals("Action", catalog[1].label)
-        assertEquals(4, catalog[1].entries.size)
-        assertEquals(3, catalog[2].entries.size)
+        assertEquals(5, catalog[1].entries.size)
+        assertEquals("Action", catalog[2].label)
+        assertEquals(4, catalog[2].entries.size)
+        assertEquals(3, catalog[3].entries.size)
         // Top Rated: everything at 7.5 or above, best first, the 6.0 and the unrated left out.
         assertEquals(
             listOf(comedy[0], comedy[1], drama[0], action[0], drama[1], action[1], drama[2], action[2]).map { it.messageId },
-            catalog[3].entries.flatMap(::idsOf),
+            catalog[4].entries.flatMap(::idsOf),
         )
         // No meta handed in: no genre and no Top Rated shelf, the rest as before.
         val bare = HomeRows.build(
@@ -286,7 +290,7 @@ class HomeRowsTest {
         loaded[1] = listOf(video(1))
         val rows = HomeRows.build(
             continueWatching = emptyList(),
-            favourites = listOf(chat(1)),
+            favourites = (1L..8L).map { chat(it) },
             loaded = loaded,
             recent = emptyList(),
             layout = HomeLayout(catalogRows = true),
