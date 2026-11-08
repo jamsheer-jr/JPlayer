@@ -820,23 +820,25 @@ class OnlineSubtitles(
      */
     private suspend fun downloadMsoneSite(hit: SubtitleHit, target: SubtitleTarget?, onProgress: ((Long, Long) -> Unit)? = null): DownloadResult {
         val parsed = target?.let { MediaName.parse(it.fileName, it.caption) }
-        // Bounded as a whole (owner's phone, v1.0.17): the plain read and the browser
-        // pass are bounded step by step, but one after the other they left the panel
-        // sitting on "Downloading" past a minute. Past the bound the answer is the
-        // honest failure, whose page offers the release in the browser instead.
-        val bytes = withTimeoutOrNull(MSONE_SITE_DOWNLOAD_MS) {
-            runCatching {
+        // Bounded as a whole (owner's phone, v1.0.17; the bound widened to the reading
+        // and the saving too, v1.0.19): the plain read and the browser pass are bounded
+        // step by step, but one after the other they left the panel sitting on
+        // "Downloading" past a minute. Past the bound the answer is the honest failure,
+        // whose page offers the release in the browser instead. The bound can land
+        // because every read under it now ends by its own deadline (the transport's).
+        return withTimeoutOrNull(MSONE_SITE_DOWNLOAD_MS) {
+            val bytes = runCatching {
                 msoneSite.fetchSubtitle(
                     hit.pageUrl.ifBlank { hit.id },
                     parsed?.season ?: hit.featureSeason,
                     parsed?.episode,
                     onProgress,
                 )
-            }.getOrNull()
-        } ?: return DownloadResult.Failed(SubtitleNotice.Offline)
-        val name = hit.pageUrl.substringBefore('?').trimEnd('/').substringAfterLast('/').ifBlank { "msone" } + ".srt"
-        val text = SubtitleText.from(bytes, name, parsed?.season ?: hit.featureSeason, parsed?.episode, language = hit.language)
-        return save(hit, text, hit.id)
+            }.getOrNull() ?: return@withTimeoutOrNull DownloadResult.Failed(SubtitleNotice.Offline)
+            val name = hit.pageUrl.substringBefore('?').trimEnd('/').substringAfterLast('/').ifBlank { "msone" } + ".srt"
+            val text = SubtitleText.from(bytes, name, parsed?.season ?: hit.featureSeason, parsed?.episode, language = hit.language)
+            save(hit, text, hit.id)
+        } ?: DownloadResult.Failed(SubtitleNotice.Offline)
     }
 
     // ---- shared ----------------------------------------------------------------------------

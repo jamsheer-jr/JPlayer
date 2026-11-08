@@ -14,6 +14,16 @@ object UrlConnectionTransport : HttpTransport {
     /** Larger than any subtitle file or search page; past it the answer is cut off and refused. */
     private const val MAX_BYTES = 8 * 1024 * 1024
 
+    /**
+     * The whole answer's time budget (owner, v1.0.19). The read timeout alone is per read
+     * call and restarts with every byte, so a host that trickles (a bot gate drip, a
+     * throttled answer) held a read, and every caller waiting on it, forever: the MSone
+     * page sat at "Downloading subtitles..." with no way out, and no coroutine timeout
+     * could land because a socket read never suspends. A deadline the loop itself checks
+     * ends the read whatever the drip.
+     */
+    private const val TOTAL_RESPONSE_MS = 30_000
+
     override suspend fun send(request: HttpRequest): HttpResponse = withContext(Dispatchers.IO) {
         // An address that does not parse, or is not http, is a failed request like any other
         // (HX10): the providers catch IOException only.
@@ -36,7 +46,8 @@ object UrlConnectionTransport : HttpTransport {
             }
             val code = connection.responseCode
             val stream = if (code >= 400) connection.errorStream else connection.inputStream
-            val body = stream?.use { read(it, connection.contentLengthLong, request.onProgress) } ?: ByteArray(0)
+            val deadline = System.currentTimeMillis() + TOTAL_RESPONSE_MS
+            val body = stream?.use { read(it, connection.contentLengthLong, request.onProgress, deadline) } ?: ByteArray(0)
             val headers = connection.headerFields
                 .filterKeys { it != null }
                 .mapValues { it.value.firstOrNull().orEmpty() }
@@ -57,7 +68,7 @@ object UrlConnectionTransport : HttpTransport {
         if (System.getProperty("http.maxConnections") == null) System.setProperty("http.maxConnections", "8")
     }
 
-    private fun read(input: InputStream, total: Long, onProgress: ((Long, Long) -> Unit)?): ByteArray {
+    private fun read(input: InputStream, total: Long, onProgress: ((Long, Long) -> Unit)?, deadline: Long): ByteArray {
         val out = ByteArrayOutputStream()
         val chunk = ByteArray(16 * 1024)
         while (true) {
@@ -65,6 +76,7 @@ object UrlConnectionTransport : HttpTransport {
             if (n < 0) break
             out.write(chunk, 0, n)
             if (out.size() > MAX_BYTES) throw IOException("answer larger than $MAX_BYTES bytes")
+            if (System.currentTimeMillis() > deadline) throw IOException("answer took too long")
             // The whole answer's size, where the server stated it: a subtitle
             // download's page turns the pair into its percent (owner, v1.0.18).
             if (onProgress != null && total > 0) onProgress(out.size().toLong(), total)

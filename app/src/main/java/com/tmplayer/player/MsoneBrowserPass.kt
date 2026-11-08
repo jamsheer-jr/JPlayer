@@ -10,11 +10,13 @@ import android.webkit.WebViewClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -42,6 +44,13 @@ object MsoneBrowserPass {
     /** One byte past the subtitle ceiling is already not a subtitle. */
     private const val MAX_BYTES = 4 * 1024 * 1024
 
+    /**
+     * The capture fetch's own time budget, inside [TOTAL_MS] (owner, v1.0.19): its read
+     * timeout alone restarts with every byte, so a trickling answer held the fetch, and
+     * its detached thread, past the whole pass. The loop checks a deadline itself.
+     */
+    private const val FETCH_MS = 12_000L
+
     /** The release page's subtitle control, by its own label: the Malayalam word for Subtitle. */
     private const val CLICK_SCRIPT = """
         (function() {
@@ -67,11 +76,15 @@ object MsoneBrowserPass {
             }.getOrNull() ?: return@withContext null
             val userAgent = webView.settings.userAgentString.orEmpty()
             val ioScope = CoroutineScope(Dispatchers.IO)
+            // The capture in flight, if any: the pass's end tears its connection down, so a
+            // timed out pass leaves no blocked read running behind it (owner, v1.0.19).
+            var captureJob: Job? = null
+            var liveConnection: HttpURLConnection? = null
 
             fun capture(url: String) {
                 if (done.isCompleted) return
-                ioScope.launch {
-                    val bytes = runCatching { fetchBytes(url, userAgent) }.getOrNull()
+                captureJob = ioScope.launch {
+                    val bytes = runCatching { fetchBytes(url, userAgent) { liveConnection = it } }.getOrNull()
                     done.complete(bytes)
                 }
             }
@@ -112,6 +125,8 @@ object MsoneBrowserPass {
                 withTimeoutOrNull(TOTAL_MS) { done.await() } ?: null
             } finally {
                 clicker.cancel()
+                captureJob?.cancel()
+                runCatching { liveConnection?.disconnect() }
                 runCatching {
                     webView.stopLoading()
                     webView.loadUrl("about:blank")
@@ -127,9 +142,16 @@ object MsoneBrowserPass {
         return path.endsWith(".srt") || path.endsWith(".zip")
     }
 
-    /** [url]'s bytes, with the WebView session's cookies; null past the ceiling or on any failure. */
-    private fun fetchBytes(url: String, userAgent: String): ByteArray? {
+    /**
+     * [url]'s bytes, with the WebView session's cookies; null past the ceiling, past
+     * [FETCH_MS] in all, or on any failure. Read in chunks with the size and the deadline
+     * checked as it grows: a whole readBytes() under a per read timeout could be held
+     * forever by a host that trickles (owner, v1.0.19). [register] hears the connection
+     * as it opens, so the pass's end can tear a stuck read down.
+     */
+    private fun fetchBytes(url: String, userAgent: String, register: (HttpURLConnection) -> Unit = {}): ByteArray? {
         val connection = URL(url).openConnection() as? HttpURLConnection ?: return null
+        register(connection)
         return try {
             connection.instanceFollowRedirects = true
             connection.connectTimeout = 10_000
@@ -137,8 +159,19 @@ object MsoneBrowserPass {
             if (userAgent.isNotBlank()) connection.setRequestProperty("User-Agent", userAgent)
             CookieManager.getInstance().getCookie(url)?.let { connection.setRequestProperty("Cookie", it) }
             if (connection.responseCode !in 200..299) return null
-            val bytes = connection.inputStream.use { it.readBytes() }
-            bytes.takeIf { it.isNotEmpty() && it.size <= MAX_BYTES }
+            val out = ByteArrayOutputStream()
+            val deadline = System.currentTimeMillis() + FETCH_MS
+            connection.inputStream.use { input ->
+                val chunk = ByteArray(16 * 1024)
+                while (true) {
+                    val n = input.read(chunk)
+                    if (n < 0) break
+                    out.write(chunk, 0, n)
+                    if (out.size() > MAX_BYTES) return null
+                    if (System.currentTimeMillis() > deadline) return null
+                }
+            }
+            out.toByteArray().takeIf { it.isNotEmpty() }
         } finally {
             connection.disconnect()
         }

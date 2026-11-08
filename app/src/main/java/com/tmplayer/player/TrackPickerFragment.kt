@@ -102,8 +102,10 @@ import com.tmplayer.ui.theme.TMPlayerTheme
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -197,33 +199,55 @@ class TrackPickerFragment : Fragment() {
 
     private val subtitleDownload = SubtitleDownload()
 
+    /** Which download the state on screen belongs to; a superseded one touches nothing. */
+    private var subtitleDownloadGeneration = 0
+
     /** Starts [hit]'s download in the fragment's scope; one at a time, as the pages always kept it. */
     private fun startSubtitleDownload(online: OnlineSubtitles, hit: SubtitleHit, target: SubtitleTarget?) {
         if (subtitleDownload.busy.value != null) return
         subtitleDownload.busy.value = hit
         subtitleDownload.percent.value = null
         subtitleDownload.failed.value = null
+        val generation = ++subtitleDownloadGeneration
         lifecycleScope.launch {
             try {
-                val done = online.download(hit, target) { received, total ->
-                    if (total > 0) subtitleDownload.percent.value = (received * 100 / total).toInt().coerceIn(0, 100)
+                val job = async {
+                    try {
+                        online.download(hit, target) { received, total ->
+                            if (generation == subtitleDownloadGeneration && total > 0) {
+                                subtitleDownload.percent.value = (received * 100 / total).toInt().coerceIn(0, 100)
+                            }
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (failure: Throwable) {
+                        // The download itself answers failures as results; anything else
+                        // lands as the page's offline word, with its Try again.
+                        DownloadResult.Failed(SubtitleNotice.Offline)
+                    }
                 }
+                // The wait is raced, not the work (owner, v1.0.19): a timeout wrapped around
+                // the download itself could never land while it sat in a blocking read (the
+                // MSone page span at "Downloading subtitles..." for good), while a timeout
+                // on awaiting its child always can. Past the watchdog the row shows its
+                // failure and the orphan is cancelled; should it still finish underneath,
+                // the generation above keeps it from attaching or closing anything.
+                val done = withTimeoutOrNull(DOWNLOAD_WATCHDOG_MS) { job.await() }
+                if (done == null) job.cancel()
+                if (generation != subtitleDownloadGeneration) return@launch
                 when (done) {
+                    null -> subtitleDownload.failed.value = hit to SubtitleNotice.Offline
                     is DownloadResult.Done -> {
                         host?.attachOnlineSubtitle(done.file, done.label)
                         close()
                     }
                     is DownloadResult.Failed -> subtitleDownload.failed.value = hit to done.notice
                 }
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (failure: Throwable) {
-                // The download itself answers failures as results; anything else
-                // lands as the page's offline word, with its Try again.
-                subtitleDownload.failed.value = hit to SubtitleNotice.Offline
             } finally {
-                subtitleDownload.busy.value = null
-                subtitleDownload.percent.value = null
+                if (generation == subtitleDownloadGeneration) {
+                    subtitleDownload.busy.value = null
+                    subtitleDownload.percent.value = null
+                }
             }
         }
     }
@@ -1637,6 +1661,13 @@ class TrackPickerFragment : Fragment() {
         /** The touch controls' inset, the same 24 dp the lines carry, so they line up with the radios. */
         private val ADJUST_PAD = 24.dp
         private const val ARG_ONLINE = "online"
+
+        /**
+         * The subtitle download watchdog (owner, v1.0.19): past this the row stops waiting
+         * and shows its failure, whatever the download is doing underneath. Longer than
+         * every budget inside the download itself, so it only ever fires on a true stall.
+         */
+        private const val DOWNLOAD_WATCHDOG_MS = 75_000L
         private const val TAG = "track_picker"
         private const val BACK_STACK = "track_picker"
 
