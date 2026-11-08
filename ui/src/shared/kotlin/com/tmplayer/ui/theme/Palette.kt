@@ -311,6 +311,35 @@ object TmSchemes {
     )
 
     /**
+     * Home's Prime scheme (owner, 2026-11-08): in light mode Home wears Prime Video's
+     * colours, as [NetflixHome] is worn in the dark. The daylight scheme recoloured:
+     * white ground (the banner's fades are built from the background, so the banner now
+     * melts into white, as it melts into black in the dark), Prime blue (0xFF00A8E1)
+     * wherever the scheme's accent stands, Amazon navy (0xFF131921) as the secondary,
+     * and the surface steps as pale blue greys over the white, so cards still read as
+     * cards. This is a designed daylight look, not the plain app white the owner
+     * rejected when Home wore it by accident (item 1): the steps and the accent are
+     * what make it Prime's rather than nobody's.
+     */
+    val PrimeHome: ColorScheme = Light.copy(
+        primary = Color(0xFF00A8E1),
+        onPrimary = Color(0xFFFFFFFF),
+        primaryContainer = Color(0xFFCDEFFB),
+        onPrimaryContainer = Color(0xFF003A52),
+        inversePrimary = Color(0xFF007FA8),
+        secondary = Color(0xFF131921),
+        background = Color(0xFFFFFFFF),
+        surface = Color(0xFFFFFFFF),
+        surfaceDim = Color(0xFFE8EEF2),
+        surfaceContainerLowest = Color(0xFFFFFFFF),
+        surfaceContainerLow = Color(0xFFF4F8FB),
+        surfaceContainer = Color(0xFFEDF3F8),
+        surfaceContainerHigh = Color(0xFFE3EDF5),
+        surfaceContainerHighest = Color(0xFFD9E7F1),
+        surfaceBright = Color(0xFFFFFFFF),
+    )
+
+    /**
      * Black, for an OLED screen (the Pure black switch, [com.tmplayer.data.pureBlackGround]):
      * [Dark] with the ground at true black. See [pureBlack].
      */

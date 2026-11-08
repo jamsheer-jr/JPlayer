@@ -145,13 +145,21 @@ import androidx.compose.ui.draw.drawBehind
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 /**
- * Home under its own colour scheme (item 18, v1.0.16): everything composed inside
- * takes [TmSchemes.NetflixHome] (black ground, Netflix red accent), and everything
- * outside keeps the app's scheme. The one wrapper is the whole scope of the change.
+ * Home under its own colour scheme (item 18, v1.0.16; the owner's mode rule,
+ * 2026-11-08): in the dark everything composed inside takes
+ * [TmSchemes.NetflixHome] (black ground, Netflix red accent); in light it takes
+ * [TmSchemes.PrimeHome] (white ground, Prime blue accent). The mode is read off the
+ * scheme the app itself is wearing, by its ground's luminance, so the viewer's
+ * theme choice drives it with no second setting. Everything outside keeps the
+ * app's scheme. The one wrapper is the whole scope of the change.
  */
 @Composable
 internal fun HomeThemed(content: @Composable () -> Unit) {
-    M3MaterialTheme(colorScheme = com.tmplayer.ui.theme.TmSchemes.NetflixHome, content = content)
+    val dark = M3MaterialTheme.colorScheme.background.luminance() < 0.5f
+    M3MaterialTheme(
+        colorScheme = if (dark) com.tmplayer.ui.theme.TmSchemes.NetflixHome else com.tmplayer.ui.theme.TmSchemes.PrimeHome,
+        content = content,
+    )
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
