@@ -949,6 +949,47 @@ internal fun HomePane(
                             OpenLinkPill { openLink = true }
                         }
                     }
+                    // Watch in your language (owner, v1.0.17): a wide tile per
+                    // language the chats hold, its first title's picture under the
+                    // name; a tap opens that language's page, films and shows
+                    // together, the way the streaming apps lay languages out.
+                    val languageTiles = remember(chipRows) {
+                        val codes = LinkedHashSet<String>()
+                        chipRows.filterIsInstance<HomeRow.Catalog>().forEach { row ->
+                            when {
+                                row.kind.startsWith("series-lang-") -> codes += row.kind.removePrefix("series-lang-")
+                                row.kind.startsWith("lang-") -> codes += row.kind.removePrefix("lang-")
+                            }
+                        }
+                        codes.mapNotNull { code ->
+                            val films = chipRows.firstOrNull { it.key == "catalog-lang-$code" } as? HomeRow.Catalog
+                            val shows = chipRows.firstOrNull { it.key == "catalog-series-lang-$code" } as? HomeRow.Catalog
+                            val first = (films?.all.orEmpty() + shows?.all.orEmpty()).firstOrNull() ?: return@mapNotNull null
+                            val name = com.tmplayer.data.HomeRows.languageName(code) ?: return@mapNotNull null
+                            Triple(code, name, first)
+                        }
+                    }
+                    if (languageTiles.size >= 2) {
+                        item(key = LANGUAGE_TILES_KEY, contentType = LANGUAGE_TILES_KEY) {
+                            Column(Modifier.padding(top = 10.dp)) {
+                                M3Text(
+                                    s.homeWatchLanguage,
+                                    style = M3MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Tone.text,
+                                    modifier = Modifier.padding(start = start, end = end),
+                                )
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    contentPadding = PaddingValues(start = start, end = end, top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    items(languageTiles.size, key = { languageTiles[it].first }) { index ->
+                                        val (code, name, first) = languageTiles[index]
+                                        LanguageTile(name = name, entry = first, chatTitle = chatTitle) { categoryKey = "langpage-$code" }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // The header line and the chips stand at the top of the list,
                     // above the banner: see the HEADER_KEY and CHIPS_KEY items.
                 }
@@ -1740,6 +1781,49 @@ private fun RowSeeAll(
                 }
             }
         }
+    }
+}
+
+/**
+ * One language tile on Home (owner, v1.0.17): a wide card carrying the language's
+ * first title's picture with the language's name over its foot.
+ */
+@Composable
+private fun LanguageTile(
+    name: String,
+    entry: ShelfEntry,
+    chatTitle: (Long) -> String,
+    onClick: () -> Unit,
+) {
+    val item = when (entry) {
+        is ShelfEntry.File -> entry.item
+        is ShelfEntry.Show -> entry.series.cover
+    }
+    val meta = com.tmplayer.ui.online.rememberMeta(item, showOnly = entry is ShelfEntry.Show)
+    val cover = com.tmplayer.ui.components.rememberCover(item, chatTitle(item.chatId))
+    val source = remember(item, meta?.wideUrl, meta?.posterUrl, cover) {
+        com.tmplayer.ui.components.BackdropSource(item.miniThumbnail, item.thumbnailFileId, cover, meta?.wideUrl, meta?.posterUrl)
+    }
+    Box(
+        Modifier
+            .width(168.dp)
+            .aspectRatio(16f / 10f)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick),
+    ) {
+        com.tmplayer.ui.components.EdgeBackdrop(source, Modifier.fillMaxSize())
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.66f)), startY = 60f),
+            ),
+        )
+        M3Text(
+            name,
+            style = M3MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 10.dp),
+        )
     }
 }
 
