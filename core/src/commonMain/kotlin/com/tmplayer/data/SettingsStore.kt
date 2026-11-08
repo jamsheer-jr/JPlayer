@@ -1130,8 +1130,8 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     /**
      * Whether the soundtrack is folded down to stereo, as the viewer set it, or null while they
-     * have not said. Null is an answer of its own: the default differs by device, on for a phone
-     * and off for a television, and [com.tmplayer.player.AudioDownmix.wanted] settles it.
+     * have not said. Null is an answer of its own: no fold on any device until the viewer
+     * turns it on (owner, v1.0.17), and [com.tmplayer.player.AudioDownmix.wanted] settles it.
      */
     val downmixChoice: Flow<Boolean?> = read { it[DOWNMIX_STEREO] }
 

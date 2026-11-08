@@ -103,8 +103,8 @@ class AudioDownmixTest {
     }
 
     @Test
-    fun `with no choice made the device decides, and a choice beats the device`() {
-        assertEquals(true, AudioDownmix.wanted(choice = null, television = false))
+    fun `with no choice made nothing folds, and a choice beats the default`() {
+        assertEquals(false, AudioDownmix.wanted(choice = null, television = false))
         assertEquals(false, AudioDownmix.wanted(choice = null, television = true))
         assertEquals(true, AudioDownmix.wanted(choice = true, television = true))
         assertEquals(false, AudioDownmix.wanted(choice = false, television = false))

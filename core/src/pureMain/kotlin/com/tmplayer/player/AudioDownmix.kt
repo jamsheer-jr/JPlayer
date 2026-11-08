@@ -4,9 +4,10 @@ package com.tmplayer.player
  * Which decoded audio layouts get folded to stereo before they reach the AudioTrack, and how.
  *
  * Some phones cannot play a multichannel track through the platform mixer: the audio server
- * invalidates the AudioTrack repeatedly and playback stutters until the renderer gives up. So the
- * fold happens here instead, in the audio processor chain, on any device that is not a television.
- * A television keeps every channel, because there multichannel goes out over HDMI and works.
+ * invalidates the AudioTrack repeatedly and playback stutters until the renderer gives up. The
+ * fold lives here, in the audio processor chain, for a viewer who meets that: it is theirs to
+ * turn on, and until they do the soundtrack plays in the channels it came in, on a phone as on
+ * a television (owner, v1.0.17: the original by default, the fold for those who need it).
  */
 object AudioDownmix {
 
@@ -61,11 +62,12 @@ object AudioDownmix {
 
     /**
      * Whether to fold at all: the viewer's own answer from Settings when there is one, and
-     * otherwise the device's default, for the reason [folds] gives: a phone folds, a television
-     * keeps its channels. A soundbar that cannot take what the film carries, or a phone wired to
-     * a receiver, is why the answer is the viewer's to change.
+     * otherwise no fold, on any device (owner, v1.0.17). The soundtrack's own channels are
+     * the default; the fold is for a phone that stumbles on them, and it is the viewer's
+     * to turn on. [television] stays in the question for the callers that ask by device;
+     * it no longer settles anything on its own.
      */
-    fun wanted(choice: Boolean?, television: Boolean): Boolean = choice ?: !television
+    fun wanted(choice: Boolean?, television: Boolean): Boolean = choice ?: false
 
     /** Every matrix of the stereo fold, for a player that [wanted] one. */
     fun stereoFolds(): List<Fold> {
