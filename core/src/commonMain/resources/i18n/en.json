@@ -918,6 +918,8 @@
     "filter_singles": "Single videos",
     "filter_unwatched": "Unwatched",
     "filter_watched": "Watched",
+    "holdings": "{counts} · {size} in all",
+    "holdings_so_far": "of the videos loaded so far",
     "in_downloads": "In Downloads",
     "in_downloads_detail": "Plays without a connection",
     "loading_more": "Loading more…",

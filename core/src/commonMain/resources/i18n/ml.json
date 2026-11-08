@@ -910,6 +910,8 @@
     "filter_singles": "ഒറ്റ വീഡിയോകൾ",
     "filter_unwatched": "കാണാത്തവ",
     "filter_watched": "കണ്ടവ",
+    "holdings": "{counts} · ആകെ {size}",
+    "holdings_so_far": "ഇതുവരെ ലോഡ് ചെയ്ത വീഡിയോകളിൽ",
     "in_downloads": "ഡൗൺലോഡുകളിൽ",
     "in_downloads_detail": "കണക്ഷൻ ഇല്ലാതെ പ്ലേ ചെയ്യും",
     "loading_more": "കൂടുതൽ ലോഡ് ചെയ്യുന്നു…",

@@ -1,5 +1,6 @@
 package com.tmplayer.ui.browse
 
+import com.tmplayer.ui.components.UiState
 import com.tmplayer.ui.components.keepTopInSight
 import android.Manifest
 import android.app.Activity
@@ -542,6 +543,19 @@ fun MediaGridScreen(
     // What "Select all" means, which is every video the listing has fetched so far. The bar lives
     // above the listing and cannot see inside it, so the loaded page is passed out to here.
     var listedItems by remember(chatId) { mutableStateOf<List<MediaItem>>(emptyList()) }
+    // The header's holdings line (item 34, v1.0.15): counts by quality and total size over
+    // the videos loaded so far, and only those; the line says "so far" until the listing
+    // has reached the chat's end, and stays out while searching, when the loaded set is a
+    // search result rather than the chat's holdings.
+    val qualitySummary = remember(listedItems) { com.tmplayer.data.ChatQualitySummary.of(listedItems) }
+    val holdingsLine = if (!qualitySummary.isEmpty && query.isBlank()) {
+        val counts = com.tmplayer.data.ChatQualitySummary.countsText(qualitySummary)
+        val base = s.gridHoldings(counts, s.formatter.size(qualitySummary.totalBytes))
+        val endReached = (state as? UiState.Content)?.value?.endReached == true
+        if (endReached) base else "$base · ${s.gridHoldingsSoFar}"
+    } else {
+        null
+    }
     val scope = rememberCoroutineScope()
     val settings = remember(context) { SettingsStore(context) }
     val detailFirst by settings.detailFirst.collectAsState(initial = true)
@@ -1174,6 +1188,7 @@ fun MediaGridScreen(
                     shortHidden = shownShortHidden,
                     onShortHidden = { shortPicking = true },
                     onChatInfo = { chatInfoOpen = true },
+                    holdings = holdingsLine,
                     onTyping = { typing = it },
                 )
             }
@@ -1653,6 +1668,8 @@ internal fun Header(
     onShortHidden: () -> Unit = {},
     /** Opens the chat's info panel, from a button beside its name; null leaves it out. */
     onChatInfo: (() -> Unit)? = null,
+    /** The holdings line (item 34, v1.0.15): counts by quality and total size; null leaves it out. */
+    holdings: String? = null,
     /** Told whether the search field is being typed into (its text field holds the focus). */
     onTyping: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -1692,6 +1709,15 @@ internal fun Header(
                     style = MaterialTheme.typography.bodyMedium,
                     color = Tone.muted,
                 )
+                if (holdings != null) {
+                    Text(
+                        holdings,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Tone.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (onChatInfo != null) {
                 Spacer(Modifier.width(16.dp))
