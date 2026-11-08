@@ -235,6 +235,7 @@ private val SUPPORT_STARRED = booleanPreferencesKey("support_starred")
 private val NEW_VIDEO_ALERTS = booleanPreferencesKey("new_video_alerts")
 private val NEW_VIDEO_OFFERED = booleanPreferencesKey("new_video_offered")
 private val NEW_VIDEO_SEEN = stringPreferencesKey("new_video_seen")
+private val CHAT_VISIT = stringPreferencesKey("chat_visit")
 // "Sponsor reminders", the notification's switch. The device's, like the counters.
 private val SPONSOR_REMINDERS = booleanPreferencesKey("sponsor_reminders")
 private val SUPPORT_KEYS = listOf(
@@ -1731,6 +1732,21 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setNewVideoSeen(seen: Map<Long, Long>) {
         prefs.edit { it[NEW_VIDEO_SEEN] = NewVideoAlerts.encode(seen) }
+    }
+
+    /**
+     * Each chat's last-visit mark for the new-video counts (item 11e, v1.0.15): see
+     * [ChatVisit]. Device bookkeeping, not a viewer choice, so it stays out of backups.
+     */
+    val chatVisitMarks: Flow<Map<Long, Long>> = read { ChatVisit.decode(it[CHAT_VISIT]) }
+
+    suspend fun chatVisitMarksNow(): Map<Long, Long> = ChatVisit.decode(prefs.data.first()[CHAT_VISIT])
+
+    /** Records a visit to [chatId] that reached [newestVideoMessageId]; the mark never retreats. */
+    suspend fun visitChat(chatId: Long, newestVideoMessageId: Long) {
+        if (newestVideoMessageId <= 0L) return
+        val moved = ChatVisit.visited(chatVisitMarksNow(), chatId, newestVideoMessageId)
+        prefs.edit { it[CHAT_VISIT] = ChatVisit.encode(moved) }
     }
 
     // ---- the notifications that help (CP76) -------------------------------------------------

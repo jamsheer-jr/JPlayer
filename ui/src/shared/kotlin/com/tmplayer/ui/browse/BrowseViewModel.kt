@@ -844,6 +844,11 @@ class MediaListViewModel(
     private val onSearched: (suspend (String) -> Unit)? = null,
     private val downloadedIds: (suspend () -> Set<String>)? = null,
     /**
+     * Records a visit to the chat for the rows' new-video counts (item 11e, v1.0.15): the
+     * newest video a whole-chat listing reached. Null where nothing is remembered.
+     */
+    private val visitMemory: VisitMemory? = null,
+    /**
      * Reads and writes the topic last picked in this chat, so a group opens on the section the
      * viewer was in rather than back on all of them. Null where nothing is remembered.
      */
@@ -854,6 +859,11 @@ class MediaListViewModel(
     interface TopicMemory {
         suspend fun chosen(chatId: Long): Int
         suspend fun remember(chatId: Long, topicId: Int)
+    }
+
+    /** Where [MediaListViewModel] records a chat visit, for the new-video counts (item 11e). */
+    interface VisitMemory {
+        suspend fun visited(chatId: Long, newestVideoMessageId: Long)
     }
 
     /** The forum topic being listed, or 0 for the whole chat. */
@@ -1266,6 +1276,19 @@ class MediaListViewModel(
      * Remembers [searched] as a recent search, unless the viewer carries on typing first: on a
      * phone every letter is a search of its own, and only the one they stopped at is worth a chip.
      */
+    /**
+     * Notes a visit for the new-video counts (item 11e, v1.0.15): only a whole-chat listing
+     * counts as visiting the chat, never a search or one topic of it, and the mark is the
+     * newest video the listing holds, so the count clears for exactly what was seen.
+     */
+    private fun noteVisit(items: List<MediaItem>) {
+        val memory = visitMemory ?: return
+        if (query.isNotBlank() || topicId != 0) return
+        val newest = com.tmplayer.data.ChatVisit.newestOf(items)
+        if (newest <= 0L) return
+        viewModelScope.launch { runCatching { memory.visited(chatId, newest) } }
+    }
+
     private fun recordSearch(searched: String) {
         val record = onSearched ?: return
         if (searched.isBlank()) return
@@ -1340,6 +1363,7 @@ class MediaListViewModel(
                         return@onSuccess
                     }
                     if (page.items.isNotEmpty()) recordSearch(query)
+                    noteVisit(page.items)
                     _state.value = if (page.items.isEmpty() && sponsored == null && archives.isEmpty()) {
                         nothingFound()
                     } else {
@@ -1745,6 +1769,7 @@ class MediaListViewModel(
 
         if (!session.isCurrent()) return
         if (startingFrom.isEmpty() && items.isNotEmpty()) recordSearch(query)
+        noteVisit(items)
         // An empty listing has to say something, whether the chat ran out or the walk gave up
         // after MAX_EMPTY_PAGES. A Content with no items is a blank screen, and a blank screen
         // asks the viewer to guess which of the two happened.
@@ -1791,5 +1816,14 @@ fun com.tmplayer.data.SettingsStore.topicMemory(): MediaListViewModel.TopicMemor
     return object : MediaListViewModel.TopicMemory {
         override suspend fun chosen(chatId: Long): Int = store.chosenTopic(chatId)
         override suspend fun remember(chatId: Long, topicId: Int) = store.rememberTopic(chatId, topicId)
+    }
+}
+
+/** Chat visits for the new-video counts (item 11e, v1.0.15), kept in the app's settings. */
+fun com.tmplayer.data.SettingsStore.visitMemory(): MediaListViewModel.VisitMemory {
+    val store = this
+    return object : MediaListViewModel.VisitMemory {
+        override suspend fun visited(chatId: Long, newestVideoMessageId: Long) =
+            store.visitChat(chatId, newestVideoMessageId)
     }
 }

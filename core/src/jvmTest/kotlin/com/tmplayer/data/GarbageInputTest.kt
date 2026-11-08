@@ -223,6 +223,7 @@ class GarbageInputTest {
             survive("HiddenStreams.decode", text) { HiddenStreams.decode(text) }
             survive("HiddenCopies.decode", text) { HiddenCopies.decode(text) }
             survive("SeriesStatuses.decode", text) { SeriesStatuses.decode(text) }
+            survive("ChatVisit.decode", text) { ChatVisit.decode(text) }
             survive("HomeUpdateNotice.visible", text) {
                 HomeUpdateNotice.visible(text, text, 1_000L)
                 HomeUpdateNotice.visible(HomeUpdateNotice.stamp(text, 1_000L), text, 2_000L)

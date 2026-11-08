@@ -282,6 +282,8 @@ internal fun BrowseScreen(
     /** Home's rows, built by [com.tmplayer.data.HomeRows] from what has loaded so far. */
     homeRows: List<HomeRow> = emptyList(),
     homeRowsReady: Boolean = true,
+    /** Each chat's last-visit mark, for the rows' new-video counts (item 11e, v1.0.15). */
+    visitMarks: Map<Long, Long> = emptyMap(),
     /** Which of Home's rows Settings has on: the carousel, and every row off for the all-off card. */
     homeLayout: com.tmplayer.data.HomeLayout = com.tmplayer.data.HomeLayout(),
     /** Settings, on its Home page. */
@@ -342,6 +344,27 @@ internal fun BrowseScreen(
     val allChats = (state as? UiState.Content)?.value?.chats
     val unreadChats = remember(allChats) {
         allChats.orEmpty().count { it.unreadCount > 0 && !it.isArchived }
+    }
+    // New videos per chat (item 11e, v1.0.15), counted over the videos Home's rows already
+    // hold for each chat against its last-visit mark: no chat is read for this alone, so a
+    // chat with no loaded row of videos shows no count (see ChatVisit).
+    val newVideoCounts = remember(homeRows, visitMarks) {
+        val byChat = HashMap<Long, MutableList<MediaItem>>()
+        for (row in homeRows) {
+            if (row !is HomeRow.Chat) continue
+            val held = byChat.getOrPut(row.chatId) { mutableListOf() }
+            for (entry in row.entries) {
+                when (entry) {
+                    is ShelfEntry.File -> held += entry.item
+                    is ShelfEntry.Show -> entry.series.episodes.forEach { held += it.item }
+                }
+            }
+            held += row.more
+        }
+        byChat.mapNotNull { (chatId, videos) ->
+            val count = com.tmplayer.data.ChatVisit.newCount(videos, visitMarks[chatId] ?: 0L)
+            if (count > 0) chatId to count else null
+        }.toMap()
     }
     // The saved section is matched back against the live folder list, so the rail never highlights
     // a folder deleted elsewhere and the heading never keeps a stale name.
@@ -2648,6 +2671,7 @@ private fun ChatSection(
                         opensOnLaunch = chat.id == launchChatId,
                         onClick = { open(chat, "r-${chat.id}") },
                         onHold = { onHold(chat) },
+                        newVideos = newVideoCounts[chat.id] ?: 0,
                         modifier = focusOf(chat, inStrip = true)
                             .then(backOf("r-${chat.id}"))
                             .width(RECENT_TILE_WIDTH),
@@ -2709,6 +2733,7 @@ private fun ChatSection(
                         onClick = { open(chat, chat.id) },
                         onHold = { onHold(chat) },
                         modifier = focusOf(chat, inStrip = false).then(backOf(chat.id)),
+                        newVideos = newVideoCounts[chat.id] ?: 0,
                     )
                 }
                 if (paging.loading || paging.failure != null) {
@@ -2756,6 +2781,7 @@ private fun ChatSection(
                         onHold = { onHold(chat) },
                         modifier = focusOf(chat, inStrip = false)
                             .then(if (animateRows) Modifier.animateItem() else Modifier),
+                        newVideos = newVideoCounts[chat.id] ?: 0,
                     )
                 }
                 if (paging.loading || paging.failure != null) {
@@ -2858,6 +2884,8 @@ private fun ChatTile(
     onClick: () -> Unit,
     onHold: () -> Unit,
     modifier: Modifier = Modifier,
+    /** New videos since the last visit (item 11e, v1.0.15); 0 draws no badge. */
+    newVideos: Int = 0,
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
@@ -2874,6 +2902,7 @@ private fun ChatTile(
                 modifier = Modifier.size(Avatar.Card).clip(CircleShape),
             )
             Spacer(Modifier.weight(1f))
+            NewVideosBadge(newVideos, small = true)
             UnreadBadge(chat, small = true)
             if (favorite) {
                 Spacer(Modifier.width(6.dp))
@@ -3046,12 +3075,14 @@ private fun ChatRow(
     onClick: () -> Unit,
     onHold: () -> Unit,
     modifier: Modifier = Modifier,
+    /** New videos since the last visit (item 11e, v1.0.15); 0 draws no badge. */
+    newVideos: Int = 0,
 ) {
     val s = LocalStrings.current
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
     if (isTouch()) {
-        TouchChatRow(chat, favorite, chosen, opensOnLaunch, onClick, onHold, modifier, interactions)
+        TouchChatRow(chat, favorite, chosen, opensOnLaunch, onClick, onHold, modifier, interactions, newVideos)
         return
     }
     PrefetchWhileFocused(chat.id, focused)
@@ -3108,6 +3139,7 @@ private fun ChatRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            NewVideosBadge(newVideos)
             UnreadBadge(chat)
             ChatMarkers(chat, size = 20.dp)
             if (chosen) {
@@ -3177,6 +3209,28 @@ private fun ChatMarkers(chat: ChatSummary, size: Dp) {
  * A muted chat keeps its count and loses its colour: it still says something arrived, without
  * asking to be looked at. Below one, nothing is drawn at all rather than a zero.
  */
+/**
+ * How many new videos a chat has since it was last visited (item 11e, v1.0.15), beside the
+ * unread badge: the unread count is Telegram's and covers every message, this one counts
+ * video posts only, from the videos the app already holds for the chat (see
+ * [com.tmplayer.data.ChatVisit]). Nothing at zero, like the unread badge.
+ */
+@Composable
+private fun NewVideosBadge(count: Int, small: Boolean = false) {
+    if (count < 1) return
+    val s = LocalStrings.current
+    Text(
+        text = s.homeChannelNewVideos(count),
+        style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge,
+        color = Tone.readableOn(Tone.accent),
+        maxLines = 1,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(Tone.accent)
+            .padding(horizontal = if (small) 6.dp else 10.dp, vertical = if (small) 1.dp else 3.dp),
+    )
+}
+
 @Composable
 private fun UnreadBadge(chat: ChatSummary, small: Boolean = false) {
     if (chat.unreadCount < 1) return
@@ -3220,6 +3274,8 @@ private fun TouchChatRow(
     onHold: () -> Unit,
     modifier: Modifier,
     interactions: MutableInteractionSource,
+    /** New videos since the last visit (item 11e, v1.0.15); 0 draws no badge. */
+    newVideos: Int = 0,
 ) {
     val s = LocalStrings.current
     Column {
@@ -3256,12 +3312,13 @@ private fun TouchChatRow(
                 modifier = Modifier.size(TOUCH_AVATAR).clip(CircleShape),
             )
         },
-        trailingContent = if (favorite || chosen || chat.unreadCount > 0 || chat.isPinned || chat.isMuted) {
+        trailingContent = if (favorite || chosen || chat.unreadCount > 0 || chat.isPinned || chat.isMuted || newVideos > 0) {
             {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    NewVideosBadge(newVideos)
                     UnreadBadge(chat)
                     ChatMarkers(chat, size = 16.dp)
                     if (chosen) {

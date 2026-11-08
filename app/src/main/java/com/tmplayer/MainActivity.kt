@@ -1898,6 +1898,8 @@ private fun Root() {
         val collections by remember { settings.collections }.collectAsStateWithLifecycle(initialValue = emptyList())
         val hideShortVideos by remember { settings.hideShortVideos }.collectAsStateWithLifecycle(initialValue = true)
         val homePinnedChat by remember { settings.homePinnedChat }.collectAsStateWithLifecycle(initialValue = 0L)
+        // Last-visit marks for the chat rows' new-video counts (item 11e, v1.0.15).
+        val visitMarks by remember { settings.chatVisitMarks }.collectAsStateWithLifecycle(initialValue = emptyMap())
         val homeRows = rememberHomeRows(
             homeViewModel, chats, favorites, continueWatching, watchLater, watchedVideos.values,
             recentMinStarred = 1,
@@ -2138,6 +2140,7 @@ private fun Root() {
                     folders = folders,
                     homeRows = homeRows,
                     homeRowsReady = homeViewModel.rowsSettled,
+                    visitMarks = visitMarks,
                     homeLayout = homeLayout ?: com.tmplayer.data.HomeLayout(),
                     onOpenHomeSettings = {
                         openSettings()

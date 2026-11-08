@@ -273,6 +273,7 @@ private class MediaListViewModelFactory(
             onSearched = { settings.addRecentSearch(it) },
             downloadedIds = { LocalDownloads.presentIds(settings) },
             topicMemory = settings.topicMemory(),
+            visitMemory = settings.visitMemory(),
         ) as T
 }
 
