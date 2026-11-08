@@ -74,6 +74,47 @@ class MediaNameTest {
     }
 
     @Test
+    fun `the combined spellings one channel posts all read as their spans`() {
+        // Real posts (owner's screenshots, 2026-11-08): the EP range in brackets, with and
+        // without a space before them, a title holding a number of its own, and a plain
+        // single EP among them. The rule is the shape, not these titles.
+        val taken = parse(
+            "Taken Natalee Holloway (2026) S01 EP(01-03) combined TRUE WEB-DL - 480p - AVC - AAC - ESub.mkv",
+        )
+        assertEquals("Taken Natalee Holloway", taken.title)
+        assertEquals(1, taken.season)
+        assertEquals(1, taken.episode)
+        assertEquals(3, taken.lastEpisode)
+
+        val temple = parse(
+            "Kauriburir The Cursed Temple (2026) S01 EP(01-06) combined TRUE WEB-DL - 720p - AVC.mkv",
+        )
+        assertEquals(1, temple.season)
+        assertEquals(1, temple.episode)
+        assertEquals(6, temple.lastEpisode)
+
+        val baba = parse(
+            "Ali Baba aur 40 Bhoot (2026) S01 EP(33-36) combined TRUE WEB-DL - 720p - AVC - ESub.mkv",
+        )
+        assertEquals("Ali Baba aur 40 Bhoot", baba.title)
+        assertEquals(33, baba.episode)
+        assertEquals(36, baba.lastEpisode)
+
+        val squad = parse(
+            "Kappi Squad (2026) S01 EP (13-16) TRUE WEB-DL - 720p - AVC - UNTOUCHED - ESub.mkv",
+        )
+        assertEquals("Kappi Squad", squad.title)
+        assertEquals(13, squad.episode)
+        assertEquals(16, squad.lastEpisode)
+
+        val chef = parse(
+            "Celebrity Master Chef (2026) S01 EP13 Tamil TRUE WEB-DL - 720p - AVC - AAC.mkv",
+        )
+        assertEquals(13, chef.episode)
+        assertEquals(null, chef.lastEpisode)
+    }
+
+    @Test
     fun `treats dots as spaces`() {
         val parsed = parse("City.Archive.1999.1080p.BluRay.x264-GROUP.mkv")
         assertEquals("City Archive", parsed.title)
