@@ -484,6 +484,11 @@ internal fun HomePane(
     // opens on the titles whose own names carry the language (owner, v1.0.18:
     // every language the chats hold opens).
     var categoryKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    // A category opened from the Categories list goes back to that list when it
+    // closes (owner, v1.0.20: Back from a category landed on plain Home and the
+    // list he came from never came back); a category opened any other way (a
+    // language tile, the search page) closes to Home as it always did.
+    var categoryFromList by remember { mutableStateOf(false) }
     val categoryFound = categoryKey?.let { key ->
         if (key.startsWith("langpage-")) {
             val code = key.removePrefix("langpage-")
@@ -535,6 +540,7 @@ internal fun HomePane(
         seeAllKey = null
         catalogKey = null
         categoryKey = null
+        categoryFromList = false
         categoriesOpen = false
         opened.open(null)
     }
@@ -1377,6 +1383,7 @@ internal fun HomePane(
                             .fillMaxWidth()
                             .clickable {
                                 categoriesOpen = false
+                                categoryFromList = true
                                 categoryKey = row.key
                             }
                             .padding(vertical = 11.dp),
@@ -1644,7 +1651,13 @@ internal fun HomePane(
             onPlay = onPlay,
             onHold = onHoldMedia,
             onOpenSeries = { opened.open(it) },
-            onClose = { categoryKey = null },
+            onClose = {
+                categoryKey = null
+                if (categoryFromList) {
+                    categoryFromList = false
+                    categoriesOpen = true
+                }
+            },
             hero = true,
             onDetails = onDetails,
         )
@@ -2049,6 +2062,11 @@ private fun CategoryHero(
                 HeroPill(
                     label = playLabel,
                     onClick = { onPlay(playItem, chatTitle(playItem.chatId)) },
+                    // The Home banner's own shape (stretch inside its share of the
+                    // row): without it the pill shrank around its label and the
+                    // label broke across lines, cut to its first letters (owner,
+                    // v1.0.20, on the Malayalam Audio page: "Pl" and an ellipsis).
+                    stretch = true,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 MyListPill(

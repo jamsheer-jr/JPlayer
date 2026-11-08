@@ -2924,10 +2924,18 @@ private fun MetaLine(
         val duration = s.formatter.duration(item.durationSec.toLong())
         // A tile standing for several copies says how many rather than one copy's size.
         val size = if (item.versions.size > 1) s.detailVersions(item.versions.size) else com.tmplayer.data.SplitPieces.sizeFact(item, s.formatter.size(item.sizeBytes))
-        val resume = watched
-            ?.takeIf { it.positionMs > 0 }
-            ?.let { s.gridStoppedAt(s.formatter.clock(it.positionMs)) }
-            ?: s.commonWatched.takeIf { finished }
+        // A poster's line is narrow, like its duration and quality above: the
+        // stopped-at clock is the fragment that ran off its end, cut mid-word
+        // (owner, v1.0.20), so a poster keeps the year, the size or copies and
+        // the watched mark, and the clock stays on the wide cards that fit it.
+        val resume = if (poster) {
+            s.commonWatched.takeIf { finished }
+        } else {
+            watched
+                ?.takeIf { it.positionMs > 0 }
+                ?.let { s.gridStoppedAt(s.formatter.clock(it.positionMs)) }
+                ?: s.commonWatched.takeIf { finished }
+        }
         listOfNotNull(
             year?.toString(),
             // A poster is narrow: the year and the size or the copies say most, and the detail the rest.
