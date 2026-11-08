@@ -1071,19 +1071,37 @@ internal fun CopiesSheet(
     // picture first, the biggest of it next, the copies stating no quality last. The copy
     // playing stays listed wherever it lands (VideoCopies.oneOfEachFile keeps it in the list
     // upstream), so its heading stands even when it is the only copy under it.
-    val tiers = remember(visible) { VideoCopies.tiersOf(visible) { it } }
+    // Copies group under the owner's levels (item 22, v1.0.17): a movie's under its five
+    // levels with their floor, an episode's under the series' three. Either way the key a
+    // group carries is the heading it stands under, with null for the copies stating no
+    // quality. The copy playing is never floored out.
+    val tiers: List<Pair<String?, List<MediaItem>>> = remember(visible) {
+        val subject = visible.firstOrNull { it.id == playing } ?: visible.firstOrNull()
+        val parsed = subject?.let { com.tmplayer.data.MediaName.parse(it.fileName, it.caption) }
+        if (parsed != null) {
+            VideoCopies.levelTiersOf(
+                visible,
+                { it },
+                keepBelow = { it.id == playing },
+                series = parsed.episode != null || parsed.season != null,
+            ).map { (level, group) -> (level.label.takeIf { it.isNotEmpty() }) to group }
+        } else {
+            VideoCopies.tiersOf(visible) { it }
+                .map { (height, group) -> (height?.let { group.first().copyQuality() }) to group }
+        }
+    }
     // The best copy standing (item 13, v1.0.16): the head of the tiers' order among the
     // copies this sheet shows, so a copy the sheet screens out never carries the badge.
     val bestId = remember(tiers, visible) { if (visible.size > 1) tiers.firstOrNull()?.second?.firstOrNull()?.id else null }
     val datesDiffer = remember(visible) { visible.map { it.date / 86_400 }.distinct().size > 1 }
     ChoiceSheet(title = s.playerCopies, note = s.playerCopiesNote, onDismiss = onClose, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
         ChoiceList {
-            tiers.forEach { (height, group) ->
-                // A stated quality heads its group, as on the Versions page; the copies
-                // stating none are headed "Other copies" here (the Versions page keeps
-                // its own "Quality not stated" heading for them): no quality is read into
-                // a copy from its size.
-                com.tmplayer.ui.components.ChoiceSection(height?.let { group.first().copyQuality() } ?: s.playerCopiesOther)
+            tiers.forEach { (heading, group) ->
+                // A stated quality (or, for a movie, its level) heads its group, as on the
+                // Versions page; the copies stating none are headed "Other copies" here
+                // (the Versions page keeps its own "Quality not stated" heading for them):
+                // no quality is read into a copy from its size.
+                com.tmplayer.ui.components.ChoiceSection(heading ?: s.playerCopiesOther)
                 group.forEach { copy ->
                     val here = copy.id == playing
                     // The upload is ticked only while no Telegram copy stands in for it.

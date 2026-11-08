@@ -300,6 +300,84 @@ object VideoCopies {
     }
 
     /**
+     * The owner's levels for a movie's copies (2026-11-08), best first: UHD is 4K;
+     * at 1080p the high copies (2 GB and up) are HD+ and the rest HD; at 720p a copy
+     * of 2 GB and up is promoted to HD and the rest are SD+; under 720p is SD, at
+     * whatever size (400 MB, 700 MB, 900 MB alike, the owner's own examples); under
+     * 480p is [Below], under the floor a movie's copies do not go. A copy whose
+     * height nothing states is [Unknown]: no level is read into it from its size.
+     */
+    enum class CopyLevel(val label: String) {
+        Uhd("UHD"),
+        HdPlus("HD+"),
+        Hd("HD"),
+        SdPlus("SD+"),
+        Sd("SD"),
+        Below(""),
+        Unknown(""),
+    }
+
+    /** 2 GB in bytes: the size at and over which a copy counts as its level's high one. */
+    private const val LEVEL_HIGH_BYTES = 2L * 1024 * 1024 * 1024
+
+    /** Which of the owner's levels [item] stands at, by its stated height, then its size. */
+    fun levelOf(item: MediaItem): CopyLevel {
+        val height = heightOf(item) ?: return CopyLevel.Unknown
+        val high = item.sizeBytes >= LEVEL_HIGH_BYTES
+        return when {
+            height >= 2000 -> CopyLevel.Uhd
+            height >= 1000 -> if (high) CopyLevel.HdPlus else CopyLevel.Hd
+            height >= 600 -> if (high) CopyLevel.Hd else CopyLevel.SdPlus
+            height >= 400 -> CopyLevel.Sd
+            else -> CopyLevel.Below
+        }
+    }
+
+    /**
+     * Which level an episode's copy stands at (owner, 2026-11-08): a series reads its
+     * copies in three levels only, by height alone: 2160p is UHD, 1080p is HD, and 720p
+     * and everything under it is SD. No size split, no floor: an episode is small by
+     * nature, and a 360p episode is still the episode.
+     */
+    fun seriesLevelOf(item: MediaItem): CopyLevel {
+        val height = heightOf(item) ?: return CopyLevel.Unknown
+        return when {
+            height >= 2000 -> CopyLevel.Uhd
+            height >= 1000 -> CopyLevel.Hd
+            else -> CopyLevel.Sd
+        }
+    }
+
+    /**
+     * [rows] grouped under the owner's levels, in the order copies are always offered
+     * (the [tiersOf] order inside every group, so the two groupings never disagree about
+     * which copy stands first). A movie's rows are classed by [levelOf] and the ones
+     * under its floor ([CopyLevel.Below]) are left out, except the ones [keepBelow]
+     * holds back: the copy playing, or the copy a page was opened from, stays listed
+     * under its own last group, as it does under [tiersOf]. A series' rows ([series])
+     * are classed by [seriesLevelOf], which has no floor and drops nothing.
+     */
+    fun <T> levelTiersOf(
+        rows: List<T>,
+        copyOf: (T) -> MediaItem,
+        keepBelow: (T) -> Boolean = { false },
+        series: Boolean = false,
+    ): List<Pair<CopyLevel, List<T>>> {
+        val level: (MediaItem) -> CopyLevel = if (series) ::seriesLevelOf else ::levelOf
+        val sorted = rows.sortedWith(
+            compareByDescending<T> { heightOf(copyOf(it)) ?: 0 }
+                .thenByDescending { MediaFacts.codecRank(MediaFacts.of(copyOf(it)).videoCodec) }
+                .thenByDescending { copyOf(it).sizeBytes },
+        )
+        return sorted
+            .filter { level(copyOf(it)) != CopyLevel.Below || keepBelow(it) }
+            .groupBy { level(copyOf(it)) }
+            .entries
+            .sortedBy { it.key.ordinal }
+            .map { it.key to it.value }
+    }
+
+    /**
      * Which of [copies] to play without asking, in this order:
      * 1. the one the viewer chose for this video before ([chosen], an [MediaItem.id]);
      * 2. one already on this device, a download before a cached copy, so nothing is fetched;

@@ -477,8 +477,19 @@ private fun CopyChooser(
     // Sorted and grouped the one way copies are always offered ([VideoCopies.tiersOf]), the
     // grouping the player's Copies sheet shares, so the two lists never disagree: quality
     // first, as each group's one heading; the copies whose name states none come last.
-    val tiers = remember(files, item.id) {
-        VideoCopies.tiersOf(files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }) { it.first }
+    // Copies group under the owner's levels (item 22, v1.0.17): a movie's under its five
+    // levels with their floor, an episode's under the series' three. Either way the key a
+    // group carries is the heading it stands under, with null for the copies stating no
+    // quality, headed as they always were.
+    val tiers: List<Pair<String?, List<Pair<MediaItem, List<MediaItem>>>>> = remember(files, item.id) {
+        val mapped = files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }
+        val parsed = com.tmplayer.data.MediaName.parse(item.fileName, item.caption)
+        VideoCopies.levelTiersOf(
+            mapped,
+            { it.first },
+            keepBelow = { it.first.id == item.id },
+            series = parsed.episode != null || parsed.season != null,
+        ).map { (level, group) -> (level.label.takeIf { it.isNotEmpty() }) to group }
     }
     val rows = remember(tiers) { tiers.flatMap { it.second } }
     // The best copy standing (item 13, v1.0.16): the first row of the first group, the
@@ -525,9 +536,9 @@ private fun CopyChooser(
             color = Tone.muted,
             modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
         )
-        tiers.forEach { (height, group) ->
+        tiers.forEach { (heading, group) ->
             Text(
-                height?.let { group.first().first.copyQuality() } ?: s.detailCopyOther,
+                heading ?: s.detailCopyOther,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = Tone.accent,

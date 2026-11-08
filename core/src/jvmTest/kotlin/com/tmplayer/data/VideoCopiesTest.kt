@@ -432,6 +432,51 @@ class VideoCopiesTest {
 
     // ---- the built-in channel's copies ----------------------------------------------------------
 
+    // ---- the owner's copy levels (item 22, v1.0.17) ------------------------------------------
+
+    @Test
+    fun `a movie copy stands at the level its height and size say`() {
+        val gb = 1024L * 1024 * 1024
+        assertEquals(VideoCopies.CopyLevel.Uhd, VideoCopies.levelOf(video(1, 20, "Film.2026.2160p.mkv", size = 900L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.HdPlus, VideoCopies.levelOf(video(1, 21, "Film.2026.1080p.mkv", size = 3 * gb)))
+        assertEquals(VideoCopies.CopyLevel.HdPlus, VideoCopies.levelOf(video(1, 22, "Film.2026.1080p.mkv", size = 2 * gb)))
+        assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.levelOf(video(1, 23, "Film.2026.1080p.mkv", size = 1500L shl 20)))
+        // A heavy 720p is promoted to HD; a light one stays SD+.
+        assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.levelOf(video(1, 24, "Film.2026.720p.mkv", size = 2 * gb)))
+        assertEquals(VideoCopies.CopyLevel.SdPlus, VideoCopies.levelOf(video(1, 25, "Film.2026.720p.mkv", size = 900L shl 20)))
+        // Under 720p is SD at any of the owner's sizes.
+        assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.levelOf(video(1, 26, "Film.2026.480p.mkv", size = 400L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.levelOf(video(1, 27, "Film.2026.480p.mkv", size = 900L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.Below, VideoCopies.levelOf(video(1, 28, "Film.2026.360p.mkv", size = 300L shl 20)))
+        // No stated height, no level: size alone never invents one.
+        assertEquals(VideoCopies.CopyLevel.Unknown, VideoCopies.levelOf(video(1, 29, "Film.2026.mkv", size = 5 * gb)))
+    }
+
+    @Test
+    fun `an episode copy stands at one of three levels, with no floor`() {
+        assertEquals(VideoCopies.CopyLevel.Uhd, VideoCopies.seriesLevelOf(video(1, 30, "Show.S01E01.2160p.mkv")))
+        assertEquals(VideoCopies.CopyLevel.Hd, VideoCopies.seriesLevelOf(video(1, 31, "Show.S01E01.1080p.mkv", size = 300L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.seriesLevelOf(video(1, 32, "Show.S01E01.720p.mkv")))
+        assertEquals(VideoCopies.CopyLevel.Sd, VideoCopies.seriesLevelOf(video(1, 33, "Show.S01E01.360p.mkv", size = 150L shl 20)))
+        assertEquals(VideoCopies.CopyLevel.Unknown, VideoCopies.seriesLevelOf(video(1, 34, "Show.S01E01.mkv")))
+    }
+
+    @Test
+    fun `level groups drop a movie copy under the floor and keep an episode one`() {
+        val hdMovie = video(1, 40, "Film.2026.1080p.mkv", size = 1500L shl 20)
+        val tinyMovie = video(1, 41, "Film.2026.360p.mkv", size = 300L shl 20)
+        val movieGroups = VideoCopies.levelTiersOf(listOf(tinyMovie, hdMovie), { it })
+        assertEquals(listOf(VideoCopies.CopyLevel.Hd), movieGroups.map { it.first })
+        // Held back, the floored copy stands in its own last group.
+        val held = VideoCopies.levelTiersOf(listOf(tinyMovie, hdMovie), { it }, keepBelow = { it.id == tinyMovie.id })
+        assertEquals(listOf(VideoCopies.CopyLevel.Hd, VideoCopies.CopyLevel.Below), held.map { it.first })
+        val epHd = video(1, 42, "Show.S01E01.1080p.mkv")
+        val epTiny = video(1, 43, "Show.S01E01.360p.mkv", size = 150L shl 20)
+        val seriesGroups = VideoCopies.levelTiersOf(listOf(epTiny, epHd), { it }, series = true)
+        assertEquals(listOf(VideoCopies.CopyLevel.Hd, VideoCopies.CopyLevel.Sd), seriesGroups.map { it.first })
+        assertEquals(listOf(epTiny.id), seriesGroups[1].second.map { it.id })
+    }
+
     @Test
     fun `a file the built-in channel posted leads with its own post`() {
         val elsewhere = video(7, 90, "Night.Train.2019.1080p.WEB-DL.x265.mkv")
