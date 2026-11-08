@@ -403,6 +403,8 @@ class TdByteWindow(private val td: TdlClient) {
         var nudgeAt = System.nanoTime() + NUDGE_AFTER_MS * 1_000_000
         var totalAtAsk = downloadedTotal
         var nudges = 0
+        var lastTotal = downloadedTotal
+        var silentSince = System.nanoTime()
         while (available == 0L) {
             if (shut) throw IOException("File $fileId was closed while a read waited")
             val known = window
@@ -442,6 +444,27 @@ class TdByteWindow(private val td: TdlClient) {
             ) {
                 markSeek(target)
                 requestDownloadFrom(target)
+            }
+
+            // A download bringing nothing at all is stuck, not slow: a slow link still lands
+            // bytes somewhere, and every landing moves the total the collector keeps. A frozen
+            // total for the whole of [STILL_REASK_MS] while a read waits earns the download the
+            // same fresh ask the nudge above gives a busy one, from the byte itself. The plans
+            // inside the fresh ask still bound it, so a windowed or data saving download is
+            // re-asked within its own limits, never past them.
+            if (downloadedTotal != lastTotal) {
+                lastTotal = downloadedTotal
+                silentSince = System.nanoTime()
+            } else if (
+                downloading && !completed &&
+                System.nanoTime() - silentSince >= STILL_REASK_MS * 1_000_000
+            ) {
+                Logger.i(TAG, "Nothing at all arriving for file $fileId; asking again from $target")
+                if (!OfflineDownloads.isDownloading(fileId)) {
+                    td.cancelDownloadFile(fileId, onlyIfPending = false)
+                }
+                requestDownloadFrom(target)
+                silentSince = System.nanoTime()
             }
 
             // updateFile arrives on every few hundred KB, so this normally returns immediately;
@@ -974,8 +997,17 @@ class TdByteWindow(private val td: TdlClient) {
             if (ph.open == 0) ph.closedAt = System.currentTimeMillis()
         }
 
-        /** How long a read may wait for its byte before the stream is declared stalled. */
-        const val STALL_TIMEOUT_MS = 60_000L
+        /**
+         * How long a read may wait for its byte before the stream is declared stalled. Thirty
+         * seconds, halved from sixty (owner, 2026-11-08: a stalled video stood a full minute
+         * on its spinner before the stopped-arriving sheet, which read as the app hanging):
+         * the silent re-ask below gives a stuck download two fresh chances inside the wait,
+         * so the shorter bound costs a genuinely slow file nothing it was using.
+         */
+        const val STALL_TIMEOUT_MS = 30_000L
+
+        /** How long the download's total may stand frozen, a read waiting, before it is re-asked. */
+        private const val STILL_REASK_MS = 12_000L
 
         /** 1..32; playback gets the top of the range so thumbnails never starve it. */
         private const val PLAYBACK_PRIORITY = 32
