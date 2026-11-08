@@ -69,11 +69,14 @@ class SeriesDeepeningTest {
     @Test
     fun `the shelf counts the deeper pool, the chat row keeps its window`() {
         val chat = ChatSummary(1, "Series Chat", null, 0, ChatKind.Channel)
+        // The shelf stands under the layout the store hands Home, shelves on: the
+        // bare layout builds no catalog rows at all (see HomeLayout).
         val rows = HomeRows.build(
             continueWatching = emptyList(),
             favourites = listOf(chat),
             loaded = mapOf(1L to window),
             recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
             seriesPool = SeriesDeepening.merge(window, older),
         )
         val series = rows.filterIsInstance<HomeRow.Catalog>().first { it.kind == "series" }
@@ -96,6 +99,7 @@ class SeriesDeepeningTest {
             favourites = listOf(chat),
             loaded = mapOf(1L to window),
             recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
         )
         val series = rows.filterIsInstance<HomeRow.Catalog>().first { it.kind == "series" }
         val show = (series.entries.single() as ShelfEntry.Show).series
