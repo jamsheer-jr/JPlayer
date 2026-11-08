@@ -64,6 +64,13 @@ class ShowActions(
     val onOpenChat: (() -> Unit)? = null,
     /** That chat's name, for "Go to" on the menu. */
     val chatTitle: String = "",
+    /**
+     * Where the show stands with the viewer (item 9d, v1.0.15): its TV Time style status,
+     * or null when none is set. Only read while [onSeriesStatus] is offered.
+     */
+    val seriesStatus: com.tmplayer.data.SeriesStatus? = null,
+    /** Sets the show's status, or clears it with null; null leaves the lines out. */
+    val onSeriesStatus: ((com.tmplayer.data.SeriesStatus?) -> Unit)? = null,
 )
 
 /**
@@ -107,6 +114,24 @@ fun ShowMenu(
             }
             if (actions.onMark != null && choices.isNotEmpty()) {
                 add(MenuLine(s.seriesMarkTitle, TmIcons.Check, null) { marks = true })
+            }
+            // Where the show stands with the viewer (item 9d, v1.0.15): one line per list,
+            // the standing one ticked; picking it again, or Clear, takes the status off.
+            actions.onSeriesStatus?.let { setStatus ->
+                val current = actions.seriesStatus
+                for ((status, label) in listOf(
+                    com.tmplayer.data.SeriesStatus.Watching to s.profileWatching,
+                    com.tmplayer.data.SeriesStatus.Completed to s.seriesCompleted,
+                    com.tmplayer.data.SeriesStatus.Dropped to s.seriesDropped,
+                )) {
+                    add(
+                        MenuLine(
+                            label,
+                            if (current == status) TmIcons.Check else TmIcons.Clock,
+                            if (current == status) s.seriesStatusCurrent else null,
+                        ) { onDismiss(); setStatus(if (current == status) null else status) },
+                    )
+                }
             }
             actions.onOpenChat?.let { chat ->
                 add(MenuLine(s.detailOpenChat(actions.chatTitle), TmIcons.ArrowForward, s.detailOpenChatDetail) { onDismiss(); chat() })

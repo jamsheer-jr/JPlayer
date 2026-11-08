@@ -153,6 +153,16 @@ internal fun ProfilePage(
     // Viewer profiles (v1.0.15, items 1, 7g and 8e): the switcher under the account header.
     // Every list on this page already reads the active profile's records, so a switch redraws
     // the page as the picked viewer; the sheets and pads below are this section's own.
+    // The series status lists (item 9d, v1.0.15), the active profile's own records.
+    val statusRecords by settings.seriesStatuses.collectAsState(initial = emptyList())
+    val statusLists = remember(statusRecords, s) {
+        listOf(
+            com.tmplayer.data.SeriesStatus.Watching to s.profileWatching,
+            com.tmplayer.data.SeriesStatus.Completed to s.seriesCompleted,
+            com.tmplayer.data.SeriesStatus.Dropped to s.seriesDropped,
+        ).map { (status, label) -> label to com.tmplayer.data.SeriesStatuses.byStatus(statusRecords, status) }
+            .filter { it.second.isNotEmpty() }
+    }
     val profiles by settings.allProfiles.collectAsState(initial = emptyList())
     val activeProfileId by settings.activeProfileId.collectAsState(initial = ViewerProfiles.DEFAULT_ID)
     val profilePinIds by settings.profilePinIds.collectAsState(initial = emptySet())
@@ -300,6 +310,38 @@ internal fun ProfilePage(
                             title = null,
                             onClick = { openDetail(record.toMediaItem(), record.chatTitle) },
                         )
+                    }
+                }
+            }
+        }
+        // My shows (item 9d, v1.0.15): the series status lists, TV Time style, set from a
+        // series' page or its card menu and kept per profile. A card opens the title's page
+        // through its first episode's post; the status itself is changed there, not here.
+        if (statusLists.isNotEmpty()) {
+            item(key = "shows-heading") {
+                ProfileHeading(s.profileMyShows)
+            }
+            for ((label, records) in statusLists) {
+                item(key = "shows-${label}") {
+                    Column {
+                        M3Text(
+                            label,
+                            style = M3MaterialTheme.typography.titleSmall,
+                            color = Tone.muted,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(records, key = { "st-${it.key}" }) { record ->
+                                ProfilePosterCard(
+                                    fallback = record.toMediaItem(),
+                                    title = record.title,
+                                    onClick = { openDetail(record.toMediaItem(), "") },
+                                )
+                            }
+                        }
                     }
                 }
             }

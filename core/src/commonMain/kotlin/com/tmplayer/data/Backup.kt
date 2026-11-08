@@ -232,6 +232,10 @@ object Backups {
         "rewind_on_resume_ms" to Kind.LONG,
         "save_mobile_data" to Kind.BOOL,
         "screen_orientation" to Kind.TEXT,
+        // Where each series stands with the viewer (item 9d, v1.0.15), the default
+        // profile's line under its plain name, as the collections travel: a list of the
+        // viewer's own, set by hand, so it comes along to a new phone.
+        "series_status" to Kind.TEXT,
         // The channel streams already opened, by post (SeenStreams): Home marks the rest new.
         "seen_streams" to Kind.TEXT,
         "show_remaining_time" to Kind.BOOL,

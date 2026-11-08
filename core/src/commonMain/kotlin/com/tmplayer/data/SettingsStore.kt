@@ -104,6 +104,7 @@ private val MAX_SIZE = longPreferencesKey("max_size_bytes")
 private val CHAT_FILTER = stringPreferencesKey("chat_filter")
 private val CHAT_SORT = stringPreferencesKey("chat_sort")
 private val COLLECTIONS = stringPreferencesKey("collections")
+private val SERIES_STATUS = stringPreferencesKey("series_status")
 // Viewer profiles inside the one account (v1.0.15, item 1): the list (names and the Simple
 // flag, never a PIN: see ViewerProfiles) and which one is active. The active id is stored
 // only for a profile after the default; its absence IS the default profile, whose records
@@ -2360,6 +2361,34 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
     /** The collections line of the profile [prefix] names: the plain key for the default. */
     private fun collectionsKey(prefix: String) =
         if (prefix.isEmpty()) COLLECTIONS else stringPreferencesKey(prefix + "collections")
+
+    /**
+     * Where each series stands with the viewer (item 9d, v1.0.15): see [SeriesStatuses].
+     * One value per viewer profile, keyed exactly as the collections are, so one profile's
+     * Watching list is never another's.
+     */
+    val seriesStatuses: Flow<List<SeriesStatusRecord>> = read { prefs ->
+        SeriesStatuses.decode(prefs[seriesStatusKey(profilePrefixOf(prefs))])
+    }
+
+    suspend fun seriesStatusesNow(): List<SeriesStatusRecord> {
+        val prefs = prefs.data.first()
+        return SeriesStatuses.decode(prefs[seriesStatusKey(profilePrefixOf(prefs))])
+    }
+
+    suspend fun setSeriesStatuses(records: List<SeriesStatusRecord>) {
+        prefs.edit { it[seriesStatusKey(profilePrefixOf(it))] = SeriesStatuses.encode(records) }
+    }
+
+    /** Sets [record]'s status, or clears its series' status when [record] is null for [key]. */
+    suspend fun setSeriesStatus(record: SeriesStatusRecord?, key: String) {
+        val now = seriesStatusesNow()
+        setSeriesStatuses(if (record == null) SeriesStatuses.without(now, key) else SeriesStatuses.with(now, record))
+    }
+
+    /** The series status line of the profile [prefix] names: the plain key for the default. */
+    private fun seriesStatusKey(prefix: String) =
+        if (prefix.isEmpty()) SERIES_STATUS else stringPreferencesKey(prefix + "series_status")
 
     /** The streams the viewer took out of Home's Live row, by the posts that carried them: see [HiddenStreams]. */
     val hiddenStreams: Flow<Set<String>> = read { it[HIDDEN_STREAMS] }.map { raw -> HiddenStreams.decode(raw) }

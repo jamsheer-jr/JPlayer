@@ -41,10 +41,14 @@ fun rememberShowActions(
     val chatId = series.cover.chatId
     val saved by remember(watched) { watched.watchLater.showIds }.collectAsState(initial = emptySet())
     val onList = WatchLaterRecord.showId(chatId, series.key) in saved
+    // The show's TV Time style status (item 9d, v1.0.15), the active profile's own record.
+    val statusRecords by remember(settings) { settings.seriesStatuses }.collectAsState(initial = emptyList())
+    val statusKey = com.tmplayer.data.SeriesStatuses.keyOf(chatId, series.key)
+    val currentStatus = com.tmplayer.data.SeriesStatuses.statusOf(statusRecords, statusKey)
     val currentSeries by rememberUpdatedState(series)
     val currentWatch by rememberUpdatedState(watch)
     val say by rememberUpdatedState(onMessage)
-    return remember(series.key, chatId, onList, chatTitle, onOpenChat, settings, watched, s) {
+    return remember(series.key, chatId, onList, chatTitle, onOpenChat, settings, watched, s, currentStatus) {
         ShowActions(
             watchLater = onList,
             onWatchLater = { add ->
@@ -94,6 +98,18 @@ fun rememberShowActions(
             },
             onOpenChat = onOpenChat,
             chatTitle = chatTitle,
+            seriesStatus = currentStatus,
+            onSeriesStatus = { status ->
+                val show = currentSeries
+                scope.launch {
+                    runCatching {
+                        val record = status?.let {
+                            com.tmplayer.data.SeriesStatuses.recordOf(chatId, show, it, System.currentTimeMillis())
+                        }
+                        settings.setSeriesStatus(record, com.tmplayer.data.SeriesStatuses.keyOf(chatId, show.key))
+                    }
+                }
+            },
         )
     }
 }
