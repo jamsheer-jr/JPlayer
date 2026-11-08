@@ -305,6 +305,38 @@ class HomeRowsTest {
     }
 
     @Test
+    fun `star, decade, gems, trailers and language top 10 rows stand by their matches`() {
+        val films = listOf(
+            video(1, "First.Classic.1995.mkv"),
+            video(1, "Second.Classic.1995.mkv"),
+            video(1, "Third.Classic.1995.mkv"),
+        )
+        val meta = HashMap<String, TitleMeta>()
+        films.forEach {
+            meta[it.id] = TitleMeta(
+                listOf("Drama"), 8.6, originalLanguage = "ml", year = 1995,
+                cast = listOf("Star One", "Other Actor"), hasTrailer = true,
+            )
+        }
+        val rows = HomeRows.build(
+            continueWatching = emptyList(),
+            favourites = listOf(chat(1)),
+            loaded = mapOf(1L to films),
+            recent = emptyList(),
+            layout = HomeLayout(catalogRows = true),
+            titleMeta = meta,
+        )
+        val catalogs = rows.filterIsInstance<HomeRow.Catalog>()
+        assertEquals(3, catalogs.single { it.kind == "star-star-one" }.entries.size)
+        assertEquals(3, catalogs.single { it.kind == "decade-1990" }.entries.size)
+        assertEquals(3, catalogs.single { it.kind == "gems" }.entries.size)
+        assertEquals(3, catalogs.single { it.kind == "trailers" }.entries.size)
+        val topMalayalam = catalogs.single { it.kind == "top10-ml" }
+        assertEquals("Malayalam", topMalayalam.label)
+        assertEquals(3, topMalayalam.entries.size)
+    }
+
+    @Test
     fun `series stand in language rows by their drama tags alone`() {
         // No online match hands these a language: the names' own catalogue tags are the
         // only signal, as most of the owner's drama files carry them (owner, v1.0.14).

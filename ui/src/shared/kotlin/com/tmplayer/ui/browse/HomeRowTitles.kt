@@ -33,7 +33,16 @@ fun homeRowTitle(row: HomeRow, s: Messages): String = when (row) {
         "weekly" -> s.homeRowWeekly
         "multi-lang" -> s.homeRowMultiLang
         "top-picks" -> s.homeRowTopPicks
-        else -> if (row.kind.startsWith("dub-") && row.label.isNotEmpty()) s.homeRowDubbed(row.label) else row.label
+        "gems" -> s.homeRowGems
+        "trailers" -> s.homeRowTrailers
+        "decade-1990" -> s.homeRowDecade1990
+        "decade-2000" -> s.homeRowDecade2000
+        "decade-2010" -> s.homeRowDecade2010
+        else -> when {
+            row.kind.startsWith("top10-") && row.label.isNotEmpty() -> s.homeRowTop10Lang(row.label)
+            row.kind.startsWith("dub-") && row.label.isNotEmpty() -> s.homeRowDubbed(row.label)
+            else -> row.label
+        }
     }
 }
 

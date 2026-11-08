@@ -171,6 +171,10 @@ data class TitleMeta(
      * false here means the fetched extras said the show has not ended.
      */
     val ended: Boolean = false,
+    /** The match's top billed cast names, for Home's star rows (item 29, v1.0.17). */
+    val cast: List<String> = emptyList(),
+    /** The match has a trailer the detail page can play, for Home's trailers row (item 32, v1.0.17). */
+    val hasTrailer: Boolean = false,
 )
 
 /**
@@ -552,6 +556,9 @@ object HomeRows {
     fun catalogGroupOf(kind: String): String = when {
         kind.startsWith("series-genre-") -> "series-genre"
         kind == "series-ongoing" || kind == "series-completed" -> "series-status"
+        kind.startsWith("top10-") -> "top10"
+        kind.startsWith("star-") -> "stars"
+        kind.startsWith("decade-") -> "decades"
         kind == "series" || kind.startsWith("series-lang-") -> "series"
         kind == "anime" -> "anime"
         kind.startsWith("dub-") -> "lang"
@@ -624,6 +631,15 @@ object HomeRows {
 
     /** Series genre rows Home builds at most: the owner asked for more show categories (v1.0.17). */
     const val CATALOG_SERIES_GENRES = 6
+
+    /** Language Top 10 rows Home builds at most (v1.0.17). */
+    const val CATALOG_LANG_TOP10 = 3
+
+    /** Star rows Home builds at most (v1.0.17). */
+    const val CATALOG_STARS = 3
+
+    /** The rating a title needs to stand in Hidden gems (v1.0.17). */
+    const val GEMS_MIN = 8.0
 
     /** The lowest rating, out of ten, that earns a tile a place on the Top Rated shelf. */
     const val TOP_RATED_MIN = 7.5
@@ -738,6 +754,16 @@ object HomeRows {
         is ShelfEntry.Show -> entry.series.cover.id
     }
 
+    /** The date a shelf entry stands at: a file's own, a show's cover's. */
+    private fun leadDateOf(entry: ShelfEntry): Int = when (entry) {
+        is ShelfEntry.File -> entry.item.date
+        is ShelfEntry.Show -> entry.series.cover.date
+    }
+
+    /** A star row's kind: "star-<slug>", so its group is its own. */
+    private fun starKind(name: String): String =
+        "star-" + name.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-')
+
     /**
      * The shelves for [build]'s foot: Trending now where TMDB's week has titles in the chats,
      * then Movies, a shelf per language, a shelf per genre, Top Rated, and Because you
@@ -830,6 +856,51 @@ object HomeRows {
             if (ongoing.size >= CATALOG_MIN) add(HomeRow.Catalog("series-ongoing", "", ongoing.take(LIMIT), all = ongoing))
             val completed = all.filterIsInstance<ShelfEntry.Show>().filter { entry -> metaOf(entry, titleMeta)?.ended == true }
             if (completed.size >= CATALOG_MIN) add(HomeRow.Catalog("series-completed", "", completed.take(LIMIT), all = completed))
+            // A Top 10 of each fullest language (owner, v1.0.17): that language's
+            // best rated titles, ten at most, the fullest language first.
+            all.groupBy { languageOf(it, titleMeta) }.entries
+                .filter { (code, _) -> code != null && LANGUAGE_NAMES.containsKey(code) }
+                .map { (code, entries) ->
+                    code!! to entries.mapNotNull { entry -> metaOf(entry, titleMeta)?.rating?.let { entry to it } }
+                        .sortedByDescending { it.second }
+                }
+                .filter { it.second.size >= CATALOG_MIN }
+                .sortedByDescending { it.second.size }
+                .take(CATALOG_LANG_TOP10)
+                .forEach { (code, scored) ->
+                    add(HomeRow.Catalog("top10-$code", LANGUAGE_NAMES.getValue(code), scored.take(10).map { it.first }, all = scored.map { it.first }))
+                }
+            // Star rows (owner, v1.0.17): a row per name the matches' casts hold
+            // most, the fullest first.
+            val byStar = LinkedHashMap<String, MutableList<ShelfEntry>>()
+            all.forEach { entry ->
+                metaOf(entry, titleMeta)?.cast.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                    .forEach { name -> byStar.getOrPut(name) { ArrayList() } += entry }
+            }
+            byStar.entries
+                .filter { it.value.size >= CATALOG_MIN }
+                .sortedWith(compareByDescending<Map.Entry<String, List<ShelfEntry>>> { it.value.size }.thenBy { it.key })
+                .take(CATALOG_STARS)
+                .forEach { (name, entries) -> add(HomeRow.Catalog(starKind(name), name, entries.take(LIMIT), all = entries)) }
+            // The classics (owner, v1.0.17): a row per decade the matches date from.
+            val byDecade = all.groupBy { entry -> metaOf(entry, titleMeta)?.year?.let { (it / 10) * 10 } }
+            for (decade in listOf(1990, 2000, 2010)) {
+                val entries = byDecade[decade].orEmpty()
+                if (entries.size >= CATALOG_MIN) add(HomeRow.Catalog("decade-$decade", "", entries.take(LIMIT), all = entries))
+            }
+            // Hidden gems (owner, v1.0.17): highly rated titles the trending row
+            // is not already carrying, best first.
+            if (titleMeta.isNotEmpty()) {
+                val gems = all.mapNotNull { entry -> metaOf(entry, titleMeta)?.rating?.takeIf { it >= GEMS_MIN }?.let { entry to it } }
+                    .filter { (entry, _) -> leadIdOf(entry) !in trending }
+                    .sortedByDescending { it.second }
+                if (gems.size >= CATALOG_MIN) add(HomeRow.Catalog("gems", "", gems.take(LIMIT).map { it.first }, all = gems.map { it.first }))
+            }
+            // Trailers (owner, v1.0.17): the titles whose match carries a trailer,
+            // newest first; the tile opens the title, whose page plays it.
+            val trailers = all.filter { entry -> metaOf(entry, titleMeta)?.hasTrailer == true }
+                .sortedByDescending { entry -> leadDateOf(entry) }
+            if (trailers.size >= CATALOG_MIN) add(HomeRow.Catalog("trailers", "", trailers.take(LIMIT), all = trailers))
             val byLanguage = all.filterNot { entry -> isAnime(entry, titleMeta) }.groupBy { languageOf(it, titleMeta) }
             byLanguage.entries
                 .filter { (code, entries) -> code != null && LANGUAGE_NAMES.containsKey(code) && entries.size >= CATALOG_MIN }

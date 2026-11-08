@@ -1518,6 +1518,7 @@ private fun homeTitleMeta(
                 ?.takeIf {
                     it.genres.isNotEmpty() || it.rating != null || it.originalLanguage != null ||
                         it.year != null || it.providers.isNotEmpty() || it.ended ||
+                        it.cast.isNotEmpty() || it.trailer != null ||
                         info?.provider == com.tmplayer.online.MetaProvider.AniList
                 }
                 ?.let {
@@ -1525,6 +1526,8 @@ private fun homeTitleMeta(
                         it.genres, it.rating, it.originalLanguage, it.year, it.providers,
                         anime = info?.provider == com.tmplayer.online.MetaProvider.AniList,
                         ended = it.ended,
+                        cast = it.cast.map { person -> person.name }.take(6),
+                        hasTrailer = it.trailer != null,
                     )
                 }
                 // An anime catalogue's match settles the one fact Home needs of it even

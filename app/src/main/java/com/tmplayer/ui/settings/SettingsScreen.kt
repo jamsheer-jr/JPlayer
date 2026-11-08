@@ -3814,6 +3814,10 @@ internal fun homeCategoryLabel(group: String, s: com.tmplayer.i18n.Messages): St
     "genre" -> s.settingsCatGenre
     "series-genre" -> s.settingsCatSeriesGenre
     "series-status" -> s.settingsCatSeriesStatus
+    "stars" -> s.settingsCatStars
+    "decades" -> s.settingsCatDecades
+    "gems" -> s.settingsCatGems
+    "trailers" -> s.settingsCatTrailers
     "top-rated" -> s.settingsCatTopRated
     "ott" -> s.settingsCatOtt
     "multi" -> s.settingsCatMulti
