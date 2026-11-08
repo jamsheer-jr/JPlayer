@@ -167,6 +167,10 @@ internal fun PhoneSearchScreen(
     onRefresh: () -> Unit,
     /** A result row's play button: the title's default copy, played at once. */
     onPlayGroup: (ResultGroup) -> Unit,
+    /** The scope row's and the nowhere-to-look notice's way into the chat picker. */
+    onChooseChats: () -> Unit,
+    /** The notice's other way out: Settings, where the Global Search switch lives. */
+    onOpenGlobalSearch: () -> Unit,
     /** A Continue watching row's play button: that video, played at once. */
     onPlayItem: (MediaItem, String) -> Unit,
     /** Whether a show result has an episode posted since the viewer last watched it. */
@@ -283,6 +287,38 @@ internal fun PhoneSearchScreen(
                         onPlayItem = onPlayItem,
                     )
                 } else {
+                    // The scope the search is looking in (owner, v1.0.16): the line says
+                    // which, and tapping it goes to where that is decided, the picker for
+                    // a picked scope, Settings (and its Global Search switch) for the
+                    // account wide one.
+                    item(key = "scope") {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(role = Role.Button) { if (state.scopeAll) onOpenGlobalSearch() else onChooseChats() }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(s.browseSearchScope, style = MaterialTheme.typography.bodyMedium, color = Tone.muted)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (state.scopeAll) s.browseSearchScopeAllVideos else s.browseSearchScopeChats,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Tone.accent,
+                            )
+                        }
+                    }
+                    if (state.scopeMissing) {
+                        item(key = "scope-missing") {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                Text(s.browseSearchScopeMissing, style = MaterialTheme.typography.bodyMedium, color = Tone.text)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = onChooseChats) { Text(s.pickerChooseChats) }
+                                    TextButton(onClick = onOpenGlobalSearch) { Text(s.browseSearchTurnOnGlobal) }
+                                }
+                            }
+                        }
+                    }
                     offer?.let { found ->
                         item(key = "link-offer") {
                             com.tmplayer.ui.components.ChoiceLine(found.label, detail = found.detail, icon = TmIcons.Send) {

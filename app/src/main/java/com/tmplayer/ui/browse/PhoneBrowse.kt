@@ -290,6 +290,8 @@ internal fun PhoneBrowse(
                 onRetry = search::retry,
                 onRefresh = search::refresh,
                 onPlayGroup = playGroup,
+                onChooseChats = { AddChatsRequest.ask() },
+                onOpenGlobalSearch = onOpenSettings,
                 onPlayItem = { item, title -> onPlayMedia(item, title) },
                 showHasNewEpisodes = searchHasNewEpisodes,
                 onRemoveRecent = { entry -> scope.launch { settings.removeRecentSearch(entry) } },

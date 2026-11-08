@@ -151,6 +151,7 @@ object Backups {
         "gesture_brightness" to Kind.BOOL,
         "gesture_seek" to Kind.BOOL,
         "gesture_volume" to Kind.BOOL,
+        "global_search" to Kind.BOOL,
         "hero_trailer_autoplay" to Kind.BOOL,
         "hide_cam_copies" to Kind.BOOL,
         "hide_short_videos" to Kind.BOOL,

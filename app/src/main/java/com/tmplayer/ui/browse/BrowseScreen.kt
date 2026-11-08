@@ -425,6 +425,19 @@ internal fun BrowseScreen(
     // The under 5 minute hiding for the search's cards, from its own Playback switch.
     val searchHideShort by groupsSettings.hideShortVideos.collectAsState(initial = true)
     LaunchedEffect(searchHideShort) { search.setHideShortVideos(searchHideShort) }
+    // Global Search (owner, v1.0.16): the switch from Settings (off by default) and the
+    // AddedChats answer, both handed to the search as they change: the switch changes
+    // the ask itself, the answer only what the scope line and notice say.
+    val searchGlobal by groupsSettings.globalSearch.collectAsState(initial = false)
+    LaunchedEffect(searchGlobal) { search.setGlobalSearch(searchGlobal) }
+    val addedChoice by com.tmplayer.data.AddedChats.choice.collectAsState()
+    LaunchedEffect(addedChoice) {
+        search.setScopeChoice(
+            picked = addedChoice.mode == com.tmplayer.data.AddedMode.Picked,
+            answered = addedChoice.answered,
+            empty = addedChoice.mode == com.tmplayer.data.AddedMode.Picked && addedChoice.chats.isEmpty(),
+        )
+    }
     // Back online: a search that could only list this device's videos asks Telegram again, as
     // the desktop's does, rather than saying "offline" until the viewer types something new.
     val searchConnected by com.tmplayer.data.Td.connected.collectAsState()

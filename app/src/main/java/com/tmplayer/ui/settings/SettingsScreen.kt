@@ -329,6 +329,9 @@ fun SettingsScreen(
     val hiddenCopies by settings.hiddenCopies.collectAsStateWithLifecycle(initialValue = emptySet())
     val hiddenTitleWords by settings.hiddenTitleWords.collectAsStateWithLifecycle(initialValue = emptySet())
     val rememberSearches by settings.rememberSearches.collectAsStateWithLifecycle(initialValue = true)
+    // Off until read, which is the stored default (owner, v1.0.16): search stays inside
+    // the chosen chats unless the viewer turns Global Search on here.
+    val globalSearch by settings.globalSearch.collectAsStateWithLifecycle(initialValue = false)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
     val wifiOnly by settings.wifiOnlyDownloads.collectAsStateWithLifecycle(initialValue = false)
     val nightDownloads by settings.nightDownloads.collectAsStateWithLifecycle(initialValue = false)
@@ -1512,6 +1515,18 @@ fun SettingsScreen(
                         icon = TmIcons.Search,
                         checked = rememberSearches,
                         onToggle = { scope.launch { settings.setRememberSearches(!rememberSearches) } },
+                    )
+                }
+                item {
+                    // Global Search (owner, v1.0.16): off by default, so search stays inside
+                    // the chats the viewer chose until this is turned on.
+                    ToggleRow(
+                        title = s.settingsGlobalSearch,
+                        modifier = Modifier.jumpTarget(searchTargets["library.global_search"]),
+                        subtitle = if (globalSearch) s.settingsGlobalSearchOn else s.settingsGlobalSearchOff,
+                        icon = TmIcons.Search,
+                        checked = globalSearch,
+                        onToggle = { scope.launch { settings.setGlobalSearch(!globalSearch) } },
                     )
                 }
                 // Resume across devices: opt in, explained in full on the row itself, since it

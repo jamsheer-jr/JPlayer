@@ -173,6 +173,10 @@ fun settingsSearchEntries(s: Strings): List<SettingsSearchEntry> = buildList {
         s.settingsRememberSearchesOn + " " + s.settingsRememberSearchesOff,
     )
     add(
+        "library.global_search", SettingsPage.Library, s.settingsGlobalSearch,
+        s.settingsGlobalSearchOn + " " + s.settingsGlobalSearchOff,
+    )
+    add(
         "library.resume_sync", SettingsPage.Library, s.settingsResumeSync,
         s.settingsResumeSyncOn + " " + s.settingsResumeSyncOff,
     )
@@ -300,7 +304,7 @@ val settingsSearchAnchors: Set<String> = setOf(
     "gestures.haptics", "gestures.tap_plays", "gestures.double_tap", "gestures.double_tap_pause",
     "gestures.hold_speed", "gestures.seek", "gestures.brightness", "gestures.volume",
     "library.size_limits", "library.open_last_chat", "library.forget_last_chat",
-    "library.remember_searches", "library.resume_sync", "library.add_chats",
+    "library.remember_searches", "library.global_search", "library.resume_sync", "library.add_chats",
     "library.clear_favourites", "library.clear_history",
     "library.metadata_toggle", "library.metadata_skip_times", "library.metadata_key",
     "library.metadata_omdb_key", "library.metadata_clear_cache",

@@ -56,6 +56,16 @@ fun interface VideoSearchSource {
 
     companion object {
         /**
+         * The Global Search switch (Settings, Library) as the app last read it, off until
+         * it says otherwise (owner, v1.0.16): [Telegram]'s ask reads it, and the screens
+         * that collect the setting write it here through the view model's setter, the
+         * same mirroring the title cleaning's switch gets. Off is the safe reading: an
+         * install that has not read the setting yet asks per chat, never account wide.
+         */
+        @Volatile
+        var globalSearch: Boolean = false
+
+        /**
          * The signed in account, through TDLib's `searchMessages`. Only once there is a
          * connection: TDLib holds a search until it can reach Telegram, and offline that left
          * "Searching" spinning with no end and no Retry.
@@ -68,9 +78,10 @@ fun interface VideoSearchSource {
                 // chats only", so with a choice made each chat is searched on its own; with no
                 // choice made it is one search over the account, as it has always been. Which
                 // of the two is [searchAsk]'s call: an answer still being read is not a choice
-                // of every chat (owner, v1.0.15).
+                // of every chat (owner, v1.0.15), and with Global Search off there is no
+                // account wide ask at all (owner, v1.0.16).
                 val added = com.tmplayer.data.AddedChats.awaitReady()
-                return when (searchAsk(added, com.tmplayer.data.AddedChats.loaded.value)) {
+                return when (searchAsk(added, com.tmplayer.data.AddedChats.loaded.value, globalSearch)) {
                     SearchAsk.AllChats -> repo.searchAllChats(query, cursor, filters = filters)
                     SearchAsk.PerChat -> repo.searchAddedChats(query, added.orEmpty(), cursor, filters = filters)
                 }
@@ -96,8 +107,12 @@ internal enum class SearchAsk { AllChats, PerChat }
  * selected, which is what "Global Search off" not taking effect was. With no ids read
  * yet the per chat ask runs over no chats and answers empty, so until the choice lands
  * the search shows only what this device already knows, through the gate as it stands.
+ *
+ * Global Search (owner, v1.0.16) stands over all of it: off, the ask is per chat
+ * whatever the choice says, and account wide exists only with the switch on.
  */
-internal fun searchAsk(added: Set<Long>?, scopeKnown: Boolean): SearchAsk = when {
+internal fun searchAsk(added: Set<Long>?, scopeKnown: Boolean, globalSearch: Boolean): SearchAsk = when {
+    !globalSearch -> SearchAsk.PerChat
     added != null -> SearchAsk.PerChat
     scopeKnown -> SearchAsk.AllChats
     else -> SearchAsk.PerChat
@@ -142,7 +157,29 @@ data class GlobalSearchState(
      * counted once, as a cam copy ([camHidden]).
      */
     val hideShortVideos: Boolean = true,
+    /**
+     * The Global Search switch as the screen last read it (Settings, Library; off by
+     * default, owner v1.0.16): on, the search may look over every chat on the account;
+     * off, it stays inside the chats the viewer chose. Drawn by the screens as the
+     * scope line, and asked about by [searchAsk] through the view model.
+     */
+    val globalSearch: Boolean = false,
+    /** The AddedChats answer is a picked set of chats (see [com.tmplayer.data.AddedChats]). */
+    val scopePicked: Boolean = false,
+    /** The AddedChats question has been answered at all, by a pick or by keeping every chat. */
+    val scopeAnswered: Boolean = false,
+    /** The picked set is empty: a pick that chose no chats. */
+    val scopeEmpty: Boolean = false,
 ) {
+    /**
+     * There is nowhere to look: Global Search is off and the choice names no chats
+     * (never answered, or answered with an empty pick). The screens say so plainly,
+     * with the two ways out, rather than widening the search on their own.
+     */
+    val scopeMissing: Boolean get() = !globalSearch && (!scopeAnswered || (scopePicked && scopeEmpty))
+
+    /** The scope line's "Videos in all chats" reading: the switch on, or an answered keep-everything choice. */
+    val scopeAll: Boolean get() = globalSearch || (scopeAnswered && !scopePicked)
     /** What the list shows: [groups] through the filters and the cam and short hiding, the kids lock already applied. */
     val shown: List<ResultGroup> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val base = GlobalSearch.filter(groups, filters, query)
@@ -208,6 +245,8 @@ class GlobalSearchViewModel(
     private val hideCamCopies: Boolean = true,
     /** Videos under 5 minutes hidden in the results (the Playback switch), until the screen says otherwise. */
     private val hideShortVideos: Boolean = true,
+    /** Global Search (Settings, Library), until the screen says otherwise: off by default (owner, v1.0.16). */
+    private val globalSearch: Boolean = false,
     /**
      * Where Telegram's pages are kept by query ([PageQueries]), so searching the same words again
      * lists them at once and asks again only once they are [PageQueries.SEARCH_STALE_MS] old.
@@ -237,7 +276,7 @@ class GlobalSearchViewModel(
         cache?.update<Answer>(keyOf(query, filters)) { it?.copy(pages = it.pages + page, cursor = page.cursor) }
     }
 
-    private val _state = MutableStateFlow(GlobalSearchState(hideCamCopies = hideCamCopies, hideShortVideos = hideShortVideos))
+    private val _state = MutableStateFlow(GlobalSearchState(hideCamCopies = hideCamCopies, hideShortVideos = hideShortVideos, globalSearch = globalSearch))
     val state: StateFlow<GlobalSearchState> = _state.asStateFlow()
 
     /**
@@ -314,6 +353,27 @@ class GlobalSearchViewModel(
      */
     fun setHideShortVideos(on: Boolean) {
         _state.update { if (it.hideShortVideos == on) it else it.copy(hideShortVideos = on) }
+    }
+
+    /**
+     * The Global Search switch, as the screen reads it from Settings (owner, v1.0.16).
+     * Unlike the hiding switches this one changes the question put to Telegram, so a
+     * change asks again for the words on screen; the mirror the Telegram source reads
+     * ([VideoSearchSource.globalSearch]) is written here, its one funnel.
+     */
+    fun setGlobalSearch(on: Boolean) {
+        if (source === VideoSearchSource.Telegram) VideoSearchSource.globalSearch = on
+        val changed = _state.value.globalSearch != on
+        _state.update { if (it.globalSearch == on) it else it.copy(globalSearch = on) }
+        if (changed && !_state.value.query.isEmpty) start(_state.value.query.text, settle = 0, force = true, preserve = true)
+    }
+
+    /** The AddedChats answer, as the screen reads it: what the scope line and the nowhere-to-look notice are drawn from. */
+    fun setScopeChoice(picked: Boolean, answered: Boolean, empty: Boolean) {
+        _state.update {
+            if (it.scopePicked == picked && it.scopeAnswered == answered && it.scopeEmpty == empty) it
+            else it.copy(scopePicked = picked, scopeAnswered = answered, scopeEmpty = empty)
+        }
     }
 
     fun setFilters(filters: SearchFilters) {
@@ -416,7 +476,16 @@ class GlobalSearchViewModel(
         // staleness start already accepts for [allowed] below.
         val shownGroups = if (keepShown) now.groups else emptyList()
         // The kids lock and the added chats (HX27): search lists videos from the added chats alone.
-        val allowed = ChatGate.browsing.value
+        // Global Search off with no choice answered (owner, v1.0.16): the local half is
+        // confined to no chats at all, matching the per chat ask over no chats, rather
+        // than falling back to everything this device knows.
+        val allowed = if (!_state.value.globalSearch &&
+            com.tmplayer.data.AddedChats.choice.value.mode == com.tmplayer.data.AddedMode.Unanswered
+        ) {
+            emptySet()
+        } else {
+            ChatGate.browsing.value
+        }
         // Only the words around Telegram's part changed (a quality marker, a space): the answer
         // asked for, or about to be, stands, and the new words only screen and rank it.
         if (!force && !query.isEmpty && query.server == now.query.server && (asked == query.server || now.settling) &&
@@ -440,7 +509,7 @@ class GlobalSearchViewModel(
             // Cleared, or down to one letter: whatever was waiting to be asked is dropped, and the
             // screen goes back to its recent searches.
             localNow = emptyList()
-            _state.value = GlobalSearchState(query = query, filters = now.filters, sort = now.sort, hideCamCopies = now.hideCamCopies, hideShortVideos = now.hideShortVideos)
+            _state.value = GlobalSearchState(query = query, filters = now.filters, sort = now.sort, hideCamCopies = now.hideCamCopies, hideShortVideos = now.hideShortVideos, globalSearch = now.globalSearch, scopePicked = now.scopePicked, scopeAnswered = now.scopeAnswered, scopeEmpty = now.scopeEmpty)
             return
         }
         localNow = emptyList()
@@ -456,6 +525,10 @@ class GlobalSearchViewModel(
             settling = settle > 0,
             hideCamCopies = now.hideCamCopies,
             hideShortVideos = now.hideShortVideos,
+            globalSearch = now.globalSearch,
+            scopePicked = now.scopePicked,
+            scopeAnswered = now.scopeAnswered,
+            scopeEmpty = now.scopeEmpty,
         )
         val kept = cache?.peek<Answer>(keyOf(query, now.filters), PageQueries.SEARCH_STALE_MS)
         if (kept != null) {

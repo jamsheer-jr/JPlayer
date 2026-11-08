@@ -399,10 +399,32 @@ class GlobalSearchViewModelTest {
         // Owner, v1.0.15: "Global Search off" must take effect. A picked set asks per chat;
         // a stored answer still being read (null ids, not known) must not be taken for the
         // viewer choosing every chat; only a known, narrowing-nothing answer asks widely.
-        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L, 3L), scopeKnown = true))
-        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L, 3L), scopeKnown = false))
-        assertEquals(SearchAsk.PerChat, searchAsk(added = null, scopeKnown = false))
-        assertEquals(SearchAsk.AllChats, searchAsk(added = null, scopeKnown = true))
+        // The switch on is v1.0.15's world, so these run with it on.
+        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L, 3L), scopeKnown = true, globalSearch = true))
+        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L, 3L), scopeKnown = false, globalSearch = true))
+        assertEquals(SearchAsk.PerChat, searchAsk(added = null, scopeKnown = false, globalSearch = true))
+        assertEquals(SearchAsk.AllChats, searchAsk(added = null, scopeKnown = true, globalSearch = true))
+    }
+
+    @Test
+    fun `global search off asks per chat whatever the choice says`() {
+        // Owner, v1.0.16: the switch is off by default, and off there is no account wide
+        // ask at all, not even on a known keep-everything answer.
+        assertEquals(SearchAsk.PerChat, searchAsk(added = null, scopeKnown = true, globalSearch = false))
+        assertEquals(SearchAsk.PerChat, searchAsk(added = null, scopeKnown = false, globalSearch = false))
+        assertEquals(SearchAsk.PerChat, searchAsk(added = setOf(2L), scopeKnown = true, globalSearch = false))
+    }
+
+    @Test
+    fun `the scope is missing only with the switch off and no chats chosen`() {
+        assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = false).scopeMissing)
+        assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = true, scopeEmpty = true).scopeMissing)
+        assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = true, scopeEmpty = false).scopeMissing)
+        assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = false).scopeMissing)
+        assertFalse(GlobalSearchState(globalSearch = true, scopeAnswered = false).scopeMissing)
+        assertTrue(GlobalSearchState(globalSearch = true).scopeAll)
+        assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = false).scopeAll)
+        assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = true, scopeEmpty = false).scopeAll)
     }
 
     @Test

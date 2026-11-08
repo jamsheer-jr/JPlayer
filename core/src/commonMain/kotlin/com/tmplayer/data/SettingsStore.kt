@@ -41,6 +41,7 @@ private val DETAIL_FIRST = booleanPreferencesKey("detail_first")
 private val HERO_TRAILER_AUTOPLAY = booleanPreferencesKey("hero_trailer_autoplay")
 private val HIDE_RIP_TAGS = booleanPreferencesKey("hide_rip_tags")
 private val HIDE_CAM_COPIES = booleanPreferencesKey("hide_cam_copies")
+private val GLOBAL_SEARCH = booleanPreferencesKey("global_search")
 private val HIDE_SHORT_VIDEOS = booleanPreferencesKey("hide_short_videos")
 private val COMPACT_NAV = booleanPreferencesKey("compact_nav")
 private val DOWNMIX_STEREO = booleanPreferencesKey("downmix_stereo")
@@ -823,6 +824,19 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setHideCamCopies(value: Boolean) {
         prefs.edit { it[HIDE_CAM_COPIES] = value }
+    }
+
+    /**
+     * Whether search may look over every chat on the account (Global Search, Settings,
+     * Library). OFF by default (owner, v1.0.16): off, search asks only the chats the
+     * viewer chose (see [AddedChats]) and lists only what this device knows from those
+     * chats, and with no choice made it looks nowhere rather than quietly widening to
+     * the whole account. On, the account wide ask is back, as it was before the switch.
+     */
+    val globalSearch: Flow<Boolean> = read { it[GLOBAL_SEARCH] ?: false }
+
+    suspend fun setGlobalSearch(value: Boolean) {
+        prefs.edit { it[GLOBAL_SEARCH] = value }
     }
 
     /**

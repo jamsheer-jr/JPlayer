@@ -194,6 +194,26 @@ internal fun TvSearchScreen(
                     }
                 }
 
+                // The scope the search is looking in (owner, v1.0.16): a pill under the
+                // field naming it, opening the chat picker; and where there is nowhere
+                // to look, the notice says so with the picker as its way out (Settings,
+                // the notice's other way, is on the top bar behind the search).
+                if (text.isNotBlank()) {
+                    item(span = full, key = "scope") {
+                        Column {
+                            TvPill(
+                                "${s.browseSearchScope}: ${if (state.scopeAll) s.browseSearchScopeAllVideos else s.browseSearchScopeChats}",
+                                TmIcons.Checklist,
+                                plain = true,
+                            ) { AddChatsRequest.ask() }
+                            if (state.scopeMissing) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(s.browseSearchScopeMissing, style = MaterialTheme.typography.bodyMedium, color = Tone.text)
+                            }
+                        }
+                    }
+                }
+
                 // Recent searches, else suggestions, before typing; the filters after.
                 if (text.isBlank() && pills.isNotEmpty()) {
                     item(span = full, key = "pills") {
