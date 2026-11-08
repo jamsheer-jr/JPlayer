@@ -1316,15 +1316,32 @@ internal fun HomePane(
             onDismiss = { categoriesOpen = false },
             onClose = { categoriesOpen = false },
         ) {
-            ChoiceList {
+            // Netflix's own shape (owner, v1.0.18): a plain list of names, one
+            // slim line each, no cards and no page of its own. The count rides at
+            // the line's end, small, so a deep list still reads at a glance.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 navRows.forEach { row ->
-                    ChoiceLine(
-                        title = homeRowTitle(row, s),
-                        detail = s.homeSeeAllCount(row.all.size),
-                        selected = null,
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                categoriesOpen = false
+                                categoryKey = row.key
+                            }
+                            .padding(vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        categoriesOpen = false
-                        categoryKey = row.key
+                        M3Text(
+                            homeRowTitle(row, s),
+                            style = M3MaterialTheme.typography.bodyLarge,
+                            color = Tone.text,
+                            modifier = Modifier.weight(1f),
+                        )
+                        M3Text(
+                            s.homeSeeAllCount(row.all.size),
+                            style = M3MaterialTheme.typography.bodySmall,
+                            color = Tone.muted,
+                        )
                     }
                 }
             }
