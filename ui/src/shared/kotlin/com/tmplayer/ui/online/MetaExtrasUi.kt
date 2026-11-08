@@ -769,13 +769,66 @@ private suspend fun personPage(person: MetaPerson): PersonPageData {
     return PersonPageData(entries, held.filter { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) !in covered })
 }
 
+/** How many missing credits one page opening asks Telegram for at most. */
+private const val PERSON_SEARCH_ASKS = 10
+
+/**
+ * [entries] with the still missing credits asked for on Telegram itself (owner,
+ * v1.0.17): the local marking only knows the titles the app has already listed, and
+ * most of a viewer's titles sit in chats nothing has listed yet, so they read "Not
+ * in your chats" wrongly. A few credits at a time, in the list's own order (newest
+ * first), one page each through the same ask the search screen makes
+ * ([com.tmplayer.ui.browse.VideoSearchSource.Telegram]), so the chats choice and
+ * the Global Search switch rule it the same way. A find counts when its name reads
+ * as the credit's title and its year does not fight the credit's; finds are noted
+ * into [com.tmplayer.online.KnownMedia], so the rest of the app keeps them.
+ * Offline, or Telegram refusing, simply leaves the local marking as it stood.
+ */
+private suspend fun personSearchFill(entries: List<FilmographyEntry>): List<FilmographyEntry> {
+    if (entries.none { !it.playable }) return entries
+    val found = HashMap<String, MediaItem>()
+    var asks = 0
+    for (entry in entries) {
+        if (entry.playable) continue
+        if (asks >= PERSON_SEARCH_ASKS) break
+        val credit = entry.credit
+        val title = credit.ref.title.trim()
+        if (title.length < 3) continue
+        asks++
+        val page = try {
+            com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
+                title,
+                com.tmplayer.data.AllChatsCursor(),
+                com.tmplayer.data.SearchFilters(),
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            break
+        }
+        if (page.items.isEmpty()) continue
+        com.tmplayer.online.KnownMedia.note(page.items)
+        val wanted = com.tmplayer.data.Fuzzy.tokens(title).toSet()
+        val hit = page.items.firstOrNull { item ->
+            val parsed = com.tmplayer.data.MediaName.parse(item.fileName, item.caption)
+            val yearsOk = credit.year == null || parsed.year == null || credit.year == parsed.year
+            yearsOk && com.tmplayer.data.Fuzzy.tokens(parsed.title).toSet() == wanted
+        }
+        if (hit != null) found[credit.ref.matchKey] = hit
+    }
+    if (found.isEmpty()) return entries
+    return entries.map { entry -> found[entry.credit.ref.matchKey]?.let { entry.copy(item = it) } ?: entry }
+}
+
 /**
  * A cast member's page (owner, v1.0.14, widened v1.0.15 item 17), opened by a press on
  * their face in the cast row: the face large with the name and the part, then their whole
  * filmography from TMDB, newest first. A title one of the viewer's chats holds is marked
  * "In your chats" and opens by the page's own opener; the rest stand as filmography
  * entries marked "Not in your chats", the same honesty as a season list's missing
- * episodes, and are not presses. Where TMDB has nothing for the person, only the titles
+ * episodes, and are not presses. Credits the local marking misses are then asked
+ * for on Telegram itself ([personSearchFill]), so a title held in a chat nothing
+ * has listed yet is upgraded in place rather than standing as missing. Where TMDB has nothing for the person, only the titles
  * in the chats are listed, as the page always did. Back, a press outside the card, or
  * the close button leaves; on a television the close button takes the remote first, as
  * the enlarged face's does, and Down walks to the rows.
@@ -787,6 +840,15 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
     val close = remember { androidx.compose.ui.focus.FocusRequester() }
     val page by produceState<PersonPageData?>(null, person.name) {
         value = withContext(Dispatchers.Default) { personPage(person) }
+        // The full search (owner, v1.0.17): credits the local marking left unheld
+        // are asked for on Telegram itself, and the rows upgrade in place as the
+        // answers land.
+        val local = value
+        val films = local?.filmography
+        if (local != null && films != null) {
+            val filled = withContext(Dispatchers.Default) { personSearchFill(films) }
+            if (filled !== films) value = PersonPageData(filled, local.extraHeld)
+        }
     }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
