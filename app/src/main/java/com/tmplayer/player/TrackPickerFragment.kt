@@ -5,10 +5,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,6 +46,7 @@ import androidx.compose.material3.Text as M3Text
 import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,10 +58,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
@@ -70,6 +77,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tmplayer.R
+import com.tmplayer.data.SettingsStore
 import com.tmplayer.i18n.L
 import com.tmplayer.i18n.Translator
 import com.tmplayer.online.DownloadResult
@@ -84,6 +92,7 @@ import com.tmplayer.ui.components.ChoiceLine
 import com.tmplayer.ui.components.ChoiceList
 import com.tmplayer.ui.components.ChoiceSection
 import com.tmplayer.ui.components.ChoiceSheet
+import com.tmplayer.ui.components.FloatingWindow
 import com.tmplayer.ui.components.FocusOnOpen
 import com.tmplayer.ui.components.isTouch
 import com.tmplayer.ui.icons.TmIcons
@@ -93,6 +102,7 @@ import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * The audio and subtitle chooser, and the subtitles' "Search online" results, drawn as the
@@ -180,30 +190,39 @@ class TrackPickerFragment : Fragment() {
                 // Bumped by every in-place line, so the timing and look figures under them redraw.
                 var tick by remember { mutableIntStateOf(0) }
                 val title = if (trackType == C.TRACK_TYPE_AUDIO) L.tracksAudioLanguage else L.tracksSubtitles
-                // A floating panel, not the full screen (owner, v1.0.13): the sheet floats in
-                // the middle over the dimmed video on a phone as it does on a television, and
-                // the lines scroll inside it. The compact rows below are what keep a long
-                // track list within reach there.
-                ChoiceSheet(title = title, onDismiss = ::close, onClose = ::close, closeFocus = closeFocus, ignoreRelease = !touch, fullScreen = false) {
-                    @Suppress("UNUSED_EXPRESSION") tick
-                    val lines = trackLines(
+                if (touch) {
+                    // The phone's panel is the MX shaped side panel (item 7, v1.0.16): see
+                    // [MxTrackPanel]. The television keeps the centred sheet and its list.
+                    MxTrackPanel(
+                        title = title,
+                        version = tick,
+                        onInPlace = { tick++ },
                         onOnline = { page = Page.Online },
                         onMsone = { page = Page.Msone },
                         onTranslate = { page = Page.Translate },
-                        onInPlace = { tick++ },
-                        lookIcon = ImageVector.vectorResource(R.drawable.ic_subtitles),
                     )
-                    Lines(
-                        lines,
-                        firstFocus,
-                        focusKey = lines.firstOrNull { it.selected == true }?.key ?: lines.firstOrNull()?.key,
-                        onInPlace = { tick++ },
-                        version = tick,
-                    )
-                    // Inside the dialog's own composition: asked from outside, the request came
-                    // before the lines existed, and the window's own focus fell on the first line
-                    // (Off) instead of the track playing.
-                    FocusOnOpen(firstFocus)
+                } else {
+                    ChoiceSheet(title = title, onDismiss = ::close, onClose = ::close, closeFocus = closeFocus, ignoreRelease = true, fullScreen = false) {
+                        @Suppress("UNUSED_EXPRESSION") tick
+                        val lines = trackLines(
+                            onOnline = { page = Page.Online },
+                            onMsone = { page = Page.Msone },
+                            onTranslate = { page = Page.Translate },
+                            onInPlace = { tick++ },
+                            lookIcon = ImageVector.vectorResource(R.drawable.ic_subtitles),
+                        )
+                        Lines(
+                            lines,
+                            firstFocus,
+                            focusKey = lines.firstOrNull { it.selected == true }?.key ?: lines.firstOrNull()?.key,
+                            onInPlace = { tick++ },
+                            version = tick,
+                        )
+                        // Inside the dialog's own composition: asked from outside, the request came
+                        // before the lines existed, and the window's own focus fell on the first line
+                        // (Off) instead of the track playing.
+                        FocusOnOpen(firstFocus)
+                    }
                 }
             }
             Page.Online -> OnlinePage(closeFocus, firstFocus, back, msone = false)
@@ -696,6 +715,395 @@ class TrackPickerFragment : Fragment() {
             }
         } else {
             ChoiceList { LineRows(lines, firstFocus, focusKey) }
+        }
+    }
+
+    /** Sound off altogether: the audio panel's Disable radio (item 7, v1.0.16). */
+    private fun disableAudio() {
+        val player = host?.player
+        if (player != null) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .clearOverridesOfType(trackType)
+                .setTrackTypeDisabled(trackType, true)
+                .build()
+        }
+        close()
+    }
+
+    /**
+     * The tracks page on a phone, in the shape of the owner's reference panels (item 7,
+     * v1.0.16): a near black panel docked to the right of the picture, the title at the
+     * top, then the tracks, a divider, the opening and searching rows, the
+     * synchronization (and for subtitles the speed) as steppers, a round button either
+     * side of a value pill, and the panel and customization entries opening their
+     * controls in place under them. Subtitle tracks carry square checkboxes, the
+     * companion of a dual pair among them (item 6); sound carries radios, the playing
+     * one filled, with Disable under them and the downmix to stereo as its checkbox
+     * row. Every row carries a function the panel already had: the tracks and their
+     * one tap rule, Open by file or by link, Online subtitles and MSone, Translate,
+     * the sync step, the look under Panel and Customization. The rows of the reference
+     * panels that name things this player has no control for (a software audio
+     * decoder choice, a stereo mode picker, an AV sync switch, opening an audio file)
+     * are not drawn dead: the batch log names them. A television never draws this:
+     * its page is the centred sheet and its list, unchanged.
+     */
+    @Composable
+    private fun MxTrackPanel(
+        title: String,
+        version: Int,
+        onInPlace: () -> Unit,
+        onOnline: () -> Unit,
+        onMsone: () -> Unit,
+        onTranslate: () -> Unit,
+    ) {
+        @Suppress("UNUSED_EXPRESSION") version
+        val host = host ?: return
+        val player = host.player ?: return
+        val lines = trackLines(
+            onOnline = onOnline,
+            onMsone = onMsone,
+            onTranslate = onTranslate,
+            onInPlace = onInPlace,
+            lookIcon = ImageVector.vectorResource(R.drawable.ic_subtitles),
+        )
+        val tracks = lines.filter { it.group == Group.Tracks }
+        val functions = lines.filter { it.group == Group.Online }
+        val subtitles = trackType == C.TRACK_TYPE_TEXT
+        var openShown by remember { mutableStateOf(false) }
+        var panelShown by remember { mutableStateOf(false) }
+        var lookShown by remember { mutableStateOf(false) }
+        FloatingWindow(onDismiss = ::close, ignoreRelease = false) {
+            val panelWidth = if (maxWidth > maxHeight) (maxWidth * 0.42f).coerceAtMost(480.dp) else (maxWidth * 0.88f).coerceAtMost(480.dp)
+            Column(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(panelWidth)
+                    .fillMaxHeight()
+                    .background(Color(0xFF0A0A0C))
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+            ) {
+                M3Text(title, style = M3Theme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(Modifier.height(10.dp))
+                tracks.forEach { line -> MxTrackRow(line, radio = !subtitles) }
+                if (!subtitles) {
+                    MxPlainRow(
+                        title = L.tracksDisable,
+                        radio = true,
+                        radioSelected = tracks.none { it.selected == true },
+                        onClick = ::disableAudio,
+                    )
+                    MxDownmixRow(onInPlace)
+                }
+                if (tracks.isNotEmpty() || functions.isNotEmpty()) {
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp), color = Tone.outline)
+                }
+                if (subtitles) {
+                    val opens = functions.filter { it.key == "open_file" || it.key == "open_url" }
+                    if (opens.isNotEmpty()) {
+                        MxPlainRow(title = L.commonOpen, onClick = { openShown = !openShown })
+                        if (openShown) opens.forEach { line -> MxPlainRow(line.title, detail = line.detail, onClick = line.onClick) }
+                    }
+                    functions.filter { it.key != "open_file" && it.key != "open_url" }.forEach { line ->
+                        MxPlainRow(line.title, detail = line.detail, enabled = line.enabled, onClick = line.onClick)
+                    }
+                }
+                MxSyncStepper(host, onInPlace)
+                if (subtitles) {
+                    MxSpeedStepper(player, onInPlace)
+                    MxPlainRow(title = L.tracksPanel, onClick = { panelShown = !panelShown })
+                    if (panelShown) MxPanelControls(host, onInPlace)
+                    MxPlainRow(title = L.tracksSectionCustomization, onClick = { lookShown = !lookShown })
+                    if (lookShown) MxLookControls(host, onInPlace)
+                }
+            }
+        }
+    }
+
+    /**
+     * One track row of the side panel: a square checkbox for subtitles, a radio for
+     * sound, the playing sound's radio filled. A line with no choice of its own (the
+     * "no subtitles" line) is drawn plain, without a mark.
+     */
+    @Composable
+    private fun MxTrackRow(line: Line, radio: Boolean) {
+        val ink = if (line.enabled) Color.White else Color.White.copy(alpha = 0.45f)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(enabled = line.enabled, role = if (radio) Role.RadioButton else Role.Checkbox) { line.onClick() }
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when {
+                line.selected == null -> Spacer(Modifier.width(20.dp))
+                radio -> MxRadio(line.selected == true)
+                else -> MxCheckbox(line.selected == true)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                M3Text(line.title, style = M3Theme.typography.bodyLarge, color = ink, maxLines = 2)
+                if (line.detail != null) {
+                    M3Text(line.detail, style = M3Theme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+                }
+            }
+        }
+    }
+
+    /** A plain row of the side panel, with a radio at its head where [radio] asks for one (Disable). */
+    @Composable
+    private fun MxPlainRow(
+        title: String,
+        detail: String? = null,
+        enabled: Boolean = true,
+        radio: Boolean = false,
+        radioSelected: Boolean = false,
+        onClick: () -> Unit,
+    ) {
+        val ink = if (enabled) Color.White else Color.White.copy(alpha = 0.45f)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(enabled = enabled, role = if (radio) Role.RadioButton else Role.Button) { onClick() }
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (radio) {
+                MxRadio(radioSelected)
+                Spacer(Modifier.width(14.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                M3Text(title, style = M3Theme.typography.bodyLarge, color = ink, maxLines = 2)
+                if (detail != null) {
+                    M3Text(detail, style = M3Theme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+                }
+            }
+        }
+    }
+
+    /** The radio mark: an outline ring, filled with the accent at its centre when chosen. */
+    @Composable
+    private fun MxRadio(selected: Boolean) {
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .border(2.dp, if (selected) Tone.accent else Color.White.copy(alpha = 0.55f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(Tone.accent))
+        }
+    }
+
+    /** The square checkbox mark: an outline square, filled with the accent and ticked when chosen. */
+    @Composable
+    private fun MxCheckbox(selected: Boolean) {
+        val shape = RoundedCornerShape(3.dp)
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(shape)
+                .then(if (selected) Modifier.background(Tone.accent) else Modifier)
+                .border(2.dp, if (selected) Tone.accent else Color.White.copy(alpha = 0.55f), shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) M3Icon(TmIcons.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
+        }
+    }
+
+    /**
+     * The downmix to stereo as the audio panel's checkbox row: the same stored choice
+     * Settings carries (see [com.tmplayer.player.AudioDownmix.wanted]), drawn filled
+     * while the fold is what this device would do. It is read back on the next video,
+     * as the Settings switch's own answer is.
+     */
+    @Composable
+    private fun MxDownmixRow(onInPlace: () -> Unit) {
+        val context = LocalContext.current
+        val store = remember { SettingsStore(context.applicationContext) }
+        val scope = rememberCoroutineScope()
+        val choice by store.downmixChoice.collectAsState(initial = null)
+        val wanted = AudioDownmix.wanted(choice, isTv = false)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(role = Role.Checkbox) {
+                    scope.launch { store.setDownmix(!wanted) }
+                    onInPlace()
+                }
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MxCheckbox(wanted)
+            Spacer(Modifier.width(14.dp))
+            M3Text(L.playerDownmix, style = M3Theme.typography.bodyLarge, color = Color.White, maxLines = 2, modifier = Modifier.weight(1f))
+        }
+    }
+
+    /**
+     * Synchronization as the reference panels draw it: the name at the left, then a
+     * round button, the figure on a dark pill, and a round button. A tap on the pill
+     * itself resets the timing, the reset the list rows carried before.
+     */
+    @Composable
+    private fun MxSyncStepper(host: TrackPickerHost, onInPlace: () -> Unit) {
+        val subtitles = trackType == C.TRACK_TYPE_TEXT
+        val delays = host.syncDelaysNow()
+        val ms = if (subtitles) delays.subtitleMs else delays.audioMs
+        MxStepper(
+            label = if (subtitles) L.playerSubtitleSync else L.tracksSectionTiming,
+            value = SyncDelays.label(ms),
+            onStep = { direction ->
+                host.stepDelay(trackType, direction)
+                onInPlace()
+            },
+            onReset = if (ms != 0L) {
+                {
+                    host.stepDelay(trackType, 0)
+                    onInPlace()
+                }
+            } else {
+                null
+            },
+        )
+    }
+
+    /** The playback speed as a stepper of fine steps (see [PlaybackSpeed.fine]), its pill reading as a percentage. */
+    @Composable
+    private fun MxSpeedStepper(player: Player, onInPlace: () -> Unit) {
+        val speed = PlaybackSpeed.sanitise(player.playbackParameters.speed)
+        val tenths = (speed * 1000).roundToInt()
+        MxStepper(
+            label = L.playerSpeed,
+            value = "${tenths / 10}.${tenths % 10}%",
+            onStep = { direction ->
+                player.setPlaybackSpeed(PlaybackSpeed.fine(speed, up = direction > 0))
+                onInPlace()
+            },
+        )
+    }
+
+    /** A stepper row: the label at the left, a round step button, the value on its pill, a round step button. */
+    @Composable
+    private fun MxStepper(label: String, value: String, onStep: (Int) -> Unit, onReset: (() -> Unit)? = null) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            M3Text(label, style = M3Theme.typography.bodyLarge, color = Color.White, modifier = Modifier.weight(1f), maxLines = 2)
+            MxStepButton(TmIcons.Remove) { onStep(-1) }
+            Spacer(Modifier.width(10.dp))
+            Box(
+                Modifier
+                    .width(104.dp)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .then(if (onReset != null) Modifier.clickable(role = Role.Button) { onReset() } else Modifier)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                M3Text(value, style = M3Theme.typography.bodyLarge, color = Color.White, maxLines = 1)
+            }
+            Spacer(Modifier.width(10.dp))
+            MxStepButton(TmIcons.Add) { onStep(1) }
+        }
+    }
+
+    /** One round step button of a stepper: a dark disc with the step's sign on it. */
+    @Composable
+    private fun MxStepButton(icon: ImageVector, onClick: () -> Unit) {
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.12f))
+                .clickable(role = Role.Button) { onClick() },
+            contentAlignment = Alignment.Center,
+        ) {
+            M3Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+    }
+
+    /**
+     * The Panel entry's controls, opened in place under it: where the subtitle lines
+     * stand (their position steps and the drag between them), the placement half of
+     * the look the panel's list carried below the tracks.
+     */
+    @Composable
+    private fun MxPanelControls(host: TrackPickerHost, onInPlace: () -> Unit) {
+        val style = host.subtitleStyleNow()
+        fun change(next: SubtitleStyle) {
+            host.changeSubtitleStyle(next)
+            onInPlace()
+        }
+        SegmentsLabel(L.tracksSubtitlePosition)
+        Segments(SubtitlePosition.entries.map { it.label }, SubtitlePosition.entries.indexOf(style.position)) {
+            change(host.subtitleStyleNow().copy(position = SubtitlePosition.entries[it]))
+        }
+        SegmentsLabel(L.tracksSubtitleDrag)
+        Slider(
+            value = style.lift,
+            onValueChange = { change(host.subtitleStyleNow().copy(lift = it)) },
+            valueRange = 0f..SubtitleStyle.MAX_LIFT,
+            colors = SliderDefaults.colors(thumbColor = Tone.accent, activeTrackColor = Tone.accent),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 8.dp),
+        )
+    }
+
+    /**
+     * The Customization entry's controls, opened in place under it: the size, the
+     * colour, the background box, the edge, the face and the weight, and the way back
+     * to the plain look: the rest of what the panel's list carried below the tracks.
+     */
+    @Composable
+    private fun MxLookControls(host: TrackPickerHost, onInPlace: () -> Unit) {
+        val style = host.subtitleStyleNow()
+        fun change(next: SubtitleStyle) {
+            host.changeSubtitleStyle(next)
+            onInPlace()
+        }
+        val boldTick = com.tmplayer.ui.components.rememberToggleTick()
+        SegmentsLabel(L.tracksSubtitleSize)
+        Segments(SubtitleSize.entries.map { it.label }, SubtitleSize.entries.indexOf(style.size)) {
+            change(host.subtitleStyleNow().copy(size = SubtitleSize.entries[it]))
+        }
+        SegmentsLabel(L.subtitlesColour)
+        ColourSwatches(style.colour) { change(host.subtitleStyleNow().copy(colour = it)) }
+        SegmentsLabel(L.tracksBackgroundBox)
+        Segments(SubtitleBox.entries.map { it.label }, SubtitleBox.entries.indexOf(style.boxLevel)) {
+            change(host.subtitleStyleNow().copy(boxLevel = SubtitleBox.entries[it]))
+        }
+        if (!style.box) {
+            SegmentsLabel(L.subtitlesEdge)
+            Segments(SubtitleEdge.entries.map { it.label }, SubtitleEdge.entries.indexOf(style.edge)) {
+                change(host.subtitleStyleNow().copy(edge = SubtitleEdge.entries[it]))
+            }
+        }
+        SegmentsLabel(L.subtitlesFace)
+        Segments(SubtitleFace.entries.map { it.label }, SubtitleFace.entries.indexOf(style.face)) {
+            change(host.subtitleStyleNow().copy(face = SubtitleFace.entries[it]))
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(value = style.bold, role = Role.Switch) { on -> boldTick(on); change(host.subtitleStyleNow().copy(bold = on)) }
+                .padding(horizontal = ADJUST_PAD),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            M3Text(L.subtitlesWeightBold, style = M3Theme.typography.bodyLarge, color = Color.White, modifier = Modifier.weight(1f))
+            Switch(checked = style.bold, onCheckedChange = null)
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = ADJUST_PAD).padding(bottom = 8.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { change(SubtitleStyle()) }, enabled = !style.isDefault) {
+                M3Icon(TmIcons.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                M3Text(L.subtitlesDefaultLook, maxLines = 1)
+            }
         }
     }
 
