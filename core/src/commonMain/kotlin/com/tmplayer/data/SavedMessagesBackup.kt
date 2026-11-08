@@ -2,7 +2,7 @@ package com.tmplayer.data
 
 import com.tmplayer.platform.Logger
 import dev.g000sha256.tdl.dto.FormattedText
-import dev.g000sha256.tdl.dto.InputFileLocal
+import dev.g000sha256.tdl.dto.InputDocumentLocal
 import dev.g000sha256.tdl.dto.InputMessageDocument
 import dev.g000sha256.tdl.dto.MessageSendOptions
 import java.io.File
@@ -32,9 +32,7 @@ object SavedMessagesBackup {
             val myId = Td.myId().takeIf { it != 0L } ?: return@withContext false
             val saved = td.createPrivateChat(myId, false).valueOrNull?.id ?: myId
             val content = InputMessageDocument(
-                InputFileLocal(file.absolutePath),
-                null,
-                false,
+                InputDocumentLocal(file.absolutePath),
                 FormattedText(name, emptyArray()),
             )
             val options = MessageSendOptions(null, true, false, false, false, 0L, false, null, 0L, 0, false)

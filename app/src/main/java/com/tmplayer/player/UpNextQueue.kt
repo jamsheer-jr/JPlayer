@@ -1,7 +1,7 @@
 package com.tmplayer.player
 
 import com.tmplayer.data.MediaItem
-import com.tmplayer.data.PlayQueue
+import com.tmplayer.data.UpNextQueue as CoreUpNextQueue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * whoever's profile is active, because it is a plan for this sitting's watching rather
  * than a list anybody keeps. It lives in memory only: it survives screens, players and
  * chats within the run, and a restart starts it empty, which the item accepts. The order
- * and the edits are the pure [PlayQueue]'s; this holder is only the state.
+ * and the edits are the pure [CoreUpNextQueue]'s; this holder is only the state.
  */
 object UpNextQueue {
 
@@ -21,26 +21,26 @@ object UpNextQueue {
     val items: StateFlow<List<MediaItem>> = _items.asStateFlow()
 
     fun playNext(item: MediaItem) {
-        _items.value = PlayQueue.playNext(_items.value, item)
+        _items.value = CoreUpNextQueue.playNext(_items.value, item)
     }
 
     fun add(item: MediaItem) {
-        _items.value = PlayQueue.add(_items.value, item)
+        _items.value = CoreUpNextQueue.add(_items.value, item)
     }
 
     /** Takes the head off the queue for the player to start, or null when it is empty. */
     fun takeNext(): MediaItem? {
-        val (next, rest) = PlayQueue.takeNext(_items.value)
+        val (next, rest) = CoreUpNextQueue.takeNext(_items.value)
         if (next != null) _items.value = rest
         return next
     }
 
     fun remove(id: String) {
-        _items.value = PlayQueue.remove(_items.value, id)
+        _items.value = CoreUpNextQueue.remove(_items.value, id)
     }
 
     fun move(from: Int, to: Int) {
-        _items.value = PlayQueue.move(_items.value, from, to)
+        _items.value = CoreUpNextQueue.move(_items.value, from, to)
     }
 
     fun clear() {

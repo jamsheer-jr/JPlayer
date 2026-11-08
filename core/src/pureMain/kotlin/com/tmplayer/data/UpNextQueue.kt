@@ -11,7 +11,7 @@ package com.tmplayer.data
  * The list is capped: a queue is a plan for the evening, not a second library, and the cap
  * keeps a slip of the finger from lining up a whole chat.
  */
-object PlayQueue {
+object UpNextQueue {
 
     /** How many videos the queue holds at most; adding past it drops the add, not the old. */
     const val MAX_ITEMS = 50
