@@ -1477,14 +1477,8 @@ fun SeriesPanel(
                                         if (!reduced && list.firstVisibleItemIndex == 0) translationY = list.firstVisibleItemScrollOffset * PARALLAX
                                     },
                             )
-                            // The promo in the hero (owner, v1.0.15, item 24), in place of the
-                            // still picture while it plays. Nothing where the rule says the
-                            // artwork stays, a television included.
-                            com.tmplayer.ui.online.DetailHeroPreview(
-                                extras?.trailer,
-                                heroTrailerAutoplay,
-                                Modifier.matchParentSize(),
-                            )
+                            // The poster stands here alone (owner, v1.0.18): no
+                            // trailer embed in the hero, which made title pages stick.
                         }
                         Row(
                             Modifier

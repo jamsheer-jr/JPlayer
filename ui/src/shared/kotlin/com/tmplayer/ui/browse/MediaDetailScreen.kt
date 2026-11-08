@@ -339,17 +339,9 @@ private fun CinemaLayout(page: DetailPage, holds: Holds, height: Dp) {
                 .fillMaxHeight(0.74f)
                 .graphicsLayer { alpha = 1f - 0.75f * (scroll.value / dimOver).coerceIn(0f, 1f) },
         )
-        // The promo in the hero (owner, v1.0.15, item 24), over the backdrop at its own size
-        // and dimming with it as the page scrolls. Nothing on a television: its artwork stays.
-        com.tmplayer.ui.online.DetailHeroPreview(
-            page.extras?.trailer,
-            page.heroTrailerAutoplay,
-            Modifier
-                .align(Alignment.TopEnd)
-                .fillMaxWidth(BACKDROP_SHARE)
-                .fillMaxHeight(0.74f)
-                .graphicsLayer { alpha = 1f - 0.75f * (scroll.value / dimOver).coerceIn(0f, 1f) },
-        )
+        // No promo plays in the hero (owner, v1.0.18): the trailer embed was what
+        // made title pages stick, so the function is gone and the poster stands as
+        // it did before it. Trailers still open from their own button, on a tap.
         Column(
             Modifier
                 .fillMaxSize()
@@ -429,15 +421,8 @@ private fun StackedLayout(page: DetailPage, holds: Holds, width: Dp, height: Dp)
                     // than leaving with it.
                     .graphicsLayer { if (!reduced) translationY = scroll.value * PARALLAX },
             )
-            // The promo in the hero (owner, v1.0.15, item 24), in place of the still picture
-            // while it plays, drifting with it. Nothing where the rule says the artwork stays.
-            com.tmplayer.ui.online.DetailHeroPreview(
-                page.extras?.trailer,
-                page.heroTrailerAutoplay,
-                Modifier
-                    .matchParentSize()
-                    .graphicsLayer { if (!reduced) translationY = scroll.value * PARALLAX },
-            )
+            // The poster stands here alone (owner, v1.0.18): no trailer embed in
+            // the hero, which was what made title pages stick.
             Column(
                 Modifier
                     .align(Alignment.BottomStart)

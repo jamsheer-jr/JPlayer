@@ -403,65 +403,6 @@ private object HeroPreviewClaims {
 }
 
 /**
- * The promo in a detail page's hero (owner, v1.0.15, item 24): the title's trailer playing
- * muted in place of the still backdrop, with a sound on/off button in the bottom end
- * corner, while [HeroPreview.autoplay] allows it (the viewer's switch, a trailer known, no
- * metered connection, not a television, an in-app player present, no reduced motion). Draw
- * it over the hero's backdrop at the backdrop's own size; it draws nothing at all when the
- * artwork should stay, and goes back to nothing if the trailer cannot play, so the artwork
- * stands again. Play, beside it on the page, still starts the video itself, untouched.
- */
-@Composable
-fun DetailHeroPreview(trailer: MetaTrailer?, switchOn: Boolean, modifier: Modifier = Modifier) {
-    trailer ?: return
-    val inApp = rememberInAppTrailers()
-    val metered = rememberMeteredConnection()
-    val reduced = com.tmplayer.ui.theme.rememberReducedMotion()
-    if (!HeroPreview.autoplay(switchOn, trailer, metered, television = !isTouch(), inAppPlayer = inApp, reducedMotion = reduced)) return
-    val claim = remember { HeroPreviewClaims.claim() }
-    if (HeroPreviewClaims.latest != claim) return
-    val s = LocalStrings.current
-    var muted by remember(trailer.key) { mutableStateOf(true) }
-    var failed by remember(trailer.key) { mutableStateOf(false) }
-    if (failed) return
-    // The embed is a WebView, and a WebView waking is the heaviest thing this page does:
-    // mounted in the same frames as the page opening, the whole page feels stuck (owner,
-    // 2026-11-08: the lag was on the detail page). The artwork stands for the first beat
-    // and the embed mounts only once the page has settled; a page left before then never
-    // starts it at all.
-    var settled by remember(trailer.key) { mutableStateOf(false) }
-    LaunchedEffect(trailer.key) {
-        delay(HERO_SETTLE_MS)
-        settled = true
-    }
-    if (!settled) return
-    Box(modifier) {
-        HeroTrailerPlayer(trailer, muted, onFailed = { failed = true }, modifier = Modifier.fillMaxSize())
-        // The page's own foot fade over the picture, so the title at the hero's foot stays readable.
-        Box(Modifier.fillMaxSize().background(com.tmplayer.ui.theme.Scrims.bottomLong(160.dp)))
-        val interactions = remember { MutableInteractionSource() }
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(12.dp)
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable(interactionSource = interactions, indication = androidx.compose.foundation.LocalIndication.current) { muted = !muted }
-                .semantics { contentDescription = if (muted) s.metadataHeroSoundOn else s.metadataHeroSoundOff },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                if (muted) TmIcons.VolumeOff else TmIcons.VolumeUp,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-    }
-}
-
-/**
  * The TV Home banner's trailer preview (owner, v1.0.15, item 11b): the focused card's
  * trailer playing muted in the banner area, while [HeroPreview.bannerPreview] allows it.
  * The focus-safety is the host's shape, not this composable's: the caller draws it inside
@@ -1177,7 +1118,6 @@ private const val ENLARGED_PIXELS = 780
 private const val RETURN_FOCUS_TRIES = 10
 
 /** The beat a detail page is given to settle before its hero embed is mounted (item 11, v1.0.17). */
-private const val HERO_SETTLE_MS = 900L
 
 private val POSTER: Dp = 112.dp
 private val POSTER_TV: Dp = 140.dp
