@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -447,18 +446,10 @@ private fun TouchPhonePane(
     val submit = { if (ready) submission.start { onSubmit(entry.full) } }
 
     Pane {
-        // No arrow on the first screen: an arrow that leaves the app is not what a back arrow
-        // means anywhere else, and the pane's own buttons are the two ways on from here.
-        if (onBack != null) {
-            PaneHeader(onBack = onBack)
-        } else {
-            // The first screen of all: which app is asking for the number.
-            com.tmplayer.ui.components.BrandLockup(
-                size = com.tmplayer.ui.components.BrandSize.Medium,
-                layout = com.tmplayer.ui.components.BrandLayout.Row,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
+        // The brand band opens the pane, the first screen included: with no way back behind it
+        // (onBack null) the band carries the mark alone, and an arrow that leaves the app is not
+        // what a back arrow means anywhere else.
+        SignInBrandHeader(onBack = onBack)
         Text(s.loginPhoneTitle, style = MaterialTheme.typography.headlineLarge)
         Text(
             s.loginPhoneBlurb,
@@ -844,19 +835,34 @@ private fun CodeBoxes(
     )
 }
 
-/** The touch pane's top row: an arrow out and the app's mark beside it, and nothing at all on a television. */
+/**
+ * The sign in's brand band (item 12): every touch pane opens on the same header, the neon mark
+ * over the name, centred at the top of the page, with the pane's way back at the band's start
+ * where it has one. The panes used to open on a lone back arrow and a title, one pane per state
+ * in a plain column; the band is what makes the page J Player's before a word of it is read.
+ * A television draws none of this: its panes keep the composition and the D-pad order they had,
+ * and the QR pane carries its own lockup beside the code.
+ */
 @Composable
-private fun PaneHeader(onBack: () -> Unit) {
+private fun SignInBrandHeader(onBack: (() -> Unit)?) {
     if (!isTouch()) return
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        BackArrow(onBack = onBack)
-        // Every step of the sign in opens on the mark (J Player, 2026-11-06), the phone
-        // pane's first screen included; this header is the one the other panes share.
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        if (onBack != null) {
+            Box(Modifier.align(Alignment.CenterStart)) {
+                BackArrow(onBack = onBack)
+            }
+        }
         com.tmplayer.ui.components.BrandLockup(
-            size = com.tmplayer.ui.components.BrandSize.Small,
-            layout = com.tmplayer.ui.components.BrandLayout.Row,
+            size = com.tmplayer.ui.components.BrandSize.Medium,
+            layout = com.tmplayer.ui.components.BrandLayout.Stacked,
         )
     }
+}
+
+/** The touch pane's header: the brand band, with this pane's way back in it. Nothing on a television. */
+@Composable
+private fun PaneHeader(onBack: () -> Unit) {
+    SignInBrandHeader(onBack = onBack)
 }
 
 /**
@@ -919,30 +925,16 @@ private fun QrPane(link: String, scanned: Boolean, onUsePhone: () -> Unit, onRef
         }
     }
 
-    val words: @Composable ColumnScope.() -> Unit = {
-        Text(s.loginQrTitle, style = MaterialTheme.typography.headlineLarge)
-        Text(
-            s.loginQrBlurb,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Spacer(Modifier.height(8.dp))
-        Step(1, s.loginQrStepOpen)
-        Step(2, s.loginQrStepDevices)
-        Step(3, s.loginQrStepLink)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            s.loginQrNote,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-
     // Side by side is a television's shape: wide, and read from a sofa. A phone held upright has
-    // no room beside a 300dp plate for a paragraph, so the same parts stack instead.
+    // no room beside a 300dp plate for a paragraph, so the same parts stack instead, and in a
+    // different order from the pane this replaces (item 12): the brand band and the words come
+    // first, then the code itself, then the steps that use it.
     if (isTouch()) {
         Pane(horizontalAlignment = Alignment.CenterHorizontally) {
             PaneHeader(onBack = onUsePhone)
+            QrIntro()
             plate()
-            words()
+            QrSteps()
             Spacer(Modifier.height(8.dp))
             TmSecondaryButton(onClick = onUsePhone, modifier = Modifier.paneAction()) {
                 Text(s.loginUsePhone)
@@ -966,7 +958,8 @@ private fun QrPane(link: String, scanned: Boolean, onUsePhone: () -> Unit, onRef
                 layout = com.tmplayer.ui.components.BrandLayout.Row,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
-            words()
+            QrIntro()
+            QrSteps()
             Spacer(Modifier.height(8.dp))
             // On a remote these are the only focusable things on the pane, so they are also what
             // gives the D-pad somewhere to be. Without them the screen takes no input at all.
@@ -978,6 +971,32 @@ private fun QrPane(link: String, scanned: Boolean, onUsePhone: () -> Unit, onRef
     }
     // The remote starts on a button, not nowhere, so the first press does something.
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
+/** The QR pane's heading and its one line of explanation, shared by the phone stack and the television row. */
+@Composable
+private fun QrIntro() {
+    val s = LocalStrings.current
+    Text(s.loginQrTitle, style = MaterialTheme.typography.headlineLarge)
+    Text(
+        s.loginQrBlurb,
+        style = MaterialTheme.typography.bodyLarge,
+    )
+}
+
+/** The QR pane's three numbered steps and the note under them, in the order they are done. */
+@Composable
+private fun QrSteps() {
+    val s = LocalStrings.current
+    Spacer(Modifier.height(8.dp))
+    Step(1, s.loginQrStepOpen)
+    Step(2, s.loginQrStepDevices)
+    Step(3, s.loginQrStepLink)
+    Spacer(Modifier.height(8.dp))
+    Text(
+        s.loginQrNote,
+        style = MaterialTheme.typography.bodyMedium,
+    )
 }
 
 @Composable
@@ -1230,7 +1249,7 @@ private fun EmailAddressPane(
 
 /**
  * The code Telegram mailed to the account's login email, which it uses in place of a text for some
- * accounts. Before this pane the sign in ended in "a step TMPlayer can't do", and such an account
+ * accounts. Before this pane the sign in ended in "a step J Player can't do", and such an account
  * could not sign in here at all. With the code again on request, and the email reset with its
  * waiting period as TDLib reports it, for somebody who no longer has that mailbox.
  */
