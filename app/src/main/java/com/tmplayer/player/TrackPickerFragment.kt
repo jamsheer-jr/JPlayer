@@ -315,11 +315,13 @@ class TrackPickerFragment : Fragment() {
     }
 
     /**
-     * MSone's search, in a build with the gateway key and unless hidden on this device (`msone`
+     * MSone's search: through the gateway in a build with its key, or read from MSone's public
+     * site in a build without one (item 10, v1.0.15), and unless hidden on this device (`msone`
      * as the SubDL key). It needs no OpenSubtitles key.
      */
     private fun msoneLine(onMsone: () -> Unit): Line? {
-        if (OnlineSubtitles.current?.msoneShown != true) return null
+        val online = OnlineSubtitles.current ?: return null
+        if (!online.msoneShown && !online.msoneSiteShown) return null
         return Line("msone", L.msoneSearch, L.msoneSearchDetail, icon = TmIcons.Search, group = Group.Online, onClick = onMsone)
     }
 
@@ -462,6 +464,8 @@ class TrackPickerFragment : Fragment() {
      * The results of "Search online", or with [msone] of MSone's search. MSone's state at the
      * gateway (not set up, paused or stopped at its request) shows where the results would be,
      * with the gateway's own words under it, Check again, and a subtitle file of the viewer's own.
+     * In a build without the gateway key the same page lists what MSone's public site holds for
+     * this video (item 10, v1.0.15), with the same file and link rows as its fallback.
      */
     @Composable
     private fun OnlinePage(closeFocus: FocusRequester, firstFocus: FocusRequester, onBack: () -> Unit, msone: Boolean) {
@@ -480,11 +484,12 @@ class TrackPickerFragment : Fragment() {
             override = null
             val wanted = host?.onlineTarget()
             target = wanted
-            if (msone && force) online.msoneStatus(force = true)
+            if (msone && force && online.msoneInBuild) online.msoneStatus(force = true)
             force = false
             result = when {
                 wanted == null -> SearchResult(emptyList())
-                msone -> online.searchMsone(wanted)
+                // The gateway where the build carries its key; MSone's public site where it does not.
+                msone -> if (online.msoneInBuild) online.searchMsone(wanted) else online.searchMsoneSite(wanted)
                 else -> online.search(wanted)
             }
         }
