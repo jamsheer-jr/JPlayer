@@ -234,12 +234,8 @@ internal fun HomePane(
     onPlayNow: (MediaItem, String) -> Unit = onPlay,
     /** A video's page, whatever "Open a video's page first" says: the carousel's Details on a television. */
     onDetails: (MediaItem, String) -> Unit = onHoldMedia,
-    /** A live or file stream from the built-in channel's posts (v1.0.10): plays in the player. */
+    /** A live or file stream link (an opened link that reads as one): plays in the player. */
     onPlayStream: (StreamLink) -> Unit = {},
-    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
-    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
-    /** The Live Guide page, from the Live row's heading (item 15, v1.0.16). */
-    onOpenLiveGuide: () -> Unit = {},
     /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
     onRefreshHome: () -> Unit = {},
     /**
@@ -980,17 +976,17 @@ internal fun HomePane(
                         )
                     }
                 }
-                // The streams posted in the built-in films channel (v1.0.10), between the
-                // carousel and the rows. The channels' cards that stood here are gone
-                // (v1.0.11, owner): the Live row is what stays of the built-in sections.
-                item(key = BUILT_IN_KEY, contentType = BUILT_IN_KEY) {
-                    BuiltInHomeSections(
-                        start = start,
-                        end = end,
-                        onPlayStream = onPlayStream,
-                        onPlayStreamPair = onPlayStreamPair,
-                        onOpenGuide = onOpenLiveGuide,
-                    )
+                // The television's Share J Player pill stands here, between the
+                // carousel and the rows. The Live row stood here too until v1.0.20
+                // (owner: Live belongs in Chats alone, not on Home, its banner
+                // cards with it), and the channels' cards before it (v1.0.11,
+                // owner). A phone puts its Share pill beside Surprise me instead.
+                if (!touch) {
+                    item(key = BUILT_IN_KEY, contentType = BUILT_IN_KEY) {
+                        Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
+                            SharePlayerPill()
+                        }
+                    }
                 }
                 if (touch) {
                     // Surprise me and Share J Player side by side in one row (owner,
@@ -2462,36 +2458,6 @@ private fun RowHeading(
                 modifier = Modifier.padding(start = 12.dp).minimumInteractiveComponentSize(),
             )
         }
-    }
-}
-
-/**
- * What is left of the built-in sections on Home (v1.0.11): the Live row of the streams
- * posted in the built-in films channel, and nothing else. The channel cards that stood
- * here in v1.0.10 are removed (owner, 2026-11-06): their membership guess could call a
- * stranger a member and leave a dead card on Home. The invite resolution stays, minus
- * the cards: the films channel's invite gives its chat id, its recent posts give the
- * streams, and only what the signed-in account can see ever lands here. On a television
- * the Share J Player pill heads this block instead (a phone puts it beside Surprise me),
- * so the two stay neighbours there too.
- */
-@Composable
-private fun BuiltInHomeSections(
-    start: Dp,
-    end: Dp,
-    onPlayStream: (StreamLink) -> Unit,
-    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
-    onOpenGuide: (() -> Unit)? = null,
-) {
-    if (!isTouch()) {
-        Column {
-            Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
-                SharePlayerPill()
-            }
-            LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair, onOpenGuide)
-        }
-    } else {
-        LiveStreamsRow(start, end, onPlayStream, onPlayStreamPair, onOpenGuide)
     }
 }
 

@@ -760,13 +760,6 @@ internal fun BrowseScreen(
                                         panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
                                     }
                                 },
-                                // Two live streams side by side (item 11c, v1.0.15).
-                                onPlayStreamPair = { first, second ->
-                                    runCatching {
-                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
-                                    }
-                                },
-                                onOpenLiveGuide = { liveGuideOpen = true },
                                 // Starred chats get a row each under Recently added (2026-10-23), so
                                 // with none the hint says how to add them; only once the rows are
                                 // built, since it flashed up while they were still coming in.
@@ -2792,7 +2785,7 @@ private fun ChatSection(
                     // The channel's Live streams under the pin on the grid too (item 2,
                     // v1.0.16): the phone's list had them and the television's grid did
                     // not, so on a TV the channel stood with its name and no streams.
-                    // The same row as Home's and the phone list's, spanning the grid.
+                    // The phone list's own row, spanning the grid.
                     item(key = "j-movies-live", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-live") {
                         LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
                     }
@@ -2837,7 +2830,8 @@ private fun ChatSection(
                         JMoviesPin(onJMoviesPin, Modifier.padding(horizontal = insets.start, vertical = 8.dp))
                     }
                     // The channel's Live streams themselves under the pin (owner, v1.0.14):
-                    // Home's own Live row, the same loading, cards and rules, not a second
+                    // the one Live row (Home's copy went in v1.0.20, owner: Live stands
+                    // in Chats alone), the same loading, cards and rules, not a second
                     // reading of the posts. Nothing stands here while there are no streams.
                     item(key = "j-movies-live", contentType = "j-movies-live") {
                         LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
