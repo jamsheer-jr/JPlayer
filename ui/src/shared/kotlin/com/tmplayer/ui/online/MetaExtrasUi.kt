@@ -87,6 +87,7 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.Focus
 import com.tmplayer.ui.theme.Tone
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -423,6 +424,17 @@ fun DetailHeroPreview(trailer: MetaTrailer?, switchOn: Boolean, modifier: Modifi
     var muted by remember(trailer.key) { mutableStateOf(true) }
     var failed by remember(trailer.key) { mutableStateOf(false) }
     if (failed) return
+    // The embed is a WebView, and a WebView waking is the heaviest thing this page does:
+    // mounted in the same frames as the page opening, the whole page feels stuck (owner,
+    // 2026-11-08: the lag was on the detail page). The artwork stands for the first beat
+    // and the embed mounts only once the page has settled; a page left before then never
+    // starts it at all.
+    var settled by remember(trailer.key) { mutableStateOf(false) }
+    LaunchedEffect(trailer.key) {
+        delay(HERO_SETTLE_MS)
+        settled = true
+    }
+    if (!settled) return
     Box(modifier) {
         HeroTrailerPlayer(trailer, muted, onFailed = { failed = true }, modifier = Modifier.fillMaxSize())
         // The page's own foot fade over the picture, so the title at the hero's foot stays readable.
@@ -1163,6 +1175,9 @@ private const val ENLARGED_PIXELS = 780
 
 /** Frames the tile Back came from is asked for the focus over, once its row is drawn. */
 private const val RETURN_FOCUS_TRIES = 10
+
+/** The beat a detail page is given to settle before its hero embed is mounted (item 11, v1.0.17). */
+private const val HERO_SETTLE_MS = 900L
 
 private val POSTER: Dp = 112.dp
 private val POSTER_TV: Dp = 140.dp
