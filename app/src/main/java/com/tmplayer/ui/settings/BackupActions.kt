@@ -34,6 +34,8 @@ internal class BackupActions(
     val restore: () -> Unit,
     /** Merges a backup in, once the viewer has confirmed the [RestorePlan] they were shown. */
     val apply: (Backup) -> Unit,
+    /** Sends the backup file to the viewer's own Saved Messages (item 9b, v1.0.15). */
+    val sendToSaved: () -> Unit = {},
 )
 
 /**
@@ -132,6 +134,20 @@ internal fun rememberBackupActions(
                 val done = runCatching { service.restore(backup) }
                     .onFailure { Logger.w(TAG, "Restore failed", it) }.isSuccess
                 say(if (done) L.backupRestored else L.backupReadFailed)
+            }
+        },
+        sendToSaved = {
+            scope.launch {
+                // The file goes through the app's cache folder, the one place every Android
+                // build may always write, and Telegram reads it from there as it sends.
+                val sent = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val file = File(context.cacheDir, service.fileName())
+                        file.writeText(service.export())
+                        com.tmplayer.data.SavedMessagesBackup.send(file, service.fileName())
+                    }.onFailure { Logger.w(TAG, "Backup to Saved Messages failed", it) }.getOrDefault(false)
+                }
+                say(if (sent) L.backupSentSaved else L.backupFailed)
             }
         },
     )

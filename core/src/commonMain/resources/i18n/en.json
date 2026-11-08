@@ -101,6 +101,9 @@
     "saved": "Backup saved",
     "saved_to": "Backup saved to {place}",
     "section": "Backup",
+    "send_saved": "Send to Saved Messages",
+    "send_saved_detail": "The backup file, in your own Telegram, for a new phone to restore from",
+    "sent_saved": "Backup sent to Saved Messages",
     "too_new": "This backup comes from a newer J Player. Update J Player, then restore it again."
   },
   "browse": {

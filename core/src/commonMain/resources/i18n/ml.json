@@ -101,6 +101,9 @@
     "saved": "ബാക്കപ്പ് സേവ് ചെയ്തു",
     "saved_to": "ബാക്കപ്പ് {place}-ൽ സേവ് ചെയ്തു",
     "section": "ബാക്കപ്പ്",
+    "send_saved": "Saved Messages-ലേക്ക് അയക്കുക",
+    "send_saved_detail": "ബാക്കപ്പ് ഫയൽ, നിങ്ങളുടെ സ്വന്തം Telegram-ൽ, പുതിയ ഫോണിൽ restore ചെയ്യാൻ",
+    "sent_saved": "ബാക്കപ്പ് Saved Messages-ലേക്ക് അയച്ചു",
     "too_new": "ഈ ബാക്കപ്പ് J Player-ന്റെ പുതിയ പതിപ്പിൽ നിന്നാണ്. J Player അപ്ഡേറ്റ് ചെയ്ത ശേഷം വീണ്ടും പുനഃസ്ഥാപിക്കുക."
   },
   "browse": {

@@ -2209,6 +2209,17 @@ fun SettingsScreen(
                 }
                 // The weekly save by itself, once a folder is picked (owner, v1.0.14).
                 item { AutoBackupRow() }
+                // The same file to the viewer's own Saved Messages (item 9b, v1.0.15): one
+                // tap, their own backup to their own account, so a new phone restores from
+                // Telegram itself. Nothing is sent until the row is tapped.
+                item {
+                    ActionRow(
+                        title = s.backupSendSaved,
+                        subtitle = s.backupSendSavedDetail,
+                        icon = TmIcons.Send,
+                        onClick = backup.sendToSaved,
+                    )
+                }
 
                 // ---- help ----------------------------------------------------------------------------
 
