@@ -476,16 +476,11 @@ class GlobalSearchViewModel(
         // staleness start already accepts for [allowed] below.
         val shownGroups = if (keepShown) now.groups else emptyList()
         // The kids lock and the added chats (HX27): search lists videos from the added chats alone.
-        // Global Search off with no choice answered (owner, v1.0.16): the local half is
-        // confined to no chats at all, matching the per chat ask over no chats, rather
-        // than falling back to everything this device knows.
-        val allowed = if (!_state.value.globalSearch &&
-            com.tmplayer.data.AddedChats.choice.value.mode == com.tmplayer.data.AddedMode.Unanswered
-        ) {
-            emptySet()
-        } else {
-            ChatGate.browsing.value
-        }
+        // Global Search off (owner, v1.0.16) closes the Telegram ask (see [searchAsk]);
+        // the local half still lists what this device already knows through the gate as
+        // it stands, the v1.0.15 settlement, and the scope notice on the screen carries
+        // the nowhere-to-look case with its two ways out.
+        val allowed = ChatGate.browsing.value
         // Only the words around Telegram's part changed (a quality marker, a space): the answer
         // asked for, or about to be, stands, and the new words only screen and rank it.
         if (!force && !query.isEmpty && query.server == now.query.server && (asked == query.server || now.settling) &&
