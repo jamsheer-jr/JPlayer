@@ -655,6 +655,12 @@ internal fun HomePane(
           Column(
               Modifier
                   .fillMaxSize()
+                  // Home paints its own ground, read inside its colour scheme: the pane
+                  // stands under HomeThemed (item 18, v1.0.16), but nothing behind it does,
+                  // so without this the app scheme's background showed through and a light
+                  // theme phone got a white Home with white headings (owner, v1.0.17). The
+                  // carousel's fades melt into this ground, as they are drawn to do.
+                  .background(Tone.background)
                   .then(
                       if (touch) {
                           Modifier
