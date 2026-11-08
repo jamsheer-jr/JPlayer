@@ -213,9 +213,31 @@ class BackgroundChecks : JobService() {
 
         /** Low storage, if it has just run low and its switch is on. */
         suspend fun checkStorage(context: Context) {
+            // Low space mode (owner, v1.0.15, item 9a): the cache trims itself at the low
+            // reading whether or not the notification's switch is on, since a full disk is
+            // a fact about the device and not a message. Only the cache goes; downloads and
+            // the viewer's files are never touched by it.
+            runCatching { WatchCache.trimWhenLow(context) }
             if (!AppNotices.allowed(context, Notice.LowStorage)) return
-            val words = StorageAlerts.check(SettingsStore(context), DiskSpace.read(context), System.currentTimeMillis()) ?: return
-            AppNotices.postLowStorage(context, words.first, words.second)
+            val settings = SettingsStore(context)
+            val words = StorageAlerts.check(settings, DiskSpace.read(context), System.currentTimeMillis()) ?: return
+            // A removable volume the downloads are not on yet earns one more line, pointing
+            // at the move the viewer can confirm in Settings, Storage: a suggestion only,
+            // and the notification's press still opens the cleanup view, as it always has.
+            val disk = DiskSpace.read(context)
+            val volumes = runCatching { AndroidStorage.volumes(context) }.getOrDefault(emptyList())
+            val removable = volumes.filter { it.removable }
+            val root = runCatching { settings.downloadRootNow() }.getOrDefault("")
+            val onRemovable = removable.any { volume ->
+                val base = volume.root?.absolutePath?.substringBefore("/Android/").orEmpty()
+                base.isNotEmpty() && root.contains(base)
+            }
+            val cacheBytes = runCatching { settings.cachedVideosNow() }.getOrDefault(emptyList())
+                .distinctBy { it.fileId }
+                .sumOf { it.sizeBytes.coerceAtLeast(0L) }
+            val actions = StorageAlerts.lowSpaceActions(disk.freeBytes, disk.totalBytes, cacheBytes, removable.isNotEmpty(), onRemovable)
+            val body = if (actions.suggestSdCard) words.second + "\n" + L.notifyLowStorageSd else words.second
+            AppNotices.postLowStorage(context, words.first, body)
         }
 
         /**

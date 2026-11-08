@@ -199,4 +199,29 @@ object WatchCache {
 
     /** Under this much free space the device is critical, and the cache empties itself. */
     private const val CRITICAL_FREE_BYTES = 500L * 1024 * 1024
+
+    /**
+     * Low space mode's own trim (owner, v1.0.15, item 9a): at the wider low reading
+     * [com.tmplayer.data.StorageAlerts] uses (free space under the larger of 1 GB and
+     * 5 percent of the volume, or the cache over its ceiling), the cache gives up every
+     * video that is not playing, being fetched or claimed, without being asked. Downloads
+     * are never the cache's to take, as [criticalSweep] says of its own sweep. Returns
+     * whether it trimmed, for the caller's line about the SD card.
+     */
+    suspend fun trimWhenLow(context: Context): Boolean {
+        val disk = runCatching { DiskSpace.read(context) }.getOrDefault(DiskInfo.EMPTY)
+        val cacheBytes = runCatching { SettingsStore(context).cachedVideosNow() }.getOrDefault(emptyList())
+            .distinctBy { it.fileId }
+            .sumOf { it.sizeBytes.coerceAtLeast(0L) }
+        val actions = com.tmplayer.data.StorageAlerts.lowSpaceActions(
+            freeBytes = disk.freeBytes,
+            totalBytes = disk.totalBytes,
+            cacheBytes = cacheBytes,
+            removableAvailable = false,
+            downloadsOnRemovable = false,
+        )
+        if (!actions.trimCache) return false
+        runCatching { rules(context).evictAllBut(playingNow()) }
+        return true
+    }
 }

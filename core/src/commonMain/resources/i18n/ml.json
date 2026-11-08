@@ -1589,6 +1589,7 @@
     "held_for_connection": "{count, plural, one {കണക്ഷനായി കാത്തിരിക്കുന്നു} other {# ഡൗൺലോഡുകൾ കണക്ഷനായി കാത്തിരിക്കുന്നു}}",
     "held_for_wifi": "{count, plural, one {Wi-Fi-ക്കായി കാത്തിരിക്കുന്നു} other {# ഡൗൺലോഡുകൾ Wi-Fi-ക്കായി കാത്തിരിക്കുന്നു}}",
     "low_storage_body": "{free} ഒഴിവുണ്ട്. നിങ്ങളുടെ വീഡിയോകൾ സുഗമമായി പ്ലേ ചെയ്യാൻ സ്ഥലം ഒഴിവാക്കുക.",
+    "low_storage_sd": "പകരം Downloads SD കാർഡിലേക്ക് മാറ്റാം: Settings, Storage.",
     "low_storage_title": "നിങ്ങളുടെ ഉപകരണത്തിൽ സ്ഥലം തീരുന്നു",
     "new_videos_in_chat": "{count, plural, one {{chat}-ൽ # പുതിയ വീഡിയോ} other {{chat}-ൽ # പുതിയ വീഡിയോകൾ}}",
     "new_videos_in_chats": "{count, plural, one {നക്ഷത്രമിട്ട ചാറ്റുകളിൽ # പുതിയ വീഡിയോ} other {നക്ഷത്രമിട്ട ചാറ്റുകളിൽ # പുതിയ വീഡിയോകൾ}}",

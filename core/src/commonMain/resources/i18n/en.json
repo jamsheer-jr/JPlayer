@@ -1597,6 +1597,7 @@
     "held_for_connection": "{count, plural, one {Waiting for a connection} other {# downloads waiting for a connection}}",
     "held_for_wifi": "{count, plural, one {Waiting for Wi-Fi} other {# downloads waiting for Wi-Fi}}",
     "low_storage_body": "{free} free. Free up space so your videos keep playing smoothly.",
+    "low_storage_sd": "Downloads can move to the SD card instead: Settings, Storage.",
     "low_storage_title": "Your device is running out of space",
     "new_videos_in_chat": "{count, plural, one {# new video in {chat}} other {# new videos in {chat}}}",
     "new_videos_in_chats": "{count, plural, one {# new video in your starred chats} other {# new videos in your starred chats}}",

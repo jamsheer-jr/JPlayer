@@ -61,6 +61,36 @@ object StorageAlerts {
         return true to State(armed = false, lastAt = now)
     }
 
+    /**
+     * What low space mode does by itself (owner, v1.0.15, item 9a), apart from the notification
+     * above: the same low reading ([reason], free space under the larger of 1 GB and 5 percent
+     * of the volume, or the watch cache over its ceiling) trims the cache and points at the
+     * cleanup view, and a device low reading with a removable volume the downloads are not on
+     * yet also suggests moving downloads there. Trimming is the cache only: a download, and
+     * any file of the viewer's, is never deleted by this, and the move to the card is a
+     * suggestion the viewer confirms in Settings, Storage, never a relocation done for them.
+     */
+    data class LowSpaceActions(
+        val trimCache: Boolean,
+        val suggestCleanup: Boolean,
+        val suggestSdCard: Boolean,
+    )
+
+    fun lowSpaceActions(
+        freeBytes: Long,
+        totalBytes: Long,
+        cacheBytes: Long,
+        removableAvailable: Boolean,
+        downloadsOnRemovable: Boolean,
+    ): LowSpaceActions {
+        val found = reason(freeBytes, totalBytes, cacheBytes)
+        return LowSpaceActions(
+            trimCache = found != null,
+            suggestCleanup = found != null,
+            suggestSdCard = found == Reason.DeviceLow && removableAvailable && !downloadsOnRemovable,
+        )
+    }
+
     /** The notification's title and line. */
     fun words(reason: Reason, freeBytes: Long, cacheBytes: Long): Pair<String, String> = when (reason) {
         Reason.DeviceLow -> L.notifyLowStorageTitle to L.notifyLowStorageBody(free = StreamStats.formatBytes(freeBytes))
