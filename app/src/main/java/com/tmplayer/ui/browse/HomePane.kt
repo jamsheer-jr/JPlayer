@@ -154,6 +154,7 @@ internal fun HomeThemed(content: @Composable () -> Unit) {
     M3MaterialTheme(colorScheme = com.tmplayer.ui.theme.TmSchemes.NetflixHome, content = content)
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun HomePane(
     rows: List<HomeRow>,

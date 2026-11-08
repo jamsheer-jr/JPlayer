@@ -432,7 +432,6 @@ internal fun BrowseScreen(
     // the ask itself, the answer only what the scope line and notice say.
     val searchGlobal by groupsSettings.globalSearch.collectAsState(initial = false)
     LaunchedEffect(searchGlobal) { search.setGlobalSearch(searchGlobal) }
-    val addedChoice by com.tmplayer.data.AddedChats.choice.collectAsState()
     LaunchedEffect(addedChoice) {
         search.setScopeChoice(
             picked = addedChoice.mode == com.tmplayer.data.AddedMode.Picked,

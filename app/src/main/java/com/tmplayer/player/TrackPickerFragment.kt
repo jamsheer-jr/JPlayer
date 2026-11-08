@@ -948,7 +948,7 @@ class TrackPickerFragment : Fragment() {
         val store = remember { SettingsStore(context.applicationContext) }
         val scope = rememberCoroutineScope()
         val choice by store.downmixChoice.collectAsState(initial = null)
-        val wanted = AudioDownmix.wanted(choice, isTv = false)
+        val wanted = AudioDownmix.wanted(choice, television = false)
         Row(
             Modifier
                 .fillMaxWidth()
