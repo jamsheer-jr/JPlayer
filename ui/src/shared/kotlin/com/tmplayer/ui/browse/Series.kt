@@ -673,7 +673,6 @@ private fun EpisodeLine(
  * The episode's own page already carries the same table inline under its About; this is
  * for reading the facts without leaving the show's page. Back or a press outside leaves.
  */
-@Composable
 /**
  * The confirm step of a season download (item 11d, v1.0.15): the episodes it covers, their
  * total size, and one quality pick applied to every episode, the total following the pick
@@ -697,14 +696,15 @@ private fun SeasonDownloadDialog(
     val s = LocalStrings.current
     val heights = remember(season) { SeasonDownload.seasonHeights(season) }
     var height by remember(season) { mutableStateOf<Int?>(null) }
-    val copies = remember(season, which, height, downloadedIds) {
+    val pickedHeight = height
+    val copies = remember(season, which, pickedHeight, downloadedIds) {
         val held: (MediaItem) -> Boolean = { it.id in downloadedIds }
         val finished = watch.finished
         val position: (MediaItem) -> Float = { watch.point(it)?.fraction ?: 0f }
-        if (height == null) {
+        if (pickedHeight == null) {
             SeasonDownload.copies(series, season, which, finished, position, held)
         } else {
-            SeasonDownload.copiesAtHeight(series, season, which, height, finished, position, held)
+            SeasonDownload.copiesAtHeight(series, season, which, pickedHeight, finished, position, held)
         }
     }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
@@ -738,6 +738,7 @@ private fun SeasonDownloadDialog(
     }
 }
 
+@Composable
 private fun EpisodeFactsDialog(item: MediaItem, onDismiss: () -> Unit) {
     val s = LocalStrings.current
     val facts = remember(item) { com.tmplayer.data.MediaFacts.of(item) }
