@@ -116,15 +116,37 @@ class MsonePublicTest {
     // ---- search ----------------------------------------------------------------------------------
 
     @Test
-    fun `the search page becomes the picker's list, the match first`() = runBlocking {
+    fun `the search page becomes the picker's list, this title only`() = runBlocking {
         http.on("?s=", html(200, filmsPage))
         val result = online.searchMsoneSite(film)
-        assertEquals(2, result.hits.size)
+        // The Afterlife card is another film with a near name: it no longer stands
+        // on this title's ask (owner, v1.0.25); a typed ask still lists it.
+        assertEquals(1, result.hits.size)
         val first = result.hits[0]
         assertEquals(SubtitleProvider.Msone, first.provider)
         assertEquals("https://malayalamsubtitles.org/languages/english/resident-evil-2026/", first.pageUrl)
         assertEquals(2026, first.featureYear)
         assertNull(result.notice)
+    }
+
+    @Test
+    fun `a typed ask keeps the site's whole answer`() = runBlocking {
+        http.on("?s=", html(200, filmsPage))
+        val result = online.searchMsoneSite(film, terms = "resident evil")
+        assertEquals(2, result.hits.size)
+    }
+
+    @Test
+    fun `another series with a near name never stands on this title's ask`() = runBlocking {
+        val valhallaOnly = """
+            <html><body><div id="archive-container">
+            ${card(31, "series", "vikings-valhalla-2022", "english", "Vikings Valhalla / വൈക്കിംഗ്സ് വൽഹാല (2022)")}
+            </div></body></html>
+        """.trimIndent()
+        http.on("?s=", html(200, valhallaOnly))
+        val vikings = SubtitleTarget(fileName = "Vikings.S01E02.1080p.WEB-DL.mkv", sizeBytes = 1_000_000)
+        val result = online.searchMsoneSite(vikings)
+        assertTrue(result.hits.isEmpty())
     }
 
     @Test

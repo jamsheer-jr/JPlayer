@@ -753,11 +753,11 @@ class OnlineSubtitles(
     // ---- MSone, from its public site (builds without the gateway key) ------------------------
 
     /**
-     * MSone's releases for [target], read from the site's own search page: every release the
-     * search lists, best first (the name and year match, then the season's post for a series,
-     * then the site's order), so the panel pick can stand in where the plain match cannot.
-     * Searches are cached like the gateway's; an empty answer is not kept, since the site's
-     * catalogue grows.
+     * MSone's releases for [target], read from the site's own search page: this title's
+     * own releases, best first (the name and year match, then the season's post for a
+     * series, then the site's order), so the panel pick can stand in where the plain
+     * match cannot. Searches are cached like the gateway's; an empty answer is not
+     * kept, since the site's catalogue grows.
      */
     /**
      * The site's releases for [target], ranked with this title's match first. [terms]
@@ -773,7 +773,13 @@ class OnlineSubtitles(
         val key = msoneSiteKey(parsed) + (typed?.let { "|q:${it.lowercase(Locale.ROOT)}" } ?: "")
         cache.search(key)?.takeIf { it.isNotEmpty() }?.let { return SearchResult(rankMsoneSite(it, parsed), fromCache = true) }
         val ask = typed ?: if (parsed.year != null) "$title ${parsed.year}" else title
-        val releases = msoneSite.search(ask) ?: return SearchResult(emptyList(), SubtitleNotice.Offline)
+        val found = msoneSite.search(ask) ?: return SearchResult(emptyList(), SubtitleNotice.Offline)
+        // Only this title's own releases stand on the untyped ask (owner, v1.0.25):
+        // the site's search answers with near names too, and another series'
+        // release (Valhalla for Vikings) tapped here was remembered for the whole
+        // series. A typed ask is the viewer's own naming for a wrongly read name,
+        // so it keeps the site's full answer, as before.
+        val releases = if (typed == null) found.filter { MsoneSite.sameTitle(it, title) } else found
         val hits = releases.map(::msoneSiteHit)
         if (hits.isNotEmpty()) cache.putSearch(key, hits)
         return SearchResult(rankMsoneSite(hits, parsed))
