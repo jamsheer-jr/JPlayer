@@ -1300,13 +1300,6 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     private var trackPlan = TrackRules.plan(null, TrackChoice(), TrackPreferences(), Languages.ENGLISH)
 
     /**
-     * The video the MSone automatic subtitle (item 10, v1.0.15) was last tried for, as
-     * "chat:message", so a copy swap or a repeat of the open flow for the same video does not
-     * search and attach twice in one player.
-     */
-    private var msoneAutoKey: String? = null
-
-    /**
      * Whether the subtitles Settings ask for still wait on the file's track list, which a pick by
      * language and "only when the audio is foreign" both need. Cleared once applied.
      */
@@ -2287,7 +2280,6 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             if (!session.isCurrent()) return@launch
             markStart("file and settings decided", STAGE_DECIDED)
             startPlayback(session.client)
-            autoMsoneSubtitle()
         }
     }
 
@@ -6417,34 +6409,6 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val config = subtitleFiles.files
             .firstOrNull { candidate -> ExternalSubtitle.isTrackId(formatId, candidate.id.orEmpty()) } ?: return null
         return config.uri.path?.let { path -> File(path) }
-    }
-
-    /**
-     * MSone on open (item 10, v1.0.15): in a build without the gateway key, MSone's public site
-     * is searched for this video and the release that matches by name and year (episode wise
-     * for a series) is downloaded and put on as the subtitle track, the subtitle panel's MSone
-     * page being the manual way to the same list. Runs beside playback, never in its way: a
-     * stream has no title to match, a video whose plan turns subtitles off is left alone, and
-     * any failure is silent. Once per video in this player; the search and the file are cached,
-     * so a later open of the same video asks the site nothing.
-     */
-    private fun autoMsoneSubtitle() {
-        val online = OnlineSubtitles.current ?: return
-        if (!online.msoneSiteShown || streamUrl != null) return
-        if (trackPlan.subtitles is SubtitlePlan.Off) return
-        val key = "$chatId:$messageId"
-        if (msoneAutoKey == key) return
-        msoneAutoKey = key
-        val openedChat = chatId
-        val openedMessage = messageId
-        itemScope.launch {
-            val target = runCatching { onlineTarget() }.getOrNull() ?: return@launch
-            val done = runCatching { online.autoMsoneSite(target) }.getOrNull() ?: return@launch
-            // The video may have changed while the site answered: the track belongs to the one opened.
-            if (done is DownloadResult.Done && chatId == openedChat && messageId == openedMessage) {
-                attachOnlineSubtitle(done.file, done.label)
-            }
-        }
     }
 
     override val pickSubtitleFile: (() -> Unit)?
