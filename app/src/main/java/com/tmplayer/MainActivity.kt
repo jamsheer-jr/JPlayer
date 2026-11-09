@@ -2220,6 +2220,10 @@ private fun Root() {
                         homeViewModel.refreshInPlace()
                         LiveRefresh.ask(forced = true)
                     },
+                    // A catalog or category page opened: widen the catalog read to
+                    // every chat Home can see, so the page fills past Home's own
+                    // chats (owner, v1.0.25).
+                    onCatalogPageOpen = { homeViewModel.requestAllCatalog() },
                     onSetMediaWatched = { item, chatTitle, watched -> setWatched(item, chatTitle, watched) },
                     onMessage = toast,
                     onSearched = { settings.addRecentSearch(it) },

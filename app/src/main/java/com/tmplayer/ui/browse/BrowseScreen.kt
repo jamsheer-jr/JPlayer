@@ -307,6 +307,8 @@ internal fun BrowseScreen(
     /** Plays a video from one of Home's rows; the second argument is its chat's name. */
     onPlayMedia: (MediaItem, String) -> Unit = { _, _ -> },
     onRefreshHome: () -> Unit = {},
+    /** A catalog or category page opened on Home: widen the catalog read (owner, v1.0.25). */
+    onCatalogPageOpen: () -> Unit = {},
     /** True while Home's rows are being fetched again in place: the phone's pull spinner stays up. */
     homeRefreshing: Boolean = false,
     /** "Mark as watched" (true) or back (false) from a detail panel opened here; the third is the chat's name. */
@@ -746,6 +748,7 @@ internal fun BrowseScreen(
                                 },
                                 onOpenChat = { id -> data.chats.firstOrNull { it.id == id }?.let(onOpenChat) },
                                 onRefreshHome = onRefreshHome,
+                                onCatalogPageOpen = onCatalogPageOpen,
                                 // Home's own update card and header line (v1.0.15,
                                 // items 13 and 15): the feed's version and its lines,
                                 // the popup behind Update, and Downloads.

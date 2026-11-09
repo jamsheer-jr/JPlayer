@@ -241,6 +241,12 @@ internal fun HomePane(
     /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
     onRefreshHome: () -> Unit = {},
     /**
+     * A catalog or category page opened (owner, v1.0.25): the page's titles may
+     * live in chats Home itself never deepened, so the model is asked to widen
+     * the catalog read to every chat it can see, and the page fills behind.
+     */
+    onCatalogPageOpen: () -> Unit = {},
+    /**
      * The newer version the update feed reports, or null for none: Home's own update
      * card stands for it (item 13) and the header line carries its notice (item 15).
      */
@@ -517,6 +523,13 @@ internal fun HomePane(
     // Held while its page stands (see rememberHeldRow): Back from a title opened
     // in the page returns to this page, never to plain Home (owner, v1.0.18).
     val categoryRow = rememberHeldRow(categoryKey, categoryFound)
+    // A catalog or category page opens on what Home holds and fills behind:
+    // opening one asks the model to widen the catalog read to every chat it
+    // can see (owner, v1.0.25), so a page whose titles live outside Home's own
+    // chats does not stay as short as Home's cut of them.
+    LaunchedEffect(catalogKey, categoryKey) {
+        if (catalogKey != null || categoryKey != null) onCatalogPageOpen()
+    }
     // A category asked for from the search page's browse sections (owner, v1.0.17).
     val categoryAsked by CategoryOpenRequest.pending.collectAsStateWithLifecycle()
     LaunchedEffect(categoryAsked) {

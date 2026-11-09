@@ -422,7 +422,7 @@ class HomeViewModel(
      */
     @Volatile var catalogWanted: Boolean = false
 
-    /** The chats the catalog deepening has been asked for: Home's own first chats, no more than [CATALOG_CHATS]. */
+    /** The chats the catalog deepening has been asked for: Home's own first chats, and every chat a catalog page has widened to. */
     private var catalogKept: Set<Long> = emptySet()
 
     private val _partial = MutableStateFlow<Set<Long>>(emptySet())
@@ -637,7 +637,7 @@ class HomeViewModel(
         filled = true
         if (ids != order) {
             order = ids
-            val keep = ids.toHashSet() + seriesKept
+            val keep = ids.toHashSet() + seriesKept + catalogKept
             val gone = if (whole) _loaded.value.keys.filterNot { it in keep } else emptyList()
             if (gone.isNotEmpty()) {
                 gone.forEach { fetches.forget("chat:$it"); fetches.forget("series:$it"); fetches.forget("catalog:$it"); reads.remove(it); stale -= it }
@@ -664,9 +664,27 @@ class HomeViewModel(
     fun requestCatalog() {
         if (!catalogWanted) return
         val ids = order.take(CATALOG_CHATS)
-        catalogKept = ids.toSet()
+        catalogKept = catalogKept + ids.toSet()
         ids.forEach { fetchCatalog(it) }
     }
+
+    /**
+     * Asks for the catalog deepening of the chats a catalog page needs (owner,
+     * v1.0.25): Home deepens only its own first chats, so a genre, language or
+     * category page whose titles live in other chats read nearly empty. Opening
+     * such a page asks for every chat Home can see, the same set the Series row
+     * is fed from ([requestSeriesChats]), each the one bounded read of
+     * [fetchCatalogChat]; the page fills as the answers land.
+     */
+    fun requestCatalogChats(ids: List<Long>) {
+        if (!catalogWanted) return
+        val wanted = ids.distinct().take(CATALOG_ALL_CHATS)
+        catalogKept = catalogKept + wanted
+        wanted.forEach { fetchCatalog(it) }
+    }
+
+    /** [requestCatalogChats] for every chat Home has been told of for the Series row. */
+    fun requestAllCatalog() = requestCatalogChats(seriesKept.toList())
 
     /** Asks for [chatId]'s deeper catalog read, once, and again when a refresh says fresh. */
     private fun fetchCatalog(chatId: Long, fresh: Boolean = false, minGapMs: Long = 0) {
@@ -1145,6 +1163,9 @@ class HomeViewModel(
          * browses by category, each bounded by [com.tmplayer.data.CatalogDeepening].
          */
         const val CATALOG_CHATS = 12
+
+        /** The most chats read deeper when a catalog page opens ([requestCatalogChats]). */
+        const val CATALOG_ALL_CHATS = 100
 
         /** The least time between two fetches of one row set off by posts in its chat. */
         const val LIVE_GAP_MS = 120_000L
