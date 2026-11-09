@@ -333,9 +333,13 @@ internal fun TvSearchScreen(
                                 onClick = { onOpenGroup(group) },
                             )
                         }
-                        if (state.loadingMore) {
+                        if (state.loadingMore || state.stillSearching) {
                             item(span = full, key = "more") {
-                                Text(s.gridLoadingMore, style = MaterialTheme.typography.bodyLarge, color = Tone.muted)
+                                Text(
+                                    if (state.stillSearching) s.searchStillSearching else s.gridLoadingMore,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Tone.muted,
+                                )
                             }
                         }
                     }

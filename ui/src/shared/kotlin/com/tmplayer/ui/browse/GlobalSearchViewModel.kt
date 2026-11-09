@@ -674,6 +674,11 @@ class GlobalSearchViewModel(
     private suspend fun absorb(page: AllChatsPage, keepTo: SearchQuery = _state.value.query, fresh: Boolean = false, keepShownIfEmpty: Boolean = false, shownGroups: List<ResultGroup> = emptyList()) {
         val fallback = serverQuery != keepTo.server
         val kept = if (!fallback) page.items else withContext(work) { page.items.filter { GlobalSearch.matchesLocally(it, keepTo, onlineNames(it)) } }
+        // What a search finds belongs to the whole app (owner, v1.0.24): the
+        // finds are noted into the pool, so a title opened from the results
+        // starts with the versions the search already read, and a series
+        // page fills from them, instead of every page asking the chats again.
+        if (kept.isNotEmpty()) KnownMedia.note(kept)
         val local = localNow
         regroup(chats = page.chats.associateBy { it.id }) { s ->
             val base = if (fresh) GlobalSearch.merge(emptyList(), local, s.query, s.sort, identity) else s.groups

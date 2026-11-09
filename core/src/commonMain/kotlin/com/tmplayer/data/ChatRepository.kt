@@ -610,8 +610,13 @@ class ChatRepository(private val td: TdlClient) {
     companion object {
         const val PAGE_SIZE = 40
 
-        /** Added chats searched side by side in [searchAddedChats]: two calls each, so six in flight. */
-        const val CHATS_AT_ONCE = 3
+        /**
+         * Added chats searched side by side in [searchAddedChats]: two calls
+         * each, so twelve in flight. Six chats at once is the figure the
+         * title and series fills use too (owner, v1.0.24: every fill at the
+         * same speed, three at a time read as searching that crawled).
+         */
+        const val CHATS_AT_ONCE = 6
 
         /** Per filter, for [recentMedia]: enough to fill a row of ten after screening and dedupe. */
         const val RECENT_LIMIT = 40

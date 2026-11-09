@@ -733,7 +733,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
             )
         }
     }
-    if (state.loadingMore) item(key = "more") { Note(LocalStrings.current.gridLoadingMore, spinner = true) }
+    // The searching line stands at the end of the results too, where the eye
+    // already is (owner, v1.0.24): the one at the top scrolls away as the
+    // results land, and the first answer's own paging behind them
+    // (stillSearching) was invisible there, so more results simply appeared.
+    if (state.loadingMore || state.stillSearching) {
+        item(key = "more") {
+            Note(
+                if (state.stillSearching) LocalStrings.current.searchStillSearching else LocalStrings.current.gridLoadingMore,
+                spinner = true,
+            )
+        }
+    }
 }
 
 /**
