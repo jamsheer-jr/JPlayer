@@ -44,8 +44,16 @@ object HomeCache {
          * (HX8): an account with thousands of chats waited for its whole list first.
          */
         val chats: List<ChatSummary> = emptyList(),
+        /**
+         * The catalog deepening's reads, per chat (owner, v1.0.21): the classic rows
+         * painted from this cache at a cold start while every genre, language and
+         * category shelf waited for the deepening to run again, so Home felt
+         * half loaded long after it opened. The deepening's own bounds (a few
+         * chats, a few hundred videos each) keep the file's size in check.
+         */
+        val catalog: Map<Long, List<MediaItem>> = emptyMap(),
     ) {
-        val isEmpty: Boolean get() = loaded.isEmpty() && recent == null && art.isEmpty()
+        val isEmpty: Boolean get() = loaded.isEmpty() && recent == null && art.isEmpty() && catalog.isEmpty()
     }
 
     @Volatile
@@ -78,7 +86,8 @@ object HomeCache {
         val target = file ?: return
         val before = memory
         if (before != null && before.loaded == snapshot.loaded && before.recent == snapshot.recent &&
-            before.partial == snapshot.partial && before.art == snapshot.art && before.chats == snapshot.chats
+            before.partial == snapshot.partial && before.art == snapshot.art && before.chats == snapshot.chats &&
+            before.catalog == snapshot.catalog
         ) {
             return
         }
@@ -118,6 +127,7 @@ object HomeCache {
         .put("partial", JSONArray(snapshot.partial.toList()))
         .put("art", JSONArray(snapshot.art.map { (key, item) -> JSONObject().put("key", key).put("item", item.toJson()) }))
         .put("homeChats", JSONArray(snapshot.chats.map { it.toJson() }))
+        .put("catalog", JSONArray(snapshot.catalog.map { (chatId, items) -> JSONObject().put("id", chatId).put("items", items.toJson()) }))
         .toString()
 
     /** Anything unreadable is dropped: it is a cache, and Home builds itself from Telegram anyway. */
@@ -136,7 +146,12 @@ object HomeCache {
             art[entry.optString("key")] = item
         }
         val chats = objects(json.optJSONArray("homeChats")).mapNotNull(::chat)
-        return Snapshot(loaded, recent, partial, art, json.optLong("saved"), chats)
+        // A file written before the catalog was kept has no "catalog": it reads as none held.
+        val catalog = LinkedHashMap<Long, List<MediaItem>>()
+        objects(json.optJSONArray("catalog")).forEach { chat ->
+            catalog[chat.optLong("id")] = items(chat.optJSONArray("items"))
+        }
+        return Snapshot(loaded, recent, partial, art, json.optLong("saved"), chats, catalog)
     }
 
     /** A chat as Home's rows need it: no picture, which the chat list brings once it is in. */

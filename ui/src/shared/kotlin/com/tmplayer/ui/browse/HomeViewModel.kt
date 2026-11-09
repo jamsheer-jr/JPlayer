@@ -595,6 +595,10 @@ class HomeViewModel(
             _partial.value = snapshot.partial
             _art.value = snapshot.art
             _own.value = snapshot.chats
+            // The catalog deepening's reads too (owner, v1.0.21): without them the
+            // classic rows painted from the cache while every catalog shelf waited
+            // for the deepening to run again, and Home felt half loaded.
+            _catalog.value = snapshot.catalog
             snapshot.art.values.forEach(RecordItems::keep)
             com.tmplayer.data.PerfLog.mark("home rows from cache (${snapshot.loaded.size} chats)", com.tmplayer.data.PerfLog.processStart)
             // Written moments ago (the desktop builds Home again on every visit): good as it is.
@@ -603,13 +607,18 @@ class HomeViewModel(
             if (age in 0 until STALE_MS) {
                 refreshedAt = clock() - age
                 snapshot.loaded.keys.forEach { fetches.answered("chat:$it") }
+                snapshot.catalog.keys.forEach { fetches.answered("catalog:$it") }
                 if (snapshot.recent != null) fetches.answered("recent")
             }
         }
         viewModelScope.launch {
-            combine(_loaded, _recent, _partial, _art, _own) { loaded, recent, partial, art, own ->
-                HomeCache.Snapshot(loaded, recent, partial, art, System.currentTimeMillis(), own)
-            }.collectLatest { snapshot ->
+            combine(
+                combine(_loaded, _recent, _partial, _art, _own) { loaded, recent, partial, art, own ->
+                    HomeCache.Snapshot(loaded, recent, partial, art, System.currentTimeMillis(), own)
+                },
+                _catalog,
+            ) { settled, catalog -> settled.copy(catalog = catalog) }
+                .collectLatest { snapshot ->
                 // Settled, not mid-refresh: a row at a time arriving should not write ten times.
                 kotlinx.coroutines.delay(if (com.tmplayer.ui.theme.Motion.television) PERSIST_AFTER_TV_MS else PERSIST_AFTER_MS)
                 if (snapshot.isEmpty) return@collectLatest

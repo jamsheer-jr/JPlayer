@@ -507,6 +507,28 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `bisect dotted singles with a season pack`() {
+        val items = listOf(
+            video("Make.Me.Tingle.S01E01.mkv"),
+            video("Make.Me.Tingle.S01E02.mkv"),
+            video("Make Me Tingle S01 720p HEVC COMBINED AMZN WEB-DL.mkv"),
+        )
+        val show = shows(SeriesShelf.arrange(items)).single()
+        assertEquals(1, show.packs.size)
+    }
+
+    @Test
+    fun `bisect spaced singles with a season pack, guide dates and sizes`() {
+        val items = listOf(
+            video("Make Me Tingle S01E01.mkv", date = 11, size = 100),
+            video("Make Me Tingle S01E02.mkv", date = 12, size = 100),
+            video("Make Me Tingle S01 720p HEVC COMBINED AMZN WEB-DL.mkv", date = 13, size = 100),
+        )
+        val show = shows(SeriesShelf.arrange(items)).single()
+        assertEquals(1, show.packs.size)
+    }
+
+    @Test
     fun `a season in one file joins its show as a pack, not an episode`() {
         val items = listOf(
             video("Make Me Tingle S01E01 1080p.mkv"),

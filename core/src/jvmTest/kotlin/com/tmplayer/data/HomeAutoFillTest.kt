@@ -158,7 +158,7 @@ class HomeAutoFillTest {
         HomeCache.file = java.io.File(dir, "home.json")
         try {
             val item = video(7, "Sintel (2010).mkv").copy(miniThumbnail = byteArrayOf(1, 2, 3), versions = listOf(video(7)), locality = MediaItem.Locality.Downloaded, onDevice = true)
-            val snapshot = HomeCache.Snapshot(mapOf(7L to listOf(item)), listOf(item), setOf(7L), mapOf("7:1" to item), 1234L)
+            val snapshot = HomeCache.Snapshot(mapOf(7L to listOf(item)), listOf(item), setOf(7L), mapOf("7:1" to item), 1234L, catalog = mapOf(7L to listOf(item)))
             val decoded = HomeCache.decode(HomeCache.encode(snapshot))
             assertNotNull(decoded)
             assertEquals(snapshot, decoded)
