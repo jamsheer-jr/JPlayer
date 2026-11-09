@@ -709,11 +709,19 @@ private class PersonPageData(
  * to playable even where the name match missed it. A fetch that fails, or a person TMDB
  * does not know, leaves the in-chats list alone, exactly the v1.0.14 page.
  */
-private suspend fun personPage(person: MetaPerson): PersonPageData {
-    val held = personTitles(person.name)
+private suspend fun personPage(person: MetaPerson, held: List<PersonTitle> = personTitles(person.name)): PersonPageData {
     val online = OnlineMetadata.current ?: return PersonPageData(null, held)
-    val credits = runCatching { online.personFilmography(person) }.getOrNull()
-        ?: return PersonPageData(null, held)
+    // Bounded (owner, v1.0.23): the filmography is a network answer, and the
+    // page already stands with the held titles while it is asked for; an
+    // answer that never comes leaves the page as it stands instead of
+    // holding it open.
+    val credits = try {
+        kotlinx.coroutines.withTimeoutOrNull(12_000L) { online.personFilmography(person) }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        null
+    } ?: return PersonPageData(null, held)
     val heldByKey = held.associateBy { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) }
     val entries = PersonFilmography.mark(credits, online.knownTitles(KnownMedia.all())).map { entry ->
         if (entry.playable) entry else heldByKey[entry.credit.ref.matchKey]?.let { entry.copy(item = it.item) } ?: entry
@@ -792,7 +800,13 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
     val s = LocalStrings.current
     val close = remember { androidx.compose.ui.focus.FocusRequester() }
     val page by produceState<PersonPageData?>(null, person.name) {
-        value = withContext(Dispatchers.Default) { personPage(person) }
+        // The page fills in stages (owner, v1.0.23: it read as stuck while it
+        // waited): the titles the chats already know are a local read and
+        // stand first, the TMDB filmography joins when it lands, and the
+        // Telegram upgrades follow behind, each stage replacing the last.
+        val held = withContext(Dispatchers.Default) { personTitles(person.name) }
+        value = PersonPageData(null, held)
+        value = withContext(Dispatchers.Default) { personPage(person, held) }
         // The full search (owner, v1.0.17): credits the local marking left unheld
         // are asked for on Telegram itself, and the rows upgrade in place as the
         // answers land.

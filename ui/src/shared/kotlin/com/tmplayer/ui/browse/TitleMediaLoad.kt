@@ -43,6 +43,16 @@ fun rememberTitleMediaLoad(item: MediaItem) {
 object TitleMediaLoad {
     private val loaded = LruMap<String, Unit>(KEPT)
 
+    private val loadingMutable = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * The titles whose fill is still running, by item id: a page showing a
+     * title reads it to say the rest is still being asked for, rather than
+     * standing at what the first frame knew (owner, v1.0.23: the versions on
+     * some titles took so long to appear that the page read as stuck).
+     */
+    val loading: kotlinx.coroutines.flow.StateFlow<Set<String>> = loadingMutable
+
     /**
      * Searches for [item]'s title across the chats the viewer browses and notes what is found
      * into [KnownMedia]. The set asked is the browsing gate itself
@@ -75,6 +85,18 @@ object TitleMediaLoad {
     suspend fun refresh(item: MediaItem) = fill(item, ::telegram)
 
     private suspend fun fill(
+        item: MediaItem,
+        fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
+    ) {
+        loadingMutable.value += item.id
+        try {
+            fillNow(item, fetch)
+        } finally {
+            loadingMutable.value -= item.id
+        }
+    }
+
+    private suspend fun fillNow(
         item: MediaItem,
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
     ) {
@@ -152,13 +174,13 @@ object TitleMediaLoad {
     private const val GATE_WAIT_MS = 3_000L
 
     /** How long one chat's search may run before that chat is left out of this load. */
-    private const val CHAT_SEARCH_MS = 25_000L
+    private const val CHAT_SEARCH_MS = 15_000L
 
     /** Titles asked after in a run: a session's worth of pages opened. */
     private const val KEPT = 96
 
     /** Chats asked at once for one title: a handful in flight, never the whole line at once. */
-    private const val CHATS_AT_ONCE = 4
+    private const val CHATS_AT_ONCE = 6
 }
 
 /**

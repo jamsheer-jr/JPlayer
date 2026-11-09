@@ -201,7 +201,17 @@ internal fun Versions(
     val full = remember(item.id, item.versions, known) {
         com.tmplayer.data.SameTitle.withPoolCopies(item, com.tmplayer.online.KnownMedia.all())
     }
-    if (full.versions.size <= 1) return
+    // While the open's own fill is still asking and only the opened copy is
+    // known, the section says so instead of standing absent (owner, v1.0.23:
+    // on some titles the versions took so long to appear that the page read
+    // as stuck, and the section's late pop-in read as the page changing
+    // under the viewer). Once the fill settles, a title with one copy simply
+    // has no section, as it always has.
+    val filling by TitleMediaLoad.loading.collectAsState()
+    if (full.versions.size <= 1) {
+        if (item.id in filling) VersionsSearching()
+        return
+    }
     // The same file posted twice is one choice, not two identical rows.
     val allFiles = remember(full.versions) { VideoCopies.distinctFiles(full.versions) }
     if (allFiles.size <= 1) return
@@ -335,6 +345,28 @@ internal fun Versions(
                 Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) { list(false, null) }
             }
         }
+    }
+}
+
+/**
+ * The versions are still being asked for (owner, v1.0.23): while a title's
+ * fill runs and only the opened copy is known, the section says so with a
+ * spinner, instead of standing absent until the copies land.
+ */
+@Composable
+private fun VersionsSearching() {
+    val s = LocalStrings.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(start = 4.dp),
+    ) {
+        androidx.compose.material3.CircularProgressIndicator(
+            Modifier.size(16.dp),
+            color = Tone.muted,
+            strokeWidth = 2.dp,
+        )
+        Text(s.detailVersionsSearching, style = MaterialTheme.typography.bodySmall, color = Tone.muted)
     }
 }
 
