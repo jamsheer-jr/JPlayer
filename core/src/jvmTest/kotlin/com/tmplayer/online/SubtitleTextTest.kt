@@ -107,6 +107,14 @@ class SubtitleTextTest {
         assertNotNull(second)
         assertTrue(second!!.text.contains("Second episode"))
         assertEquals("Show.S01E02.srt", second.entryName)
+        // The pack's entries stand by name for a hand pick, and the picked one reads.
+        assertEquals(listOf("Show.S01E01.srt", "Show.S01E02.srt"), SubtitleText.archiveEntries(zip))
+        val picked = SubtitleText.fromArchiveEntry(zip, "Show.S01E01.srt")
+        assertNotNull(picked)
+        assertTrue(picked!!.text.contains("First episode"))
+        assertEquals("Show.S01E01.srt", picked.entryName)
+        assertNull(SubtitleText.fromArchiveEntry(zip, "Show.S01E09.srt"))
+        assertTrue(SubtitleText.archiveEntries(byteArrayOf(1, 2, 3)).isEmpty())
         // Strict never answers with another episode's file.
         assertNull(SubtitleText.from(zip, "show.zip", season = 1, episode = 7, strict = true))
         // A series pick survives its stored string, and nonsense reads as no pick.

@@ -3263,6 +3263,7 @@
     "background_box": "പശ്ചാത്തല ബോക്സ്",
     "channels": "{count}ch",
     "choose_file": "ഒരു സബ്ടൈറ്റിൽ ഫയൽ തിരഞ്ഞെടുക്കുക: .srt, .ass, .ssa, .vtt അല്ലെങ്കിൽ .sub",
+    "choose_subtitle": "സബ്ടൈറ്റിൽ തിരഞ്ഞെടുക്കുക",
     "delay_none": "ഫയലുമായി ഒത്തുപോകുന്നു",
     "delay_now": "ഇപ്പോൾ {delay}",
     "delay_step": "ഒരു സെക്കൻഡിന്റെ പത്തിലൊന്ന്. ഇപ്പോൾ {delay}",

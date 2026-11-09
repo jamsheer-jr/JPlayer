@@ -78,6 +78,13 @@ class SubtitleFiles(
      */
     var onCastFile: ((file: File, mimeType: String, label: String) -> Boolean)? = null
 
+    /**
+     * Set by the activity: the entries of a subtitle pack the viewer loaded by
+     * hand, shown for a pick (owner, v1.0.25). Answers the picked entry's name,
+     * or null when the viewer picks none.
+     */
+    var entryChooser: (suspend (List<String>) -> String?)? = null
+
     /** The id of the file just loaded, until its track shows up and is selected. */
     private var pending: Pair<String, String>? = null
 
@@ -147,9 +154,9 @@ class SubtitleFiles(
             val copied = withContext(Dispatchers.IO) { runCatching { copy(uri, name, extension, fps) }.getOrNull() }
             when (copied) {
                 null -> say(L.tracksFileUnreadable(name))
-                is Copy.Refused -> say(copied.reason)
+                is Copy.Refused -> copied.reason?.let(::say)
                 is Copy.Done -> {
-                    val (ready, label) = maybeTranslate(copied, name)
+                    val (ready, label) = maybeTranslate(copied, copied.entryName ?: name)
                     attach(ready, label)
                 }
             }
@@ -189,9 +196,9 @@ class SubtitleFiles(
                     }
                     when (stored) {
                         null -> say(L.tracksUrlFailed)
-                        is Copy.Refused -> say(stored.reason)
+                        is Copy.Refused -> stored.reason?.let(::say)
                         is Copy.Done -> {
-                            val (ready, label) = maybeTranslate(stored, name)
+                            val (ready, label) = maybeTranslate(stored, stored.entryName ?: name)
                             attach(ready, label)
                         }
                     }
@@ -333,11 +340,14 @@ class SubtitleFiles(
     }
 
     private sealed interface Copy {
-        data class Done(val file: File, val mimeType: String) : Copy
-        data class Refused(val reason: String) : Copy
+        /** [entryName]: the file inside an archive this came out of, where it did. */
+        data class Done(val file: File, val mimeType: String, val entryName: String? = null) : Copy
+
+        /** A null [reason] says nothing: the viewer stopped the load themselves. */
+        data class Refused(val reason: String?) : Copy
     }
 
-    private fun copy(uri: Uri, name: String, extension: String, fps: Double): Copy {
+    private suspend fun copy(uri: Uri, name: String, extension: String, fps: Double): Copy {
         val bytes = activity.contentResolver.openInputStream(uri)?.use { input ->
             val out = java.io.ByteArrayOutputStream()
             val chunk = ByteArray(16 * 1024)
@@ -359,17 +369,28 @@ class SubtitleFiles(
      * both take, so both get the same decoding, the same MicroDVD conversion and the same
      * refusals. A zip is opened for the subtitle inside it ([SubtitleText.fromArchive]).
      */
-    private fun store(bytes: ByteArray, name: String, extension: String, fps: Double): Copy {
+    private suspend fun store(bytes: ByteArray, name: String, extension: String, fps: Double): Copy {
         val folder = File(activity.cacheDir, "subtitles").apply { mkdirs() }
         if (SubtitleText.isZip(bytes)) {
             val language = ExternalSubtitle.languageOf(name) ?: Locale.getDefault().language
-            val inside = runCatching { SubtitleText.from(bytes, name, language = language) }.getOrNull()
-                ?: return Copy.Refused(L.onlineNoticeUnreadable)
+            // A pack holds a subtitle per episode: loaded by hand, the viewer
+            // picks the one they want from the pack's own names (owner, v1.0.25),
+            // instead of the app taking the first entry and the rest standing
+            // nowhere. One entry, or no chooser wired, reads as it always has.
+            val entries = SubtitleText.archiveEntries(bytes)
+            val chooser = entryChooser
+            val inside = when {
+                entries.size > 1 && chooser != null -> {
+                    val picked = chooser(entries) ?: return Copy.Refused(null)
+                    runCatching { SubtitleText.fromArchiveEntry(bytes, picked, language) }.getOrNull()
+                }
+                else -> runCatching { SubtitleText.from(bytes, name, language = language) }.getOrNull()
+            } ?: return Copy.Refused(L.onlineNoticeUnreadable)
             val mime = ExternalSubtitle.mimeTypeOf(inside.extension)
                 ?: return Copy.Refused(L.onlineNoticeUnreadable)
             val file = File(folder, "${++nextId}.${inside.extension}")
             file.writeText(inside.text)
-            return Copy.Done(file, mime)
+            return Copy.Done(file, mime, inside.entryName)
         }
         // Written back as UTF-8 whatever it arrived in: Media3 reads these formats as UTF-8, and
         // an older .srt saved in a Windows code page would otherwise lose every accented letter.

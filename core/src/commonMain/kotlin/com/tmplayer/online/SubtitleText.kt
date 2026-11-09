@@ -148,6 +148,39 @@ object SubtitleText {
     fun isZip(bytes: ByteArray): Boolean =
         bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
 
+    /** Every subtitle entry in a zip, by its file name inside the archive, in the archive's order. */
+    fun archiveEntries(bytes: ByteArray): List<String> = readEntries(bytes).map { it.first }
+
+    /** The one named entry of a zip as a subtitle, or null when the archive does not hold it. */
+    fun fromArchiveEntry(bytes: ByteArray, entryName: String, language: String? = null): Text? {
+        val pick = readEntries(bytes).firstOrNull { it.first == entryName } ?: return null
+        return Text(extensionOf(pick.first), decode(pick.second, language), entryName = pick.first)
+    }
+
+    /** A zip's subtitle entries, names and bytes, each capped at [MAX_BYTES] like every read here. */
+    private fun readEntries(bytes: ByteArray): List<Pair<String, ByteArray>> {
+        val found = mutableListOf<Pair<String, ByteArray>>()
+        runCatching {
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    val name = entry.name.substringAfterLast('/')
+                    if (entry.isDirectory || name.substringAfterLast('.', "").lowercase(Locale.ROOT) !in FORMATS) continue
+                    // Read by hand: InputStream.readNBytes is newer than the oldest Android we run on.
+                    val out = java.io.ByteArrayOutputStream()
+                    val chunk = ByteArray(16 * 1024)
+                    while (out.size() <= MAX_BYTES) {
+                        val n = zip.read(chunk)
+                        if (n < 0) break
+                        out.write(chunk, 0, n)
+                    }
+                    if (out.size() <= MAX_BYTES) found += name to out.toByteArray()
+                }
+            }
+        }
+        return found
+    }
+
     /**
      * The subtitle inside a zip: the one whose name has the wanted [season] and [episode] when
      * those are known, else the first. Null when there is no subtitle in a format we take.
@@ -155,23 +188,7 @@ object SubtitleText {
      * episodes and none is this one, there is nothing to take.
      */
     fun fromArchive(bytes: ByteArray, season: Int? = null, episode: Int? = null, language: String? = null, strict: Boolean = false): Text? {
-        val found = mutableListOf<Pair<String, ByteArray>>()
-        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                val name = entry.name.substringAfterLast('/')
-                if (entry.isDirectory || name.substringAfterLast('.', "").lowercase(Locale.ROOT) !in FORMATS) continue
-                // Read by hand: InputStream.readNBytes is newer than the oldest Android we run on.
-                val out = java.io.ByteArrayOutputStream()
-                val chunk = ByteArray(16 * 1024)
-                while (out.size() <= MAX_BYTES) {
-                    val n = zip.read(chunk)
-                    if (n < 0) break
-                    out.write(chunk, 0, n)
-                }
-                if (out.size() <= MAX_BYTES) found += name to out.toByteArray()
-            }
-        }
+        val found = readEntries(bytes)
         if (found.isEmpty()) return null
         val pick = if (episode != null) {
             found.firstOrNull { (name, _) ->

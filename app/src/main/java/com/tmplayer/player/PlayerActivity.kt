@@ -160,6 +160,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import com.tmplayer.online.MovieHash
@@ -1774,6 +1775,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             startResumeHeartbeat()
         }
         setUpCasting()
+        // A subtitle pack loaded by hand holds a file per episode: the viewer
+        // picks the one they want in a popup (owner, v1.0.25), by its own name.
+        subtitleFiles.entryChooser = { entries -> pickSubtitleEntry(entries) }
         // A return tap with nothing behind it: the tap (the media notification, or "Playback
         // stopped") names the player that was playing unseen, and where that player is still
         // there the tap reuses it in place, so a fresh instance carrying the mark was made
@@ -1787,6 +1791,27 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /** The Cast button and the cast screen, where casting exists; see [PlayerCast]. */
+    /**
+     * The entries of a subtitle pack the viewer loaded by hand, in a popup, each
+     * under its own file name (owner, v1.0.25): the picked entry's name, or null
+     * when the popup is dismissed. A plain list dialog, so the remote drives it
+     * on a television the same way as on a phone.
+     */
+    private suspend fun pickSubtitleEntry(entries: List<String>): String? =
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { cont ->
+                val dialog = android.app.AlertDialog.Builder(this@PlayerActivity)
+                    .setTitle(L.tracksChooseSubtitle)
+                    .setItems(entries.toTypedArray()) { _, which ->
+                        if (cont.isActive) cont.resume(entries.getOrNull(which)) { _, _, _ -> }
+                    }
+                    .setOnCancelListener { if (cont.isActive) cont.resume(null) { _, _, _ -> } }
+                    .create()
+                cont.invokeOnCancellation { runCatching { dialog.dismiss() } }
+                dialog.show()
+            }
+        }
+
     private fun setUpCasting() {
         if (FormFactor.isTv(this)) return
         val support = com.tmplayer.cast.Cast.support(this)

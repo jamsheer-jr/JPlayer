@@ -349,6 +349,7 @@ class GarbageInputTest {
             survive("Mp4Probe.parseMoov", shown) { Mp4Probe.parseMoov(data) }
             survive("JpegSize.read", shown) { JpegSize.read(data) }
             survive("SubtitleText.decode", shown) { SubtitleText.decode(data); SubtitleText.decode(data, "ar") }
+            survive("SubtitleText.archiveEntries", shown) { SubtitleText.archiveEntries(data); SubtitleText.fromArchiveEntry(data, "x.srt") }
         }
         assertNoFailures()
     }

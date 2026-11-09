@@ -3299,6 +3299,7 @@
     "background_box": "Background box",
     "channels": "{count}ch",
     "choose_file": "Choose a subtitle file: .srt, .ass, .ssa, .vtt or .sub",
+    "choose_subtitle": "Choose a subtitle",
     "delay_none": "In step with the file",
     "delay_now": "Now {delay}",
     "delay_step": "A tenth of a second. Now {delay}",
