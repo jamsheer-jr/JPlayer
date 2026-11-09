@@ -118,7 +118,11 @@ object MediaName {
      */
     fun looseEpisode(text: String, maxYear: Int = thisYear() + 1): ParsedName? {
         val strict = parse(text, maxYear)
-        if (strict.isEpisode) return strict
+        // A strict read stands, unless its title is the whole name back again:
+        // a file that is only a code ("E05") names no show to attach it to,
+        // however plainly it names an episode (v1.0.24 reads an opening code
+        // strictly, and this read's contract is a title before the number).
+        if (strict.isEpisode && strict.title != clean(spaced(stripDecoration(stripExtension(text))))) return strict
         val normalised = spaced(stripDecoration(stripExtension(text))).trim()
         val match = BARE_EPISODE.find(normalised)?.takeIf { it.range.first > 0 } ?: return null
         val title = clean(read(normalised.substring(0, match.range.first), maxYear).parsed.title)
@@ -214,11 +218,23 @@ object MediaName {
         // A daily show or a match is numbered by the day it aired, "Show 2024.10.14 720p".
         val date = findAirDate(normalised)
         val episode = if (date == null) findEpisode(normalised) else null
+        // A name that opens with its episode code ("E06 Crash Landing On You",
+        // "S01E01 Show") names the show after the code: the title is read from
+        // there, not cut to nothing where the code stands (owner, v1.0.24), and
+        // the code, already read, no longer stands as a title marker.
+        var episodeAt = episode?.at
+        if (episode != null && episode.number != null && episode.numberAt == 0 && episode.end > 0) {
+            val rest = clean(normalised.substring(minOf(episode.end, normalised.length)))
+            if (rest.isNotEmpty()) {
+                normalised = rest
+                episodeAt = null
+            }
+        }
         val year = if (date != null) Year(date.year, date.at) else findYear(normalised, maxYear)
 
         // The title ends at whichever marker comes first: the year, the episode code, the air date,
         // the start of the technical block, a split film's "CD1", a trailer's own word, or a cast list.
-        val dated = listOfNotNull(year?.at, episode?.at, date?.at).minOrNull()
+        val dated = listOfNotNull(year?.at, episodeAt, date?.at).minOrNull()
         val markers = listOfNotNull(dated, titleEnd(normalised, dated)).minOrNull()
         val part = if (episode == null) findPart(normalised, markers) else null
         // The word has to end the title: "Night Train Trailer", "Night Train (2024) Teaser 2", but
@@ -372,7 +388,16 @@ object MediaName {
     }
 
     /** A season and episode number, and where in the name the code starts. */
-    private data class Episode(val season: Int?, val number: Int?, val at: Int, val last: Int? = null)
+    private data class Episode(
+        val season: Int?,
+        val number: Int?,
+        val at: Int,
+        val last: Int? = null,
+        /** Where the episode number itself starts; the same as [at] unless a season stands before it. */
+        val numberAt: Int = at,
+        /** Where the opening code ends, when the number opens the name: the title stands after it. */
+        val end: Int = 0,
+    )
 
     /**
      * Finds an episode however the uploader chose to write it.
@@ -397,6 +422,8 @@ object MediaName {
                     // A second code straight after the first, the file's last episode.
                     last = listOf(3, 4, 5).firstNotNullOfOrNull { group -> it.groupValues.getOrNull(group)?.toIntOrNull() }
                         ?.takeIf { last -> number != null && last > number },
+                    numberAt = it.range.first,
+                    end = it.range.last + 1,
                 )
             }
 
@@ -407,14 +434,29 @@ object MediaName {
         val bareRange = BARE_EPISODE_RANGE.find(text)
             ?.takeIf { season != null || it.value.startsWith("[") || it.value.startsWith("(") }
         val anyRange = range ?: bareRange
-        val number = anyRange ?: EPISODE_ONLY.find(text) ?: DASHED_EPISODE.find(text)?.takeUnless { notAnEpisode(it, text) }
+        // A bare "E10" opening the name is the episode, the title after it (owner,
+        // v1.0.24: whole series are posted this way, "E06 Crash Landing On You",
+        // and the code standing in the title kept every episode a row of its own
+        // in search). A bare E later in a name stays the lenient read's business
+        // ([looseEpisode]): inside a title it is too easy to find by accident.
+        val leading = BARE_EPISODE.find(text)?.takeIf { it.range.first == 0 }
+        val dashed = DASHED_EPISODE.find(text)?.takeUnless { notAnEpisode(it, text) }
+        val number = anyRange ?: EPISODE_ONLY.find(text) ?: leading ?: dashed
         if (season == null && number == null) return null
         val first = number?.groupValues?.get(1)?.toIntOrNull()
         return Episode(
-            season = season?.groupValues?.get(1)?.toIntOrNull(),
+            // An episode named with no season anywhere stands in season 1 (owner,
+            // v1.0.24: "S01 illathe E10 vannal S01E10 pole detect akanam"): the Ep
+            // and Episode words, a range and an opening bare E all read that way.
+            // The fansub dash keeps no season: its number is absolute, counted
+            // across seasons, and calling it season 1 would split a long show.
+            season = season?.groupValues?.get(1)?.toIntOrNull()
+                ?: if (number != null && number !== dashed) 1 else null,
             number = first,
             at = listOfNotNull(season?.range?.first, number?.range?.first).min(),
             last = anyRange?.groupValues?.get(2)?.toIntOrNull()?.takeIf { last -> first != null && last > first },
+            numberAt = number?.range?.first ?: season?.range?.first ?: 0,
+            end = number?.range?.last?.plus(1) ?: 0,
         )
     }
 
@@ -855,7 +897,10 @@ object MediaName {
      */
     private val BARE_EPISODE_RANGE = Regex("""[\[(]?e(\d{1,3})\s*[-~]\s*e?(\d{1,3})[\])]?""", RegexOption.IGNORE_CASE)
 
-    /** "E05" with no word in front, which only [looseEpisode] reads. */
+    /**
+     * "E05" with no word in front. [findEpisode] reads it only where it opens
+     * the name (owner, v1.0.24); anywhere else it is [looseEpisode]'s alone.
+     */
     private val BARE_EPISODE = Regex("""\be(\d{1,3})\b""", RegexOption.IGNORE_CASE)
 
     /** The second code of a two-episode file, "-E02" or "&E02", just after the first. */

@@ -416,7 +416,11 @@ class MediaNameTest {
     }
 
     @Test
-    fun `an episode with no season still reads`() {
+    fun `an episode with no season written stands in season 1`() {
+        // The owner's rule (v1.0.24): an episode number with no season anywhere
+        // reads as S01E.., so the Ep and Episode words stand in season 1 now
+        // rather than in no season. The fansub dash below keeps none: its
+        // number is absolute.
         listOf(
             "Kitchen Journal Ep 02 1080p.mp4",
             "Kitchen.Journal.Ep02.720p.mkv",
@@ -426,10 +430,36 @@ class MediaNameTest {
         ).forEach { name ->
             val parsed = parse(name)
             assertEquals(name, "Kitchen Journal", parsed.title)
-            assertNull(name, parsed.season)
+            assertEquals(name, 1, parsed.season)
             assertEquals(name, 2, parsed.episode)
             assertTrue(name, parsed.isEpisode)
         }
+    }
+
+    @Test
+    fun `a name that opens with its episode code names the show after it`() {
+        // The owner's Crash Landing on You (v1.0.24): one channel posts every
+        // episode as "E06 Crash Landing On You (2019)", and the code standing
+        // in the title kept each episode a search row of its own.
+        val parsed = parse("E06 Crash Landing On You (2019).mkv")
+        assertEquals("Crash Landing On You", parsed.title)
+        assertEquals(2019, parsed.year)
+        assertEquals(1, parsed.season)
+        assertEquals(6, parsed.episode)
+        assertEquals("S01E06", parsed.episodeCode)
+        val dotted = parse("E10.Harbour.Notes.720p.mkv")
+        assertEquals("Harbour Notes", dotted.title)
+        assertEquals(1, dotted.season)
+        assertEquals(10, dotted.episode)
+        // A paired code opening a name reads the same way it always did.
+        val paired = parse("S01E01 Harbour Notes.mkv")
+        assertEquals("Harbour Notes", paired.title)
+        assertEquals(1, paired.season)
+        assertEquals(1, paired.episode)
+        // A mid name bare E stays the lenient read's business, and a title
+        // word is never an episode: no episode in either of these.
+        assertNull(parse("Harbour Notes E5 Special.mkv").episode)
+        assertNull(parse("Wall E 2008.mkv").episode)
     }
 
     @Test
@@ -510,7 +540,7 @@ class MediaNameTest {
     fun `a caption that names only the episode keeps the file's title`() {
         val parsed = parse("Harbour Notes 1080p WEB-DL.mkv", "Episode 4")
         assertEquals("Harbour Notes", parsed.title)
-        assertNull(parsed.season)
+        assertEquals(1, parsed.season)
         assertEquals(4, parsed.episode)
     }
 
