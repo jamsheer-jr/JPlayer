@@ -109,6 +109,45 @@ data class SubtitleHit(
 }
 
 /**
+ * One series' MSone pick, remembered (owner, v1.0.23): the release an episode of
+ * the series was watched with, and the episode it last stood for, kept as the one
+ * stored string under the series' settings key. The next episode asks the same
+ * release for its own file, so a season pack picked once serves the season. The
+ * pick was the viewer's own, made in the picker on an earlier episode; nothing
+ * is remembered for a series they never chose MSone for.
+ */
+data class MsoneSeriesPick(
+    val hit: SubtitleHit,
+    /** The episode the pick last stood for; null where it has not stood yet. */
+    val appliedSeason: Int? = null,
+    val appliedEpisode: Int? = null,
+) {
+    /** This pick as the stored string: the hit's own JSON, with the applied episode beside it. */
+    fun encode(): String = JSONObject(hit.toJson().toString()).apply {
+        appliedSeason?.let { put("applied_season", it) }
+        appliedEpisode?.let { put("applied_episode", it) }
+    }.toString()
+
+    /** The pick standing for another episode now. */
+    fun applied(season: Int?, episode: Int?): MsoneSeriesPick = copy(appliedSeason = season, appliedEpisode = episode)
+
+    companion object {
+        /** A stored string read back; null for anything that is not an MSone pick. */
+        fun decode(stored: String?): MsoneSeriesPick? {
+            if (stored.isNullOrBlank()) return null
+            val json = runCatching { JSONObject(stored) }.getOrNull() ?: return null
+            val hit = SubtitleHit.fromJson(json) ?: return null
+            if (hit.provider != SubtitleProvider.Msone) return null
+            return MsoneSeriesPick(
+                hit = hit,
+                appliedSeason = json.optInt("applied_season", -1).takeIf { it >= 0 },
+                appliedEpisode = json.optInt("applied_episode", -1).takeIf { it >= 0 },
+            )
+        }
+    }
+}
+
+/**
  * Why a search or a download did not give everything it might have, said once in words every
  * screen shows the same way. A [SearchResult] can carry one beside its hits: a list found by name
  * is still worth showing when downloading is what is blocked.

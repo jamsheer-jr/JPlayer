@@ -2,6 +2,8 @@ package com.tmplayer.online
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 import java.util.zip.ZipEntry
@@ -87,5 +89,42 @@ class SubtitleTextTest {
         val zipped = SubtitleText.from(zip, "film.zip", language = "ar")
         assertNotNull(zipped)
         assertEquals(arabic, zipped?.text)
+    }
+
+    @Test
+    fun `a season pack gives the asked episode its own file, named` () {
+        val zip = ByteArrayOutputStream().also { out ->
+            ZipOutputStream(out).use { z ->
+                z.putNextEntry(ZipEntry("Show.S01E01.srt"))
+                z.write(bytes(cue + "First episode\n", "UTF-8"))
+                z.closeEntry()
+                z.putNextEntry(ZipEntry("Show.S01E02.srt"))
+                z.write(bytes(cue + "Second episode\n", "UTF-8"))
+                z.closeEntry()
+            }
+        }.toByteArray()
+        val second = SubtitleText.from(zip, "show.zip", season = 1, episode = 2, strict = true)
+        assertNotNull(second)
+        assertTrue(second!!.text.contains("Second episode"))
+        assertEquals("Show.S01E02.srt", second.entryName)
+        // Strict never answers with another episode's file.
+        assertNull(SubtitleText.from(zip, "show.zip", season = 1, episode = 7, strict = true))
+        // A series pick survives its stored string, and nonsense reads as no pick.
+        val hit = com.tmplayer.online.SubtitleHit(
+            provider = com.tmplayer.online.SubtitleProvider.Msone,
+            id = "https://malayalamsubtitles.org/show-season-1/",
+            language = "ml",
+            release = "Show Season 1",
+            pageUrl = "https://malayalamsubtitles.org/show-season-1/",
+        )
+        val pick = com.tmplayer.online.MsoneSeriesPick.decode(
+            com.tmplayer.online.MsoneSeriesPick(hit, 1, 2).encode(),
+        )
+        assertNotNull(pick)
+        assertEquals(hit.id, pick!!.hit.id)
+        assertEquals(1, pick.appliedSeason)
+        assertEquals(2, pick.appliedEpisode)
+        assertNull(com.tmplayer.online.MsoneSeriesPick.decode("not json"))
+        assertNull(com.tmplayer.online.MsoneSeriesPick.decode(null))
     }
 }

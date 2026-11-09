@@ -285,6 +285,8 @@ object Backups {
         "text_" to Kind.TEXT,
         "subs_" to Kind.BOOL,
         "companion_" to Kind.TEXT,
+        // The MSone release a series was watched with ([MsoneSeriesPick]).
+        "msone_" to Kind.TEXT,
         // The series' name as the player saw it, for Settings' list of what is remembered.
         "series_name_" to Kind.TEXT,
         "speed_" to Kind.FLOAT,

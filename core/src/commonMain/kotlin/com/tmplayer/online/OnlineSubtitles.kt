@@ -205,6 +205,22 @@ class OnlineSubtitles(
     /** The cache id of [hit]'s translated file: the hit's own id and the language, kept apart. */
     private fun translatedKey(hit: SubtitleHit, target: String): String = "${hit.id}|$target"
 
+    /**
+     * The cache key a download of [hit] for [target] is kept under (owner,
+     * v1.0.23): a season pack is ONE hit holding every episode's file, so the
+     * key names the episode the file was taken for. Under the hit's own key,
+     * the first episode downloaded stood for the whole pack, and the next
+     * episode was handed the first one's subtitle out of the cache. Hits that
+     * are one file for one video (and asks without an episode) keep the hit's
+     * key, as they always have.
+     */
+    private fun episodeKey(hit: SubtitleHit, target: SubtitleTarget?): String {
+        if (hit.provider != SubtitleProvider.Msone && hit.provider != SubtitleProvider.Subdl) return hit.id
+        val parsed = target?.let { MediaName.parse(it.fileName, it.caption) } ?: return hit.id
+        val episode = parsed.episode ?: return hit.id
+        return "${hit.id}|s${parsed.season ?: hit.featureSeason ?: 0}e$episode"
+    }
+
     /** The track name of a translated download: its new language, and where it came from. */
     private fun translatedLabel(hit: SubtitleHit, target: String): String =
         L.onlineTrackLabel(languageName(target), hit.provider.label)
@@ -439,19 +455,20 @@ class OnlineSubtitles(
         onProgress: ((Long, Long) -> Unit)? = null,
     ): DownloadResult {
         val wanted = translateTarget(hit)
+        val keptKey = episodeKey(hit, target)
         if (wanted == null) {
-            cache.file(hit.provider, hit.id)?.let { return DownloadResult.Done(it, label(hit), fromCache = true) }
+            cache.file(hit.provider, keptKey)?.let { return DownloadResult.Done(it, label(hit), fromCache = true) }
         } else {
-            cache.file(hit.provider, translatedKey(hit, wanted))?.let {
+            cache.file(hit.provider, translatedKey(hit.copy(id = keptKey), wanted))?.let {
                 return DownloadResult.Done(it, translatedLabel(hit, wanted), fromCache = true)
             }
             // The subtitle itself is already here: translating it now spends no download.
-            cache.file(hit.provider, hit.id)?.let { cached ->
+            cache.file(hit.provider, keptKey)?.let { cached ->
                 val translated = runCatching {
                     SubtitleText.Text(SubtitleText.extensionOf(cached.name), cached.readText())
                 }.getOrNull()?.let { translator.translate(it, wanted) }
                 val file = translated?.let {
-                    runCatching { cache.putFile(hit.provider, translatedKey(hit, wanted), it) }.getOrNull()
+                    runCatching { cache.putFile(hit.provider, translatedKey(hit.copy(id = keptKey), wanted), it) }.getOrNull()
                 }
                 if (file != null) return DownloadResult.Done(file, translatedLabel(hit, wanted), fromCache = true)
                 return DownloadResult.Done(cached, label(hit), fromCache = true)
@@ -567,7 +584,11 @@ class OnlineSubtitles(
     private suspend fun downloadSubdl(hit: SubtitleHit, target: SubtitleTarget?, onProgress: ((Long, Long) -> Unit)? = null): DownloadResult {
         val parsed = target?.let { MediaName.parse(it.fileName, it.caption) }
         return when (val body = withBackoff { subdl.fetch(hit.id, onProgress) }) {
-            is Reply.Ok -> save(hit, SubtitleText.from(body.value, hit.fileName, parsed?.season, parsed?.episode, hit.language))
+            is Reply.Ok -> save(
+                hit,
+                SubtitleText.from(body.value, hit.fileName, parsed?.season, parsed?.episode, hit.language, strict = parsed?.episode != null),
+                episodeKey(hit, target),
+            )
             is Reply.Throttled -> DownloadResult.Failed(SubtitleNotice.Busy)
             else -> DownloadResult.Failed(SubtitleNotice.Offline)
         }
@@ -587,12 +608,18 @@ class OnlineSubtitles(
             runCatching { cache.putFile(hit.provider, key, text) }
         }
         val keptText = translated ?: text
-        val keptKey = if (translated != null && wanted != null) translatedKey(hit, wanted) else key
+        val keptKey = if (translated != null && wanted != null) translatedKey(hit.copy(id = key), wanted) else key
         // A full disk or a folder gone is a failed download (HX10), not an exception for the picker.
         val file = runCatching { cache.putFile(hit.provider, keptKey, keptText) }
             .onFailure { com.tmplayer.platform.Logger.w("OnlineSubtitles", "subtitle not saved: ${it.message}") }
             .getOrNull() ?: return DownloadResult.Failed(SubtitleNotice.Unreadable)
-        val name = if (translated != null && wanted != null) translatedLabel(hit, wanted) else label(hit)
+        // A file taken out of a pack stands under its own name (owner, v1.0.23:
+        // the MSone file's name under the subtitles), not the pack's label.
+        val name = if (translated != null && wanted != null) {
+            translatedLabel(hit, wanted)
+        } else {
+            text.entryName?.takeIf { it.isNotBlank() } ?: label(hit)
+        }
         return DownloadResult.Done(file, name, fromCache = false)
     }
 
@@ -836,8 +863,11 @@ class OnlineSubtitles(
                 )
             }.getOrNull() ?: return@withTimeoutOrNull DownloadResult.Failed(SubtitleNotice.Offline)
             val name = hit.pageUrl.substringBefore('?').trimEnd('/').substringAfterLast('/').ifBlank { "msone" } + ".srt"
-            val text = SubtitleText.from(bytes, name, parsed?.season ?: hit.featureSeason, parsed?.episode, language = hit.language)
-            save(hit, text, hit.id)
+            // Strict for an episode (v1.0.23): the site's season pack holds every
+            // episode's file, and this episode's is the only one that may answer;
+            // the first file in the pack is another episode's subtitle.
+            val text = SubtitleText.from(bytes, name, parsed?.season ?: hit.featureSeason, parsed?.episode, language = hit.language, strict = parsed?.episode != null)
+            save(hit, text, episodeKey(hit, target))
         } ?: DownloadResult.Failed(SubtitleNotice.Offline)
     }
 

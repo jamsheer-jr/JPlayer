@@ -22,7 +22,12 @@ object SubtitleText {
     /** The largest subtitle worth keeping: a feature film's are tens of kilobytes. */
     const val MAX_BYTES = 4 * 1024 * 1024
 
-    data class Text(val extension: String, val text: String)
+    /**
+     * A subtitle read out of a download: its format and its words, and, where it
+     * came out of an archive, the name of the file inside the archive it was
+     * (v1.0.23), so the track can stand under its own file name.
+     */
+    data class Text(val extension: String, val text: String, val entryName: String? = null)
 
     /**
      * Subtitle bytes as text, whatever they were saved in.
@@ -177,13 +182,17 @@ object SubtitleText {
         } else {
             found.first()
         }
-        return Text(extensionOf(pick.first), decode(pick.second, language))
+        return Text(extensionOf(pick.first), decode(pick.second, language), entryName = pick.first)
     }
 
-    /** A downloaded body, zipped or not, as subtitle text; [language] is the subtitle's, for [decode]. */
-    fun from(bytes: ByteArray, fileName: String, season: Int? = null, episode: Int? = null, language: String? = null): Text? = when {
+    /**
+     * A downloaded body, zipped or not, as subtitle text; [language] is the subtitle's,
+     * for [decode]. [strict] is passed to the archive read: a season pack asked for one
+     * episode never answers with another episode's file.
+     */
+    fun from(bytes: ByteArray, fileName: String, season: Int? = null, episode: Int? = null, language: String? = null, strict: Boolean = false): Text? = when {
         bytes.size > MAX_BYTES -> null
-        isZip(bytes) -> runCatching { fromArchive(bytes, season, episode, language) }.getOrNull()
+        isZip(bytes) -> runCatching { fromArchive(bytes, season, episode, language, strict) }.getOrNull()
         else -> decode(bytes, language).takeIf { it.isNotBlank() }?.let { Text(extensionOf(fileName), it) }
     }
 }

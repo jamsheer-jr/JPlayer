@@ -380,6 +380,7 @@ class GarbageInputTest {
             survive("MetaExtras.fromJson", json) { MetaExtras.fromJson(json) }
             survive("SkipSegment.fromJson", json) { SkipSegment.fromJson(json) }
             survive("SubtitleHit.fromJson", json) { SubtitleHit.fromJson(org.json.JSONObject(json.toString())) }
+            survive("MsoneSeriesPick.decode", json) { com.tmplayer.online.MsoneSeriesPick.decode(json.toString()) }
         }
         assertNoFailures()
     }

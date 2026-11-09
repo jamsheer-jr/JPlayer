@@ -335,6 +335,7 @@ private fun audioKey(series: String) = stringPreferencesKey("audio_$series")
 private fun textKey(series: String) = stringPreferencesKey("text_$series")
 private fun subtitlesKey(series: String) = booleanPreferencesKey("subs_$series")
 private fun companionKey(series: String) = stringPreferencesKey("companion_$series")
+private fun msoneKey(series: String) = stringPreferencesKey("msone_$series")
 private fun seriesNameKey(series: String) = stringPreferencesKey("series_name_$series")
 
 private fun kidsChatsOf(prefs: Preferences): Set<Long> =
@@ -2207,6 +2208,21 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             // memory that says nothing: that one is not listed.
             if (choice.empty) prefs.remove(seriesNameKey(key)) else prefs[seriesNameKey(key)] = series.trim().take(120)
         }
+    }
+
+    /**
+     * The MSone release this series was watched with, as its stored string
+     * ([com.tmplayer.online.MsoneSeriesPick]); null where the viewer never
+     * picked MSone for the series. Kept beside the track choice, under the
+     * same series key, and carried by backup with the other per-series keys.
+     */
+    suspend fun msoneSeries(series: String): String? =
+        prefs.data.first()[msoneKey(seriesKey(series))]?.takeIf { it.isNotBlank() }
+
+    /** Remembers [pick] as [series]' MSone release, or forgets it when [pick] is null. */
+    suspend fun setMsoneSeries(series: String, pick: String?) {
+        val key = msoneKey(seriesKey(series))
+        prefs.edit { prefs -> if (pick.isNullOrBlank()) prefs.remove(key) else prefs[key] = pick }
     }
 
     /** Every series with remembered sound or subtitles, by name. See [LearntLanguages]. */
