@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tmplayer.data.EpisodeGuide
 import com.tmplayer.data.MediaItem
+import com.tmplayer.data.MediaMapper
 import com.tmplayer.data.Series
 import com.tmplayer.data.SeriesShelf
 import com.tmplayer.online.KnownMedia
@@ -167,6 +168,47 @@ fun SeasonsSection(
                     },
                     watch = watch,
                 )
+            }
+        }
+
+        // The season in one file gets a row of its own here too (owner, v1.0.21):
+        // the episodes it holds already read as in the chat above, and this row is
+        // the pack itself, plainly named, for anyone who wants the whole season
+        // in one play.
+        series?.packs?.filter { it.season == selected }?.forEach { pack ->
+            Row(
+                Modifier
+                    .widthIn(max = 860.dp)
+                    .clip(RoundedCornerShape(Corner.Medium))
+                    .background(Tone.surface)
+                    .then(
+                        if (onOpenItem != null) {
+                            Modifier.clickable { onOpenItem.invoke(pack.item) }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(TmIcons.Play, contentDescription = null, tint = Tone.accent, modifier = Modifier.size(22.dp))
+                Column {
+                    Text(
+                        s.seriesCombinedPack,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Tone.text,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                    val facts = listOfNotNull(
+                        MediaMapper.formatDuration(pack.item.durationSec).ifEmpty { null },
+                        MediaMapper.formatSize(pack.item.sizeBytes).ifEmpty { null },
+                    ).joinToString("  ·  ")
+                    if (facts.isNotEmpty()) {
+                        Text(facts, style = MaterialTheme.typography.labelMedium, color = Tone.muted, maxLines = 1)
+                    }
+                }
             }
         }
     }

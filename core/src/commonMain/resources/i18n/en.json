@@ -2371,6 +2371,7 @@
   "series": {
     "all_watched": "All watched",
     "back": "Back to the chat",
+    "combined_pack": "Combined pack",
     "completed": "Completed",
     "continue": "Continue {code}",
     "copy": "Play the {label} copy",

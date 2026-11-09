@@ -117,6 +117,7 @@ import com.tmplayer.data.NewEpisodes
 import com.tmplayer.data.SeasonDownload
 import com.tmplayer.data.Series
 import com.tmplayer.data.SeriesEpisode
+import com.tmplayer.data.SeriesPack
 import com.tmplayer.data.SeriesProgress
 import com.tmplayer.data.SeriesSeason
 import com.tmplayer.data.SeriesShelf
@@ -418,6 +419,119 @@ fun EpisodeRow(
         holdOverview = showOverview && holdOverview,
         onInfo = onInfo,
     )
+}
+
+/**
+ * A whole season in one file, on the show's page (owner, v1.0.21): its own row under
+ * the season it belongs to, never an episode row, since the file is no episode. It
+ * plays the pack itself; the episodes it holds are the guide's to mark as held.
+ */
+@Composable
+fun PackRow(
+    pack: SeriesPack,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onInfo: (() -> Unit)? = null,
+) {
+    val s = LocalStrings.current
+    val tv = !isTouch()
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusVisibleAsState()
+    val shape = RoundedCornerShape(Corner.Medium)
+    val cover = rememberCover(pack.item)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (focused) Tone.surfaceHigh else Tone.surface)
+            .border(1.dp, if (focused) Tone.accent else Tone.outline, shape)
+            .then(
+                if (onLongClick != null && !tv) {
+                    Modifier.combinedClickable(interactionSource = interactions, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier.clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onClick)
+                },
+            )
+            .padding(if (tv) 12.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (tv) 16.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .width(if (tv) EPISODE_ART_TV else EPISODE_ART_TOUCH)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(Corner.Small)),
+        ) {
+            MediaArt(pack.item.miniThumbnail, pack.item.thumbnailFileId, Modifier.fillMaxSize(), cover = cover, compactCover = true, showCoverTitle = false)
+            Icon(
+                TmIcons.Play,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(if (tv) 40.dp else 32.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(4.dp),
+            )
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                s.seriesSeason(pack.season),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Tone.muted,
+                maxLines = 1,
+            )
+            Text(
+                s.seriesCombinedPack,
+                style = if (tv) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
+                color = Tone.text,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val meta = listOfNotNull(
+                MediaMapper.formatDuration(pack.item.durationSec).ifEmpty { null },
+                pack.item.takeIf { pack.copies.size > 1 && VideoCopies.heightOf(it) != null }?.copyQuality(),
+                MediaMapper.formatSize(pack.item.sizeBytes).ifEmpty { null },
+            ).joinToString("  ·  ")
+            if (meta.isNotEmpty()) {
+                Text(
+                    meta,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Tone.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (onInfo != null) {
+            val infoInteractions = remember { MutableInteractionSource() }
+            val infoFocused by infoInteractions.collectIsFocusVisibleAsState()
+            Box(
+                Modifier
+                    .size(if (tv) 44.dp else 40.dp)
+                    .clip(CircleShape)
+                    .background(if (infoFocused) Tone.focusFill else Tone.surfaceHigh)
+                    .focusRing(infoFocused, CircleShape)
+                    .clickable(
+                        interactionSource = infoInteractions,
+                        indication = if (tv) null else androidx.compose.foundation.LocalIndication.current,
+                        onClick = onInfo,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    TmIcons.Info,
+                    contentDescription = s.detailHeading,
+                    tint = if (infoFocused) Tone.onFocusFill else Tone.muted,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -1521,6 +1635,19 @@ fun SeriesPanel(
                     if (ranges.isNotEmpty()) EpisodeRanges(ranges = ranges, selected = rangeAt, onSelect = { rangeAt = it })
                     QualityPicker(heights, selected = pickedHeight?.takeIf { it in heights }, onSelect = { pickedHeight = it })
                     Spacer(Modifier.height(2.dp))
+                }
+            }
+            // The shown season's combined packs (owner, v1.0.21): a row of their
+            // own over the episodes, since the file is no episode.
+            series.packs.filter { it.season == shown.number }.forEach { pack ->
+                item(key = "pack-${pack.item.id}") {
+                    PackRow(
+                        pack = pack,
+                        onClick = { onPlay(pack.item) },
+                        onLongClick = onLongClick?.let { hold -> { hold(pack.item) } },
+                        onInfo = { infoItem = pack.item },
+                        modifier = Modifier.padding(pad).widthIn(max = if (large) EPISODES_MAX_LARGE else EPISODES_MAX),
+                    )
                 }
             }
             if (columns > 1) {
