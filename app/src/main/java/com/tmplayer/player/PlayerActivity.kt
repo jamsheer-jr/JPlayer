@@ -367,6 +367,15 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** The companion's lines showing right now, built from [companionActive]. */
     private var companionNow: List<Cue> = emptyList()
 
+    /** The standing companion's language, as the track memory will keep it (companion persistence). */
+    private var companionLanguageNow: String? = null
+
+    /** The viewer picked or removed a companion on this video, so the memory follows this video's state. */
+    private var companionTouched = false
+
+    /** This video's series was watched with a companion: stand one again once its tracks are known. */
+    private var companionRestorePending = false
+
     /** The silent player reading an embedded companion out of a downloaded video, while one stands (Phase B). */
     private var embeddedCompanion: EmbeddedCompanion? = null
 
@@ -2266,6 +2275,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             tracks = tracksRead.await()
             val trackPrefs = trackPrefsRead.await()
             trackPlan = TrackRules.plan(resumed, tracks, trackPrefs, Translator.messages.tag)
+            // A companion this series was watched with stands again on this video
+            // (companion persistence): the ask waits for the tracks, and this video
+            // starts untouched, so an untouched companion keeps its memory.
+            companionRestorePending = tracks.companionTextLanguage != null
+            companionTouched = false
+            companionLanguageNow = null
             settingsSubtitlesPending = trackPlan.subtitleSource == TrackSource.Settings &&
                 (trackPlan.subtitles is SubtitlePlan.On || trackPlan.subtitles is SubtitlePlan.IfForeignAudio)
             originalAudioPending = trackPlan.audioSource == TrackSource.FileDefaults
@@ -4814,6 +4829,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             applyStreamMeteredDefault(tracks)
             applyOriginalAudio(tracks)
             applySettingsSubtitles(tracks)
+            restoreCompanion(tracks)
             rememberTracks(tracks)
             subtitleFiles.onTracksChanged(tracks)
         }
@@ -5188,12 +5204,58 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             audioLanguage = language(C.TRACK_TYPE_AUDIO) ?: tracks.audioLanguage,
             textLanguage = language(C.TRACK_TYPE_TEXT) ?: tracks.textLanguage.takeIf { subtitlesOn },
             subtitlesOn = subtitlesOn,
+            // The companion follows this video's own state once the viewer has
+            // touched it here; an untouched companion keeps the series' memory.
+            companionTextLanguage = if (companionTouched) companionLanguageNow else tracks.companionTextLanguage,
         )
         if (updated == tracks) return
         tracks = updated
         val key = seriesKey
         val store = settings
         App.backgroundScope.launch { runCatching { store.setTrackChoice(key, updated) } }
+    }
+
+    /**
+     * Stands the companion this video's series was watched with (companion
+     * persistence): a second text track in the remembered language, never the
+     * main track itself. An embedded track goes to the companion player where
+     * the video is a download; a loaded subtitle file of that language is drawn
+     * the file way. Nothing stands where the language is not among this video's
+     * other tracks, and the memory itself is left as it was.
+     */
+    private fun restoreCompanion(current: Tracks) {
+        if (!companionRestorePending) return
+        val wanted = tracks.companionTextLanguage ?: run {
+            companionRestorePending = false
+            return
+        }
+        val text = tracksOfType(current, C.TRACK_TYPE_TEXT)
+        if (text.isEmpty()) return
+        val main = text.firstOrNull { (group, index) -> group.isTrackSelected(index) }
+        if (main == null) {
+            // Subtitles are off on this video: a companion has nothing to stand over.
+            companionRestorePending = false
+            return
+        }
+        companionRestorePending = false
+        val others = text.filterNot { (group, index) -> group === main.first && index == main.second }
+        val embedded = others.firstOrNull { (group, index) ->
+            !EXTERNAL_TRACK_ID.containsMatchIn(group.getTrackFormat(index).id.orEmpty()) &&
+                TrackLanguages.same(group.getTrackFormat(index).language, wanted)
+        }
+        if (embedded != null) {
+            val id = embedded.first.getTrackFormat(embedded.second).id
+            if (id != null && takeEmbeddedCompanion(id)) return
+        }
+        val loaded = others.firstOrNull { (group, index) ->
+            EXTERNAL_TRACK_ID.containsMatchIn(group.getTrackFormat(index).id.orEmpty()) &&
+                TrackLanguages.same(group.getTrackFormat(index).language, wanted)
+        }
+        if (loaded != null) {
+            val id = loaded.first.getTrackFormat(loaded.second).id
+            val file = id?.let { loadedSubtitleFile(it) }
+            if (id != null && file != null) takeCompanion(id, file)
+        }
     }
 
     /**
@@ -6456,18 +6518,27 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     override fun takeCompanion(trackId: String?, file: File?) {
         // One companion at a time: a file companion ends any embedded one standing.
         stopEmbeddedCompanion()
+        companionTouched = true
         // The id kept is the loaded file's own, which the picker matches its rows against:
         // a format id can carry a prefix of the player's, the file's id never changes.
-        companionId = if (file == null) null else trackId?.let { asked ->
-            subtitleFiles.files.firstOrNull { config -> ExternalSubtitle.isTrackId(asked, config.id.orEmpty()) }?.id ?: asked
+        val config = if (file == null) null else trackId?.let { asked ->
+            subtitleFiles.files.firstOrNull { candidate -> ExternalSubtitle.isTrackId(asked, candidate.id.orEmpty()) }
         }
+        companionId = if (file == null) null else config?.id ?: trackId
+        companionLanguageNow = config?.language?.takeIf { TrackLanguages.normalise(it) != null }
         setCompanionSubtitle(file)
+        // A companion pick changes no player track, so no tracks callback would
+        // remember it: the memory is written from here.
+        player?.currentTracks?.let { rememberTracks(it) }
     }
 
     override fun takeEmbeddedCompanion(trackId: String?): Boolean {
         if (trackId == null) {
             stopEmbeddedCompanion()
+            companionTouched = true
+            companionLanguageNow = null
             if (companionFile == null) companionId = null
+            player?.currentTracks?.let { rememberTracks(it) }
             return true
         }
         // The companion player reads the whole file off the disk, so only a
@@ -6476,8 +6547,16 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         if (streamUrl != null || joinedSource != null) return false
         // One companion at a time: the embedded one ends any file companion standing.
         setCompanionSubtitle(null)
+        companionTouched = true
         companionId = trackId
+        companionLanguageNow = player?.currentTracks?.let { current ->
+            tracksOfType(current, C.TRACK_TYPE_TEXT).firstOrNull { (group, index) ->
+                val id = group.getTrackFormat(index).id
+                id != null && (id == trackId || ExternalSubtitle.isTrackId(id, trackId))
+            }?.let { (group, index) -> group.getTrackFormat(index).language }
+        }?.takeIf { TrackLanguages.normalise(it) != null }
         startEmbeddedCompanion(uri, trackId)
+        player?.currentTracks?.let { rememberTracks(it) }
         return true
     }
 

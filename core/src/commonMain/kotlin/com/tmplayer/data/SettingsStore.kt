@@ -334,6 +334,7 @@ private fun seriesKey(series: String): String =
 private fun audioKey(series: String) = stringPreferencesKey("audio_$series")
 private fun textKey(series: String) = stringPreferencesKey("text_$series")
 private fun subtitlesKey(series: String) = booleanPreferencesKey("subs_$series")
+private fun companionKey(series: String) = stringPreferencesKey("companion_$series")
 private fun seriesNameKey(series: String) = stringPreferencesKey("series_name_$series")
 
 private fun kidsChatsOf(prefs: Preferences): Set<Long> =
@@ -2191,6 +2192,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             audioLanguage = prefs[audioKey(key)]?.takeIf { it.isNotBlank() },
             textLanguage = prefs[textKey(key)]?.takeIf { it.isNotBlank() },
             subtitlesOn = prefs[subtitlesKey(key)] ?: false,
+            companionTextLanguage = prefs[companionKey(key)]?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -2200,6 +2202,7 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
             choice.audioLanguage?.let { prefs[audioKey(key)] = it } ?: prefs.remove(audioKey(key))
             choice.textLanguage?.let { prefs[textKey(key)] = it } ?: prefs.remove(textKey(key))
             prefs[subtitlesKey(key)] = choice.subtitlesOn
+            choice.companionTextLanguage?.let { prefs[companionKey(key)] = it } ?: prefs.remove(companionKey(key))
             // The name as the player had it, so Settings can list the series by it. Not for a
             // memory that says nothing: that one is not listed.
             if (choice.empty) prefs.remove(seriesNameKey(key)) else prefs[seriesNameKey(key)] = series.trim().take(120)

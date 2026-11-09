@@ -43,6 +43,18 @@ class LearntLanguagesTest {
     }
 
     @Test
+    fun `a companion language is learnt with the rest and forgotten with it`() = runBlocking {
+        settings.setTrackChoice("Dual Show", TrackChoice(textLanguage = "en", subtitlesOn = true, companionTextLanguage = "ml"))
+        val learnt = settings.learntLanguages.first()
+        assertEquals(listOf("Dual Show"), learnt.map { it.name })
+        assertEquals("ml", learnt[0].choice.companionTextLanguage)
+        assertEquals("ml", settings.trackChoice("Dual Show").companionTextLanguage)
+
+        settings.forgetLearntLanguages("dualshow")
+        assertEquals(TrackChoice(), settings.trackChoice("Dual Show"))
+    }
+
+    @Test
     fun `forget clears one series and forget all clears every one, nothing else`() = runBlocking {
         settings.setTrackChoice("Kerala Crime Files", TrackChoice(audioLanguage = "mal", subtitlesOn = true))
         settings.setTrackChoice("Aranyak", TrackChoice(audioLanguage = "hin"))

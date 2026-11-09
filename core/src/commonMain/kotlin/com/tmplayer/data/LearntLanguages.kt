@@ -34,10 +34,11 @@ object LearntLanguages {
     const val AUDIO = "audio_"
     const val TEXT = "text_"
     const val SUBS = "subs_"
+    const val COMPANION = "companion_"
     const val NAME = "series_name_"
 
     /** The stored names a series' memory lives under: what Forget removes. */
-    fun keysOf(key: String): List<String> = listOf(AUDIO + key, TEXT + key, SUBS + key, NAME + key)
+    fun keysOf(key: String): List<String> = listOf(AUDIO + key, TEXT + key, SUBS + key, COMPANION + key, NAME + key)
 
     /**
      * Every series with something learnt, by name. A series whose memory says nothing (no
@@ -50,6 +51,7 @@ object LearntLanguages {
                 name.startsWith(AUDIO) -> name.removePrefix(AUDIO)
                 name.startsWith(TEXT) -> name.removePrefix(TEXT)
                 name.startsWith(SUBS) -> name.removePrefix(SUBS)
+                name.startsWith(COMPANION) -> name.removePrefix(COMPANION)
                 else -> null
             }
         }.toSet()
@@ -58,6 +60,7 @@ object LearntLanguages {
                 audioLanguage = (stored[AUDIO + key] as? String)?.takeIf { it.isNotBlank() },
                 textLanguage = (stored[TEXT + key] as? String)?.takeIf { it.isNotBlank() },
                 subtitlesOn = stored[SUBS + key] as? Boolean ?: false,
+                companionTextLanguage = (stored[COMPANION + key] as? String)?.takeIf { it.isNotBlank() },
             )
             if (choice.empty) return@mapNotNull null
             val name = (stored[NAME + key] as? String)?.takeIf { it.isNotBlank() } ?: key

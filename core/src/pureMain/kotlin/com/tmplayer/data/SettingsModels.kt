@@ -11,9 +11,12 @@ data class TrackChoice(
     val audioLanguage: String? = null,
     val textLanguage: String? = null,
     val subtitlesOn: Boolean = false,
+    /** The companion subtitle's language (dual subtitles), while the series was watched with one. */
+    val companionTextLanguage: String? = null,
 ) {
     /** Nothing has been chosen yet, so the player's own defaults are the honest answer. */
-    val empty: Boolean get() = audioLanguage == null && textLanguage == null && !subtitlesOn
+    val empty: Boolean
+        get() = audioLanguage == null && textLanguage == null && !subtitlesOn && companionTextLanguage == null
 }
 
 /** How far into a video the viewer got, and how long it runs. */
