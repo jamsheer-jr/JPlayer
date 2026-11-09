@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,10 +52,12 @@ import androidx.fragment.app.FragmentActivity
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tmplayer.data.Bookmark
+import com.tmplayer.data.ChatRepository
 import com.tmplayer.data.HiddenCopies
 import com.tmplayer.data.MediaFacts
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.SettingsStore
+import com.tmplayer.data.Td
 import com.tmplayer.data.VideoCopies
 import com.tmplayer.data.copyQuality
 import com.tmplayer.ui.browse.copyFit
@@ -1194,6 +1197,26 @@ internal fun CopiesSheet(
     // copies this sheet shows, so a copy the sheet screens out never carries the badge.
     val bestId = remember(tiers, visible) { if (visible.size > 1) tiers.firstOrNull()?.second?.firstOrNull()?.id else null }
     val datesDiffer = remember(visible) { visible.map { it.date / 86_400 }.distinct().size > 1 }
+    // Every copy's chat is named on its row (owner, v1.0.24): the handed over names
+    // cover the chats a page named, and a copy a fill found in another chat arrives
+    // with none, so the missing ones are asked for here, behind the sheet, and land
+    // on their rows as they answer rather than leaving the row unnamed.
+    val unnamed = remember(visible) {
+        visible.map { it.chatId }.distinct().filter { id -> visible.any { it.chatId == id && chatOf(it).isBlank() } }
+    }
+    val resolvedNames by produceState(initialValue = emptyMap<Long, String>(), unnamed) {
+        if (unnamed.isEmpty()) return@produceState
+        val session = Td.awaitConnectedSessionOrNull() ?: return@produceState
+        val repo = ChatRepository(session.client)
+        val found = LinkedHashMap<Long, String>()
+        for (id in unnamed) {
+            val title = runCatching { repo.chatInfo(id)?.summary?.title }.getOrNull()
+            if (!title.isNullOrBlank()) {
+                found[id] = title
+                value = found.toMap()
+            }
+        }
+    }
     ChoiceSheet(title = s.playerCopies, note = s.playerCopiesNote, onDismiss = onClose, onClose = onClose, ignoreRelease = !touch, fullScreen = true) {
         ChoiceList {
             tiers.forEach { (heading, group) ->
@@ -1223,7 +1246,7 @@ internal fun CopiesSheet(
                                 copyFit(copy, s, visible),
                                 copy.durationSec.takeIf { it > 0 }?.let { s.formatter.duration(it.toLong()) },
                                 copy.date.takeIf { datesDiffer && it > 0 }?.let { s.detailCopyPosted(s.formatter.date(it * 1000L)) },
-                                chatOf(copy).takeIf { it.isNotBlank() }?.let { s.detailCopyFrom(it) },
+                                chatOf(copy).ifBlank { resolvedNames[copy.chatId].orEmpty() }.takeIf { it.isNotBlank() }?.let { s.detailCopyFrom(it) },
                                 when (copy.locality) {
                                     MediaItem.Locality.Downloaded -> s.gridBadgeDownloaded
                                     MediaItem.Locality.Cached -> s.detailCopyOnDevice

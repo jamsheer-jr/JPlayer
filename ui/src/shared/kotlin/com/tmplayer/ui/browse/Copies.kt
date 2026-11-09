@@ -488,8 +488,9 @@ private fun copiesSubtitle(item: MediaItem, files: List<Pair<MediaItem, List<Med
  * chat over the list (or "in 3 chats"), then the copies grouped under their quality, best first,
  * "1080p", "720p", then the ones whose name states none. A row is only what sets it apart: its size,
  * then what it is (source, codec, languages, audio), its length, its date where the dates differ,
- * and the chat it came from, on every row that knows it. No box round a row; the one that plays is tinted. The
- * file's whole name stays on the page's About.
+ * and the chat it came from, on every row that knows it. No box round a row; the one that plays is tinted.
+ * The file's own name stands last on the row, as it does on the player's Copies rows (owner, v1.0.24:
+ * the Versions rows are to say what the Copies rows say).
  */
 @Composable
 private fun CopyChooser(
@@ -597,6 +598,7 @@ private fun CopyChooser(
                     ).joinToString("  ·  "),
                     chosen = picked?.let { id -> same.any { it.id == id } } ?: same.any { it.id == item.id },
                     best = copy.id == bestId,
+                    fileName = copy.fileName.ifBlank { null },
                     onHide = onHideCopy?.takeIf { !same.any { it.id == item.id } }?.let { hide -> { hide(copy) } },
                     onClick = { choose(copy) },
                     // The rows arrive one after another, top first, as the sheet comes up.
@@ -618,6 +620,8 @@ private fun CopyOption(
     chosen: Boolean,
     /** The best copy standing (item 13, v1.0.16) carries the Best badge beside its size. */
     best: Boolean = false,
+    /** The file's own name, last and quiet on the row; null leaves the row as it was. */
+    fileName: String? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
@@ -670,6 +674,7 @@ private fun CopyOption(
             }
             if (what.isNotEmpty()) Text(what, style = MaterialTheme.typography.bodySmall, color = if (focused) ink else Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (facts.isNotEmpty()) Text(facts, style = MaterialTheme.typography.bodySmall, color = if (focused) ink.copy(alpha = 0.8f) else Tone.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (fileName != null) Text(fileName, style = MaterialTheme.typography.labelSmall, color = if (focused) ink.copy(alpha = 0.7f) else Tone.muted.copy(alpha = 0.8f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (!copy.canBeSaved) Icon(TmIcons.Lock, contentDescription = null, tint = if (focused) ink else Tone.muted, modifier = Modifier.size(18.dp))
         if (onHide != null) {
