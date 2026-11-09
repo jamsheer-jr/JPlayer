@@ -2334,6 +2334,11 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             // notification): no video decoding until somebody can see it.
             if (inBackgroundAudio) hideVideoUnseen(built)
             subtitleFiles.metadata = sessionMetadata()
+            // A fresh open is a new video: the last video's downloaded subtitles
+            // are forgotten before the item is built, so they never stand in this
+            // video's list (owner, v1.0.25). The series memory below re-attaches
+            // this episode's own file, after this, where one stands.
+            subtitleFiles.forgetDownloaded()
             if (streamUrl != null) {
                 // A stream carries no subtitle files with it: the plain item. A live one is
                 // named as HLS, so the live reader is chosen even where a query string hides
@@ -3118,6 +3123,11 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         if (hasMessage()) itemScope.launch { readPost() }
         val source = tdFileUri(fileId, streamType(mediaMime, mediaFileName))
         val wasReady = exo.playWhenReady
+        // Another episode: the left episode's downloaded subtitles are forgotten
+        // before the item is rebuilt (owner, v1.0.25); the episode block below
+        // re-attaches this episode's own. A copy swap of the same episode keeps
+        // the viewer's downloaded file, as it should.
+        if (episodeChanged) subtitleFiles.forgetDownloaded()
         exo.setMediaItem(subtitleFiles.item(source), resumeMs)
         exo.prepare()
         exo.playWhenReady = wasReady

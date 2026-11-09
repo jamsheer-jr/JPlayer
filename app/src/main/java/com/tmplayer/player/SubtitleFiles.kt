@@ -50,8 +50,27 @@ class SubtitleFiles(
 ) {
     private val loaded = mutableListOf<Media3Item.SubtitleConfiguration>()
 
+    /** The ids of the entries [attachFile] brought in: files downloaded for one video. */
+    private val downloadedIds = mutableSetOf<String>()
+
+    /** Entry ids, counted up and never reused, so forgetting an entry cannot clash. */
+    private var nextId = 0
+
     /** Every file loaded so far: what a cast sends to the TV as side tracks (CP73). */
     val files: List<Media3Item.SubtitleConfiguration> get() = loaded.toList()
+
+    /**
+     * Forgets the files downloaded for the video being left (owner, v1.0.25): a
+     * subtitle fetched for one episode is that episode's, and must not stand in
+     * the next episode's list. Files the viewer loaded by hand this session stay,
+     * as they always have.
+     */
+    fun forgetDownloaded() {
+        if (downloadedIds.isEmpty()) return
+        loaded.removeAll { it.id in downloadedIds }
+        if (pending?.let { it.first in downloadedIds } == true) pending = null
+        downloadedIds.clear()
+    }
 
     /**
      * Set while the video is on a TV: a file loaded then goes to the cast (true when it took it)
@@ -112,7 +131,7 @@ class SubtitleFiles(
             say(L.onlineNoticeUnreadable)
             return
         }
-        attach(Copy.Done(file, mime), label)
+        attach(Copy.Done(file, mime), label, fromDownload = true)
     }
 
     private fun load(uri: Uri) {
@@ -291,10 +310,11 @@ class SubtitleFiles(
         return name.substringAfterLast('/').takeIf { it.isNotBlank() }
     }
 
-    private fun attach(copy: Copy.Done, name: String) {
+    private fun attach(copy: Copy.Done, name: String, fromDownload: Boolean = false) {
         val exo = player() ?: return
         val video = exo.currentMediaItem?.localConfiguration?.uri ?: return
-        val id = "external-${loaded.size + 1}"
+        val id = "external-${++nextId}"
+        if (fromDownload) downloadedIds += id
         loaded += Media3Item.SubtitleConfiguration.Builder(Uri.fromFile(copy.file))
             .setMimeType(copy.mimeType)
             .setLabel(name)
@@ -347,7 +367,7 @@ class SubtitleFiles(
                 ?: return Copy.Refused(L.onlineNoticeUnreadable)
             val mime = ExternalSubtitle.mimeTypeOf(inside.extension)
                 ?: return Copy.Refused(L.onlineNoticeUnreadable)
-            val file = File(folder, "${loaded.size + 1}.${inside.extension}")
+            val file = File(folder, "${++nextId}.${inside.extension}")
             file.writeText(inside.text)
             return Copy.Done(file, mime)
         }
@@ -361,14 +381,14 @@ class SubtitleFiles(
         val text = SubtitleText.decode(bytes, named ?: Locale.getDefault().language)
         val mime = ExternalSubtitle.mimeTypeOf(extension)
         if (mime != null) {
-            val file = File(folder, "${loaded.size + 1}.$extension")
+            val file = File(folder, "${++nextId}.$extension")
             file.writeText(text)
             return Copy.Done(file, mime)
         }
         if (!ExternalSubtitle.isMicroDvd(text)) {
             return Copy.Refused(L.tracksFileVobsub)
         }
-        val file = File(folder, "${loaded.size + 1}.srt")
+        val file = File(folder, "${++nextId}.srt")
         file.writeText(ExternalSubtitle.microDvdToSrt(text, fps))
         return Copy.Done(file, ExternalSubtitle.MIME_SUBRIP)
     }
