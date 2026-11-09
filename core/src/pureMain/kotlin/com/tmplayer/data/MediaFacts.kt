@@ -36,7 +36,7 @@ data class MediaFacts(
     val audio: String? = null,
     /** What the name says about the tracks inside, beyond the first audio. */
     val tracks: List<Track> = emptyList(),
-    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "PreHD", "HDTS", "HDTC", "TS", "HDcam", "CAM", "DVDcam", "DVDScr", "DVD". */
+    /** "WEB-DL", "WEBRip", "BDRip", "BRRip", "Blu-ray", "HDTV", "HDRip", "PreDVD", "PDVD", "PreHD", "HDTS", "HDTC", "TC", "TS", "HDcam", "CAM", "DVDcam", "DVDScr", "BDScr", "Screener", "Workprint", "DVD". */
     val source: String? = null,
     /**
      * The name carries the "clean audio" tag: a cam family copy whose sound was replaced
@@ -241,15 +241,20 @@ data class MediaFacts(
             "Blu-ray" to word("""blu[ ._-]?ray|bdremux|remux"""),
             "HDTV" to word("hdtv"),
             "HDRip" to word("""hd[ ._-]?rip"""),
-            "PreDVD" to word("""pre[ ._-]?dvd|predvd"""),
+            "PreDVD" to word("""pre[ ._-]?dvd(?:[ ._-]?rip)?"""),
+            "PDVD" to word("""p[ ._-]?dvd(?:[ ._-]?rip)?"""),
             "PreHD" to word("""pre[ ._-]?hd|prehd"""),
-            "HDTS" to word("""hd[ ._-]?ts"""),
-            "HDTC" to word("""hd[ ._-]?tc|telecine"""),
-            "TS" to word("""telesync|ts"""),
-            "HDcam" to word("""hd[ ._-]?cam"""),
-            "DVDcam" to word("""dvd[ ._-]?cam"""),
-            "CAM" to word("""cam[ ._-]?rip|cam"""),
+            "HDTS" to word("""hd[ ._-]?ts(?:[ ._-]?rip)?"""),
+            "HDTC" to word("""hd[ ._-]?tc(?:[ ._-]?rip)?|telecine"""),
+            "TC" to word("""t[ ._-]?c(?:[ ._-]?rip)?"""),
+            "TS" to word("""telesync|ts(?:[ ._-]?rip)?"""),
+            "HDcam" to word("""hd[ ._-]?cam(?:[ ._-]?rip)?"""),
+            "DVDcam" to word("""dvd[ ._-]?cam(?:[ ._-]?rip)?"""),
+            "CAM" to word("""cam[ ._-]?rip|cam|theat(?:re|er)[ ._-]?print"""),
             "DVDScr" to word("""dvd[ ._-]?scr(?:eener)?"""),
+            "BDScr" to word("""bd[ ._-]?scr(?:eener)?"""),
+            "Screener" to word("""web[ ._-]?scr(?:eener)?|screener|scr"""),
+            "Workprint" to word("""work[ ._-]?print|wp"""),
             "DVD" to word("""dvd[ ._-]?rip|dvd"""),
         )
 
@@ -260,8 +265,17 @@ data class MediaFacts(
          * copy of a title stood unhidden in the Copies list): a pre-release capture, kin
          * to PreDVD. HDRip is not here and never joins: it is a rip of a broadcast, not
          * a camera copy.
+         *
+         * Completed in v1.0.24 (owner: every theatre print hidden, the kinds looked up):
+         * the scene's own table of pirated release types gives Cam (CAM, CAMRip, HDCAM),
+         * Telesync (TS, HDTS, TELESYNC, PDVD, PreDVDRip), Telecine (TC, HDTC, TELECINE),
+         * Screener (SCR, SCREENER, DVDSCR, BDSCR, WEBSCREENER) and Workprint (WP,
+         * WORKPRINT), and the patterns now take the Rip uploaders glue onto them
+         * (PreDVDRip itself stood unhidden on the owner's phone, read as no source at
+         * all). R5, DDC and PPVRip stay out: a retail disc, a sent review file and a
+         * pay per view capture are not theatre prints.
          */
-        val CAM_SOURCES: Set<String> = setOf("PreDVD", "PreHD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM")
+        val CAM_SOURCES: Set<String> = setOf("PreDVD", "PDVD", "PreHD", "DVDcam", "DVDScr", "BDScr", "Screener", "Workprint", "HDTS", "HDTC", "TC", "HDcam", "TS", "CAM")
 
         /** Whether [source] is one of the cam family labels in [CAM_SOURCES]. */
         fun isCamSource(source: String?): Boolean = source != null && source in CAM_SOURCES

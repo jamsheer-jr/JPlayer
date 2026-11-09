@@ -193,9 +193,42 @@ class MediaFactsTest {
             assertTrue(label, MediaFacts.isCamSource(label))
         }
         assertEquals(
-            setOf("PreDVD", "PreHD", "DVDcam", "DVDScr", "HDTS", "HDTC", "HDcam", "TS", "CAM"),
+            setOf("PreDVD", "PDVD", "PreHD", "DVDcam", "DVDScr", "BDScr", "Screener", "Workprint", "HDTS", "HDTC", "TC", "HDcam", "TS", "CAM"),
             MediaFacts.CAM_SOURCES,
         )
+    }
+
+    @Test
+    fun `every theatre print spelling reads and stands in the cam family`() {
+        // The owner's phone (v1.0.23): this exact name played unhidden, because
+        // PreDVDRip glued the Rip onto the tag and no source read at all.
+        val kalki = MediaFacts.read("Kalki_2898_AD_2024_Malayalam_720p_Proper_HQ_REAL_PreDVDRip_@AVA.mkv")
+        assertEquals("PreDVD", kalki.source)
+        assertTrue(MediaFacts.isCam(kalki))
+        assertEquals("PreDVD", MediaFacts.read("Film.2026.Pre DVD Rip.x264.mkv").source)
+        assertEquals("PDVD", MediaFacts.read("Film.2026.PDVD.x264.mkv").source)
+        assertEquals("PDVD", MediaFacts.read("Film.2026.PDVDRip.x264.mkv").source)
+        assertEquals("TS", MediaFacts.read("Film.2026.TSRip.x264.mkv").source)
+        assertEquals("HDTS", MediaFacts.read("Film.2026.HDTSRip.x264.mkv").source)
+        assertEquals("TC", MediaFacts.read("Film.2026.TC.x264.mkv").source)
+        assertEquals("TC", MediaFacts.read("Film.2026.TCRip.x264.mkv").source)
+        assertEquals("HDTC", MediaFacts.read("Film.2026.HDTCRip.x264.mkv").source)
+        assertEquals("HDcam", MediaFacts.read("Film.2026.HDCamRip.x264.mkv").source)
+        assertEquals("CAM", MediaFacts.read("Film 2026 Theatre Print x264.mkv").source)
+        assertEquals("CAM", MediaFacts.read("Film 2026 Theater Print x264.mkv").source)
+        assertEquals("BDScr", MediaFacts.read("Film.2026.BDScr.x264.mkv").source)
+        assertEquals("Screener", MediaFacts.read("Film.2026.Screener.x264.mkv").source)
+        assertEquals("Screener", MediaFacts.read("Film.2026.WebScreener.x264.mkv").source)
+        assertEquals("Screener", MediaFacts.read("Film.2026.SCR.x264.mkv").source)
+        assertEquals("Workprint", MediaFacts.read("Film.2026.Workprint.x264.mkv").source)
+        assertEquals("Workprint", MediaFacts.read("Film.2026.WP.x264.mkv").source)
+        for (label in listOf("PDVD", "TC", "BDScr", "Screener", "Workprint")) {
+            assertTrue(label, MediaFacts.isCamSource(label))
+        }
+        // Not theatre prints, and never read as cam family: a retail R5 disc and
+        // a title that merely holds the word Camera.
+        assertFalse(MediaFacts.isCam(MediaFacts.read("Film.2026.R5.1080p.x264.mkv")))
+        assertNull(MediaFacts.read("Camera Obscura 2020 1080p.mkv").source)
     }
 
     @Test
