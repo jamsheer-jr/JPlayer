@@ -67,7 +67,7 @@ class SubtitleFiles(
      */
     fun forgetDownloaded() {
         if (downloadedIds.isEmpty()) return
-        loaded.removeAll { it.id in downloadedIds }
+        loaded.removeAll { cfg -> cfg.id?.let { it in downloadedIds } == true }
         if (pending?.let { it.first in downloadedIds } == true) pending = null
         downloadedIds.clear()
     }
