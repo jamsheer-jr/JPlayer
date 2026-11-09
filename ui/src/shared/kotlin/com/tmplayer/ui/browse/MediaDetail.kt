@@ -385,7 +385,7 @@ fun MediaDetailPanel(
         extras?.trailer?.let { trailer -> trailers.unopened?.takeIf { it == trailer }?.let { TrailerQr(it, Modifier.padding(vertical = 8.dp)) } }
 
         // A film the chat posted several times over: every copy by quality and size, one click away.
-        Versions(item, onPickCopy, chatTitle, copyStarted)
+        Versions(item, onPickCopy, chatTitle, copyStarted, originalLanguage = extras?.originalLanguage)
         // Telegram's own lighter copies of the upload (CP80), when it made any.
         TelegramQualityLine(item)
 

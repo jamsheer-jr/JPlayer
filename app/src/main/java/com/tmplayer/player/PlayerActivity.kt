@@ -2761,6 +2761,22 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
+     * The playing title's original language, where its matched extras are
+     * already known (the same cache reads [askControlsGenres] makes, never a
+     * fetch): the copies lists stand the original language copies first on
+     * it (owner, v1.0.24). Null where the title was never matched or its
+     * extras never landed, and the lists keep their usual order.
+     */
+    private fun titleOriginalLanguage(): String? = runCatching {
+        val online = OnlineMetadata.current ?: return null
+        val query = currentItem().metaQuery ?: return null
+        val info = (online.peek(query) as? MetaResult.Found)?.info
+            ?: (online.cachedAnswer(query) as? MetaResult.Found)?.info
+            ?: return null
+        online.peekExtras(info)?.originalLanguage ?: online.storedExtras(info)?.originalLanguage
+    }.getOrNull()
+
+    /**
      * "Next: S01E02  ·  The Lighthouse", falling back to a bare "Next" when there is no episode to
      * name.
      */
@@ -2864,6 +2880,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             it.showCopies(
                 list, currentItem().id, ::copyChatTitle, ::switchCopy,
                 qualities = qualities, playingQuality = playingQuality, onQuality = ::switchQuality,
+                originalLanguage = titleOriginalLanguage(),
             )
         }
     }
@@ -2888,6 +2905,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             copies,
             current.id,
             series = parsed.episode != null || parsed.season != null,
+            originalLanguage = titleOriginalLanguage(),
         )
         if (choices.size < 2) {
             if (telegramQualities().isNotEmpty()) openCopies()

@@ -376,7 +376,7 @@ private fun CinemaLayout(page: DetailPage, holds: Holds, height: Dp) {
                     // A television keeps the everyday buttons beside Play and the rest at the foot
                     // of the page, as a phone does; Right walks along the first, Down reaches the rest.
                     Actions(page, holds, onEpisodes = episodesButton(page.item, page.meta, episodes), headlineOnly = tv)
-                    Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos, page.hiddenCopies, page.onHideCopy)
+                    Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos, page.hiddenCopies, page.onHideCopy, page.extras?.originalLanguage)
                     TelegramQualityLine(page.item)
                 }
                 Spacer(Modifier.height(if (tv) 8.dp else 4.dp))
@@ -451,7 +451,7 @@ private fun StackedLayout(page: DetailPage, holds: Holds, width: Dp, height: Dp)
                 }
                 Box(Modifier.riseIn(3, enabled = touch)) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos, page.hiddenCopies, page.onHideCopy)
+                        Versions(page.item, page.onPickCopy, page.chatTitle, page.copyStarted, page.hideCamCopies, page.hideShortVideos, page.hiddenCopies, page.onHideCopy, page.extras?.originalLanguage)
                         TelegramQualityLine(page.item)
                     }
                 }

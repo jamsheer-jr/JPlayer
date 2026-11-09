@@ -330,7 +330,7 @@ fun WideDetailPanel(
                             } else {
                                 MetaPeopleLine(extras)
                             }
-                            Versions(item, onPickCopy, chatTitle, copyStarted)
+                            Versions(item, onPickCopy, chatTitle, copyStarted, originalLanguage = extras?.originalLanguage)
                             TelegramQualityLine(item)
                             DetailBookmarks(bookmarks, onOpenBookmark)
                         }

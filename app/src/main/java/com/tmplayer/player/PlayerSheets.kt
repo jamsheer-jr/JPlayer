@@ -160,6 +160,8 @@ class PlayerSheets(
             val qualities: List<com.tmplayer.data.TelegramQuality> = emptyList(),
             val playingQuality: Int = 0,
             val onQuality: (Int) -> Unit = {},
+            /** The title's original language, where known: its copies stand first (owner, v1.0.24). */
+            val originalLanguage: String? = null,
         ) : Sheet
     }
 
@@ -270,8 +272,9 @@ class PlayerSheets(
         qualities: List<com.tmplayer.data.TelegramQuality> = emptyList(),
         playingQuality: Int = 0,
         onQuality: (Int) -> Unit = {},
+        originalLanguage: String? = null,
     ) {
-        sheet.value = Sheet.Copies(copies, playing, chatOf, onPick, qualities, playingQuality, onQuality)
+        sheet.value = Sheet.Copies(copies, playing, chatOf, onPick, qualities, playingQuality, onQuality, originalLanguage)
     }
 
     private fun close() {
@@ -355,6 +358,7 @@ class PlayerSheets(
                 qualities = shown.qualities,
                 playingQuality = shown.playingQuality,
                 onQuality = { close(); shown.onQuality(it) },
+                originalLanguage = shown.originalLanguage,
             )
             is Sheet.SubtitleUrl -> {
                 val s = LocalStrings.current
@@ -1160,6 +1164,8 @@ internal fun CopiesSheet(
     qualities: List<com.tmplayer.data.TelegramQuality> = emptyList(),
     playingQuality: Int = 0,
     onQuality: (Int) -> Unit = {},
+    /** The title's original language, where known: its copies stand first in each group (owner, v1.0.24). */
+    originalLanguage: String? = null,
 ) {
     val s = LocalStrings.current
     val touch = isTouch()
@@ -1189,8 +1195,8 @@ internal fun CopiesSheet(
     // upstream), so its heading stands even when it is the only copy under it. The owner's
     // levels (HD+, FHD, QHD) belong to the quality chooser, not to this list (owner, v1.0.18:
     // "Copies avide alla, ath pazhe pole thanne").
-    val tiers: List<Pair<String?, List<MediaItem>>> = remember(visible) {
-        VideoCopies.tiersOf(visible) { it }
+    val tiers: List<Pair<String?, List<MediaItem>>> = remember(visible, originalLanguage) {
+        VideoCopies.tiersOf(visible, { it }, originalLanguage)
             .map { (height, group) -> (height?.let { group.first().copyQuality() }) to group }
     }
     // The best copy standing (item 13, v1.0.16): the head of the tiers' order among the

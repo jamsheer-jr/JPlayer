@@ -1074,6 +1074,30 @@ fun SeriesPanel(
     // A season download being confirmed (item 11d, v1.0.15): which of the two downloads the
     // viewer pressed, while the confirm step shows its total and takes one quality for all.
     var downloadAsk by remember(series.key) { mutableStateOf<SeasonDownload.Which?>(null) }
+    // An episode taken with nothing chosen, being asked which of its copies
+    // to play (owner, v1.0.24): the episode, the copies the ask stands
+    // between, and the copy a silent pick would have played.
+    var copyAsk by remember(series.key) { mutableStateOf<Triple<SeriesEpisode, List<MediaItem>, MediaItem>?>(null) }
+
+    /**
+     * Plays [episode]'s [chosen] copy, or asks first (owner, v1.0.24): an
+     * episode with more than one copy standing (at the picked quality,
+     * where one is picked) and nothing watched of it yet is asked which
+     * copy to play, in [CopyAskDialog], rather than a copy being picked
+     * for the viewer in silence. An episode partway through, or finished,
+     * plays as it always did: a resume belongs to the copy it was made in.
+     */
+    fun askOrPlay(episode: SeriesEpisode, chosen: MediaItem) {
+        val atQuality = if (pickedHeight == null) episode.copies
+            else episode.copies.filter { VideoCopies.heightOf(it) == pickedHeight }
+        if (watch.pointOf(episode) == null && !watch.finishedEpisode(episode) &&
+            VideoCopies.distinctFiles(atQuality).size > 1
+        ) {
+            copyAsk = Triple(episode, atQuality, chosen)
+        } else {
+            onPlay(chosen)
+        }
+    }
     fun copyOf(episode: SeriesEpisode, fallback: MediaItem) =
         if (pickedHeight == null) fallback else copyAt(episode, pickedHeight, fallback)
     val playFocus = remember { FocusRequester() }
@@ -1404,7 +1428,7 @@ fun SeriesPanel(
                 HeroPill(
                     label = seriesPlayLabel(target.code, watch.pointOf(target), anyWatched = progress.watched > 0),
                     icon = TmIcons.Play,
-                    onClick = { onPlay(copyOf(target, next?.item ?: watch.pick(target, progress))) },
+                    onClick = { askOrPlay(target, copyOf(target, next?.item ?: watch.pick(target, progress))) },
                     modifier = m.then(downToUpNext).onPlaced { playPlaced = true }.onFocusChanged { playFocused = it.hasFocus },
                     focusRequester = playFocus,
                 )
@@ -1430,7 +1454,7 @@ fun SeriesPanel(
                         HeroPill(
                             label = seriesPlayLabel(target.code, watch.pointOf(target), anyWatched = progress.watched > 0),
                             icon = TmIcons.Play,
-                            onClick = { onPlay(copyOf(target, next?.item ?: watch.pick(target, progress))) },
+                            onClick = { askOrPlay(target, copyOf(target, next?.item ?: watch.pick(target, progress))) },
                             modifier = Modifier.onPlaced { playPlaced = true }.onFocusChanged { playFocused = it.hasFocus },
                             focusRequester = playFocus,
                             large = true,
@@ -1541,7 +1565,7 @@ fun SeriesPanel(
                                 open(chosen) { runCatching { rowFocus.requestFocus() } }
                             } else {
                                 if (episodeReturn) returnEpisode = episode.item.id
-                                onPlay(chosen)
+                                askOrPlay(episode, chosen)
                             }
                         },
                         onLongClick = onLongClick?.let { { it(chosen) } },
@@ -1716,6 +1740,19 @@ fun SeriesPanel(
     }
     infoItem?.let { chosen ->
         EpisodeFactsDialog(chosen, onDismiss = { infoItem = null })
+    }
+    copyAsk?.let { (episode, candidates, chosen) ->
+        CopyAskDialog(
+            item = chosen,
+            copies = candidates,
+            chatTitle = chatTitle ?: "",
+            originalLanguage = extras?.originalLanguage,
+            onPick = { picked ->
+                copyAsk = null
+                onPlay(picked.asVersion(chosen))
+            },
+            onDismiss = { copyAsk = null },
+        )
     }
 }
 

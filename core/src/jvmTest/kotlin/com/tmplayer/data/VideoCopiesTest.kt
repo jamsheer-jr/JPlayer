@@ -3,6 +3,7 @@ package com.tmplayer.data
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -446,6 +447,27 @@ class VideoCopiesTest {
         assertEquals(listOf(hevc.id, avc.id), tiers[0].second.map { it.id })
         // And the search's order, the same ranking over the same copies.
         assertEquals(listOf(hevc.id, avc.id), GlobalSearch.copyOrder(listOf(avc, hevc)).map { it.id })
+    }
+
+    @Test
+    fun `within one height the original language stands before another language`() {
+        // Owner, v1.0.24: the copies in the title's own language first. The
+        // bigger Hindi dub of a Korean title stands under the smaller
+        // untagged rip (a name stating no language reads as the original),
+        // and a copy naming the original language counts as one too.
+        val dub = video(2, 81, "Seoul.Story.2023.1080p.Hindi.WEB-DL.x265.mkv", size = 1_600L shl 20)
+        val plain = video(2, 82, "Seoul.Story.2023.1080p.WEB-DL.x265.mkv", size = 900L shl 20)
+        val named = video(2, 83, "Seoul.Story.2023.1080p.Korean.WEB-DL.x264.mkv", size = 800L shl 20)
+        val tiers = VideoCopies.tiersOf(listOf(dub, plain, named), { it }, originalLanguage = "ko")
+        assertEquals(listOf(plain.id, named.id, dub.id), tiers[0].second.map { it.id })
+        // No original language known: the order stands as it always was.
+        val plainTiers = VideoCopies.tiersOf(listOf(plain, dub)) { it }
+        assertEquals(listOf(dub.id, plain.id), plainTiers[0].second.map { it.id })
+        assertTrue(VideoCopies.isOriginalLanguage(plain, "ko"))
+        assertTrue(VideoCopies.isOriginalLanguage(named, "ko"))
+        assertFalse(VideoCopies.isOriginalLanguage(dub, "ko"))
+        assertFalse(VideoCopies.isOriginalLanguage(plain, null))
+        assertFalse(VideoCopies.isOriginalLanguage(plain, ""))
     }
 
     @Test

@@ -201,6 +201,23 @@ object VideoCopies {
         name.lowercase().split(NOT_WORD).mapNotNullTo(LinkedHashSet()) { LANGUAGES[it] }
 
     /**
+     * Whether [copy] is in the title's own (original) language, where that
+     * language is known (owner, v1.0.24: the original language copies and
+     * versions stand first in their quality group, and a level's best copy
+     * is an original language one where the level has one). A copy naming
+     * no language at all is read as the original: release names name the
+     * languages they added, and the untagged copy is the plain rip. A copy
+     * naming languages carries the original when it is among them. False
+     * wherever the original language is not known, so the order stands as
+     * it always was.
+     */
+    fun isOriginalLanguage(copy: MediaItem, originalLanguage: String?): Boolean {
+        val original = originalLanguage?.lowercase()?.takeIf { it.isNotBlank() } ?: return false
+        val named = languagesOf(copy)
+        return named.isEmpty() || original in named
+    }
+
+    /**
      * The picture a copy is, as a badge names it ("4K", "1080p"), read as the copies list reads it
      * ([heightOf]: the name's marker first, then the size Telegram states), so a video's facts line
      * and the copy named under Play never give one file two qualities (a "720p" badge over
@@ -251,7 +268,7 @@ object VideoCopies {
      * then the largest file. Null when every copy whose height is known sits in one tier:
      * the badge then only names what is playing, and a tap changes nothing.
      */
-    fun nextTierCopy(copies: List<MediaItem>, currentId: String): MediaItem? {
+    fun nextTierCopy(copies: List<MediaItem>, currentId: String, originalLanguage: String? = null): MediaItem? {
         fun tierOf(item: MediaItem): String? = heightOf(item)?.let { badgeForHeight(it) }
         val present = copies.mapNotNull { tierOf(it) }.distinct()
         if (present.size < 2) return null
@@ -264,6 +281,7 @@ object VideoCopies {
             .filter { tierOf(it) == nextTier }
             .maxWithOrNull(
                 compareBy<MediaItem> { heightOf(it) ?: 0 }
+                    .thenBy { if (isOriginalLanguage(it, originalLanguage)) 1 else 0 }
                     .thenBy { MediaFacts.codecRank(MediaFacts.of(it).videoCodec) }
                     .thenBy { it.sizeBytes },
             )
@@ -283,7 +301,7 @@ object VideoCopies {
      * video has, and a film whose only copy is 360p still has a quality to name. Copies whose
      * height is not known take no part.
      */
-    fun tierChoices(copies: List<MediaItem>, currentId: String, series: Boolean = false): List<TierChoice> {
+    fun tierChoices(copies: List<MediaItem>, currentId: String, series: Boolean = false, originalLanguage: String? = null): List<TierChoice> {
         val level: (MediaItem) -> CopyLevel = if (series) ::seriesLevelOf else ::levelOf
         fun shown(item: MediaItem): CopyLevel? = when (val found = level(item)) {
             CopyLevel.Unknown -> null
@@ -296,6 +314,7 @@ object VideoCopies {
                 .filter { shown(it) == wanted }
                 .maxWithOrNull(
                     compareBy<MediaItem> { heightOf(it) ?: 0 }
+                        .thenBy { if (isOriginalLanguage(it, originalLanguage)) 1 else 0 }
                         .thenBy { MediaFacts.codecRank(MediaFacts.of(it).videoCodec) }
                         .thenBy { it.sizeBytes },
                 )
@@ -305,8 +324,9 @@ object VideoCopies {
     }
 
     /**
-     * [rows] in the order copies are always offered (best picture first, the better codec
-     * of it next, then the biggest: item 13, v1.0.16), grouped under the quality of the copy
+     * [rows] in the order copies are always offered (best picture first, then the title's
+     * own language where it is known (owner, v1.0.24: see [isOriginalLanguage]), then the
+     * better codec, then the biggest: item 13, v1.0.16), grouped under the quality of the copy
      * each row stands for: one group per picture height ([heightOf]), tallest first, each
      * group holding its rows in that order. The rows
      * whose copy states no quality (sent as a file, its name carrying no marker) form the last
@@ -314,9 +334,10 @@ object VideoCopies {
      * else. The one grouping both copies choosers draw (the detail page's Versions and the
      * player's Copies), so the two lists never disagree about the order or the groups.
      */
-    fun <T> tiersOf(rows: List<T>, copyOf: (T) -> MediaItem): List<Pair<Int?, List<T>>> {
+    fun <T> tiersOf(rows: List<T>, copyOf: (T) -> MediaItem, originalLanguage: String? = null): List<Pair<Int?, List<T>>> {
         val sorted = rows.sortedWith(
             compareByDescending<T> { heightOf(copyOf(it)) ?: 0 }
+                .thenByDescending { if (isOriginalLanguage(copyOf(it), originalLanguage)) 1 else 0 }
                 .thenByDescending { MediaFacts.codecRank(MediaFacts.of(copyOf(it)).videoCodec) }
                 .thenByDescending { copyOf(it).sizeBytes },
         )

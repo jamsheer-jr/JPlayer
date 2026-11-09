@@ -185,6 +185,8 @@ internal fun Versions(
     hiddenCopies: Set<String> = emptySet(),
     /** Hiding a copy from this list, where the platform offers it; null leaves the rows plain. */
     onHideCopy: ((MediaItem) -> Unit)? = null,
+    /** The title's original language, where its extras have named it: its copies stand first (owner, v1.0.24). */
+    originalLanguage: String? = null,
 ) {
     if (onPick == null) return
     // Every copy of the title, whichever chat holds it (owner, v1.0.14): the list the
@@ -274,6 +276,7 @@ internal fun Versions(
             started = started,
             chosenFocus = chosenFocus,
             onHideCopy = onHideCopy,
+            originalLanguage = originalLanguage,
             onChoose = { copy ->
                 open = false
                 if (copy.id != full.id) onPick(copy.asVersion(full))
@@ -484,6 +487,61 @@ private fun copiesSubtitle(item: MediaItem, files: List<Pair<MediaItem, List<Med
 }
 
 /**
+ * The copies of one video asked before it plays (owner, v1.0.24): an episode
+ * taken with nothing chosen (no quality picked on its page) while more than
+ * one copy stands is asked about in this card, rather than a copy being
+ * picked for the viewer in silence. The list is the detail page's own
+ * chooser ([CopyChooser]), so the rows say what the Versions rows say, the
+ * original language copies first where that language is known. A press
+ * outside the card, or Back, leaves without playing anything.
+ */
+@Composable
+fun CopyAskDialog(
+    item: MediaItem,
+    copies: List<MediaItem>,
+    chatTitle: String = "",
+    originalLanguage: String? = null,
+    onPick: (MediaItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val files = remember(copies) { VideoCopies.distinctFiles(copies) }
+    val chosenFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.88f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .padding(24.dp)
+                    .clip(RoundedCornerShape(Corner.Medium))
+                    .background(Tone.surfaceHigh)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+            ) {
+                CopyChooser(
+                    header = true,
+                    item = item,
+                    files = files,
+                    chatTitle = chatTitle,
+                    started = { false },
+                    chosenFocus = chosenFocus,
+                    originalLanguage = originalLanguage,
+                    onChoose = onPick,
+                )
+            }
+        }
+    }
+}
+
+/**
  * Every copy of [item] to choose from, each thing said once: the title and "7 versions" and the
  * chat over the list (or "in 3 chats"), then the copies grouped under their quality, best first,
  * "1080p", "720p", then the ones whose name states none. A row is only what sets it apart: its size,
@@ -504,6 +562,8 @@ private fun CopyChooser(
     chosenFocus: androidx.compose.ui.focus.FocusRequester? = null,
     /** Hiding a copy from this list (item 8b, v1.0.15); null leaves the rows plain. */
     onHideCopy: ((MediaItem) -> Unit)? = null,
+    /** The title's original language, where known: its copies stand first in each group (owner, v1.0.24). */
+    originalLanguage: String? = null,
     onChoose: (MediaItem) -> Unit,
 ) {
     val s = LocalStrings.current
@@ -516,7 +576,7 @@ private fun CopyChooser(
     // owner, v1.0.18.)
     val tiers: List<Pair<String?, List<Pair<MediaItem, List<MediaItem>>>>> = remember(files, item.id) {
         val mapped = files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }
-        VideoCopies.tiersOf(mapped) { it.first }
+        VideoCopies.tiersOf(mapped, { it.first }, originalLanguage)
             .map { (height, group) -> (height?.let { group.first().first.copyQuality() }) to group }
     }
     val rows = remember(tiers) { tiers.flatMap { it.second } }
