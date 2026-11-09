@@ -486,4 +486,37 @@ class SeriesShelfTest {
             BuiltInChannels.jMoviesChatId = null
         }
     }
+
+
+    @Test
+    fun `posts of one range pack fold into one row, and a different range stays its own`() {
+        val items = listOf(
+            video("My Show S01E01.mkv"),
+            video("My Show S01E02.mkv"),
+            video("My Show S01E01-E05 1080p.mkv"),
+            video("My Show S01E01-E05 1080p.mkv"),
+            video("My Show S01E01-E05 1080p.mkv"),
+            video("My Show S01E01-E08 1080p.mkv"),
+        )
+        val show = shows(SeriesShelf.arrange(items)).single()
+        val rows = show.episodes.filter { it.episode == 1 }
+        assertEquals(3, rows.size)
+        assertEquals(3, rows.single { it.lastEpisode == 5 }.copies.size)
+        assertEquals(1, rows.single { it.lastEpisode == 8 }.copies.size)
+        assertEquals(1, rows.single { it.lastEpisode == null }.copies.size)
+    }
+
+    @Test
+    fun `a season in one file joins its show as a pack, not an episode`() {
+        val items = listOf(
+            video("Make Me Tingle S01E01 1080p.mkv"),
+            video("Make Me Tingle S01E02 1080p.mkv"),
+            video("Make Me Tingle S01 720p HEVC COMBINED AMZN WEB-DL.mkv"),
+        )
+        val show = shows(SeriesShelf.arrange(items)).single()
+        assertEquals(listOf(1, 2), show.episodes.map { it.episode })
+        val pack = show.packs.single()
+        assertEquals(1, pack.season)
+        assertEquals("Make Me Tingle S01 720p HEVC COMBINED AMZN WEB-DL.mkv", pack.item.fileName)
+    }
 }

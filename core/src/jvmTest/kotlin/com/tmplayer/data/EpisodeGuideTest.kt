@@ -88,4 +88,26 @@ class EpisodeGuideTest {
         val seasons = EpisodeGuide.seasons(series, emptyList(), null, today = "2026-10-06")
         assertEquals(listOf(1, 2), seasons.map { it.number })
     }
+
+
+    @Test
+    fun `a season pack holds the episodes no file names on its own`() {
+        val items = listOf(
+            video(11, "Make.Me.Tingle.S01E01.mkv"),
+            video(12, "Make.Me.Tingle.S01E02.mkv"),
+            video(13, "Make Me Tingle S01 720p HEVC COMBINED AMZN WEB-DL.mkv"),
+        )
+        val series = EpisodeGuide.seriesOf(items[0], items) ?: error("no series")
+        assertEquals(1, series.packs.size)
+        val listed = (1..5).map { MetaEpisode(1, it, "Ep $it", airDate = "2021-01-0$it") }
+        val episodes = EpisodeGuide.episodes(1, series, listed, today = "2026-10-06")
+        assertEquals(List(5) { EpisodeGuide.State.InChat }, episodes.map { it.state })
+        // The first two play their own files; the rest play the pack.
+        assertEquals("1:11", episodes[0].inChat?.item?.id)
+        assertEquals("1:13", episodes[4].inChat?.item?.id)
+        val seasons = EpisodeGuide.seasons(series, listOf(MetaSeason(1, 5, "2021-01-01")), null, today = "2026-10-06")
+        assertEquals(5, seasons.single().inChat)
+        // The pack's own page finds its show too.
+        assertEquals(series.key, EpisodeGuide.seriesOf(items[2], items)?.key)
+    }
 }

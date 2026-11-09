@@ -42,6 +42,20 @@ data class SeriesEpisode(
     fun sameAs(other: SeriesEpisode): Boolean = season == other.season && episode == other.episode
 }
 
+/**
+ * A whole season in one file, posted beside the episodes it holds ("Show S01 720p
+ * COMBINED"): no episode of the show and no copy of one, so it stands apart from the
+ * episode rows, as its own entry of the show (owner, v1.0.21). The show's page gives
+ * it a row of its own, and the guide counts the season's episodes as held, since the
+ * pack is what plays them. [copies] are the posts of the same pack, folded as copies
+ * of one episode fold.
+ */
+data class SeriesPack(
+    val season: Int,
+    val item: MediaItem,
+    val copies: List<MediaItem> = listOf(item),
+)
+
 /** One season's episodes, in watching order. */
 data class SeriesSeason(val number: Int, val episodes: List<SeriesEpisode>) {
 
@@ -60,7 +74,7 @@ data class SeriesSeason(val number: Int, val episodes: List<SeriesEpisode>) {
  * [key] is what the files were grouped on and stays stable while pages load, so a list can key
  * the tile on it. [title] is the show's name as the first of its files wrote it.
  */
-data class Series(val key: String, val title: String, val seasons: List<SeriesSeason>) {
+data class Series(val key: String, val title: String, val seasons: List<SeriesSeason>, val packs: List<SeriesPack> = emptyList()) {
     val episodes: List<SeriesEpisode> get() = seasons.flatMap { it.episodes }
     val episodeCount: Int get() = seasons.sumOf { it.coveredCount }
 
@@ -375,6 +389,38 @@ object SeriesShelf {
             .mapValues { (key, files) -> series(key, files, separate = { corrections[it.id]?.separate == true }, durationOf) }
         val showOf = Array(items.size) { placedUnder[it]?.key }
 
+        // A season in one file, named with the show and a season and no episode
+        // ("Show S01 720p COMBINED", "Show Season 2 Complete"): it is no episode and
+        // was placed under no show, but once the show stands on its own episodes the
+        // file is that show's pack of the season (owner, v1.0.21). A pack with no
+        // established show stays the file it is. Posts of the same pack fold as
+        // copies, and the pack joins the show apart from its episodes.
+        val packGroups = LinkedHashMap<Pair<String, Int>, MutableList<Int>>()
+        items.indices.forEach { index ->
+            if (placedUnder[index] != null || separate[index]) return@forEach
+            val name = names[index]
+            if (name.season == null || name.episode != null || name.extra != null) return@forEach
+            if (corrections[items[index].id]?.title != null) return@forEach
+            val showKey = when {
+                name.titleKey in shows -> name.titleKey
+                alias[name.titleKey] in shows -> alias.getValue(name.titleKey)
+                else -> return@forEach
+            }
+            packGroups.getOrPut(showKey to name.season) { ArrayList() } += index
+        }
+        val packsByShow = HashMap<String, MutableList<SeriesPack>>()
+        for ((groupKey, indices) in packGroups) {
+            val folded = SameVideo.videosOf(indices.map { items[it] to names[it] }, dated = true, durationOf).map { video ->
+                val sorted = video.members.sortedWith(compareByDescending<MediaItem> { it.date }.thenBy { it.messageId })
+                SeriesPack(groupKey.second, VideoCopies.builtInCopy(sorted) ?: sorted.first(), sorted)
+            }
+            packsByShow.getOrPut(groupKey.first) { ArrayList() } += folded
+        }
+        for ((_, packs) in packsByShow) packs.sortWith(compareBy<SeriesPack> { it.season }.thenByDescending { it.item.date })
+        val showsWithPacks = if (packsByShow.isEmpty()) shows else shows.mapValues { (key, show) ->
+            packsByShow[key]?.let { show.copy(packs = it) } ?: show
+        }
+
         // What is left over and names a film, or one episode of a show the chat has no more of:
         // copies of it (a 720p and a 1080p of Loki S02E05) fold into one tile, where the evidence
         // says they are copies.
@@ -432,7 +478,7 @@ object SeriesShelf {
                 attached += item.id
             }
         }
-        return Plan(showOf, shows, shown, group, after, attached)
+        return Plan(showOf, showsWithPacks, shown, group, after, attached)
     }
 
     private fun firstLine(item: MediaItem): String? =
@@ -674,8 +720,18 @@ object SeriesShelf {
                 // copy of its first episode either: it stands as its own row, spanning its range,
                 // so a pack is not read as one more copy of episode one wearing the pack's length.
                 val (apart, rest) = copies.partition { separate(it.item) || (it.name.lastEpisode ?: 0) > number.second }
+                // A pack stands as its own row, never as a copy of its first episode; but
+                // posts of the SAME pack (the same range, in this chat or another) are
+                // copies of one another and fold into the one row, as copies of an
+                // episode do (owner, v1.0.21: the same E1-E5 pack posted in three chats
+                // stood as three identical rows). A different range is a different pack
+                // and never folds into this one. A copy the viewer set apart stays apart.
+                val (marked, packs) = apart.partition { separate(it.item) }
                 val rows = SameVideo.videosOf(rest.map { it.item to it.name }, dated = true, durationOf).map { it.members } +
-                    apart.map { listOf(it.item) }
+                    packs.groupBy { it.name.lastEpisode ?: 0 }.values.flatMap { sameRange ->
+                        SameVideo.videosOf(sameRange.map { it.item to it.name }, dated = true, durationOf).map { it.members }
+                    } +
+                    marked.map { listOf(it.item) }
                 rows.filter { it.isNotEmpty() }.map { members ->
                     val sorted = members.sortedWith(compareByDescending<MediaItem> { it.date }.thenBy { it.messageId })
                     // The episode stands for the built-in channel's own post where it posted

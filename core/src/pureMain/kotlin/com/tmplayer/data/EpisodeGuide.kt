@@ -54,9 +54,16 @@ object EpisodeGuide {
         val held = series?.seasons.orEmpty().associate { it.number to it.coveredCount }
         val provider = listed.associateBy { it.number }
         val numbers = (held.keys + provider.keys + listOfNotNull(next?.season)).filter { it > 0 }.sortedDistinct()
+        // A season held as one combined file counts as held whole: every episode
+        // the provider lists for it is in the chat, in the pack (owner, v1.0.21).
+        val packSeasons = series?.packs.orEmpty().mapTo(HashSet()) { it.season }
         return numbers.map { n ->
             val listedSeason = provider[n]
-            val have = held[n] ?: 0
+            val have = if (n in packSeasons) {
+                listedSeason?.episodeCount?.takeIf { it > 0 } ?: (held[n] ?: 0).coerceAtLeast(1)
+            } else {
+                held[n] ?: 0
+            }
             val airDate = listedSeason?.airDate ?: next?.takeIf { it.season == n && it.episode == 1 }?.airDate
             val state = when {
                 have > 0 -> State.InChat
@@ -81,8 +88,13 @@ object EpisodeGuide {
         val holders = rows.filter { (it.lastEpisode ?: 0) > it.episode }
         val provider = listed.orEmpty().filter { it.season == season }.associateBy { it.number }
         val numbers = (held.keys + provider.keys).sortedDistinct()
+        // A season pack holds the whole season: an episode no file names on its own
+        // is still in the chat, and the pack is what plays it (owner, v1.0.21).
+        val pack = series?.packs?.firstOrNull { it.season == season }
         return numbers.map { n ->
-            val mine = held[n] ?: holders.firstOrNull { holder -> n in (holder.episode + 1)..(holder.lastEpisode ?: holder.episode) }
+            val mine = held[n]
+                ?: holders.firstOrNull { holder -> n in (holder.episode + 1)..(holder.lastEpisode ?: holder.episode) }
+                ?: pack?.let { SeriesEpisode(it.item, season, n, it.copies) }
             val meta = provider[n]
             val state = when {
                 mine != null -> State.InChat
@@ -108,6 +120,9 @@ object EpisodeGuide {
             .distinctBy { it.id }
         return SeriesShelf.arrange(items).asSequence()
             .mapNotNull { (it as? ShelfEntry.Show)?.series }
-            .firstOrNull { show -> show.episodes.any { ep -> ep.copies.any { it.id == item.id } } }
+            .firstOrNull { show ->
+                show.episodes.any { ep -> ep.copies.any { it.id == item.id } } ||
+                    show.packs.any { pack -> pack.copies.any { it.id == item.id } }
+            }
     }
 }
