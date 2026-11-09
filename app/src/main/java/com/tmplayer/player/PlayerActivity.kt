@@ -367,6 +367,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /** The companion's lines showing right now, built from [companionActive]. */
     private var companionNow: List<Cue> = emptyList()
 
+    /** The silent player reading an embedded companion out of a downloaded video, while one stands (Phase B). */
+    private var embeddedCompanion: EmbeddedCompanion? = null
+
+    /** The follower keeping the embedded companion where the main player is. */
+    private var embeddedCompanionJob: Job? = null
+
     /** Follows the position while a companion stands, keeping its lines over the main track's. */
     private var companionJob: Job? = null
 
@@ -3677,6 +3683,57 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         renderCues()
     }
 
+    /**
+     * Takes the embedded track [trackId] of the downloaded video at [uri] on as the
+     * companion: a silent second player reads that one track out of the file, and
+     * its lines join the main track's in the one subtitle view, the same merge the
+     * file companion uses ([renderCues]). A follower keeps the second player where
+     * the main one is, at its speed, with the subtitle sync offset read the way
+     * the file companion's follower reads it.
+     */
+    private fun startEmbeddedCompanion(uri: android.net.Uri, trackId: String) {
+        stopEmbeddedCompanion()
+        val companion = EmbeddedCompanion(
+            this,
+            onCues = { cues ->
+                companionNow = scaledForPicture(cues)
+                renderCues()
+            },
+            onUnavailable = {
+                // The track could not be read out of this file: the companion ends
+                // quietly and the main track plays on alone.
+                if (companionId == trackId) companionId = null
+                stopEmbeddedCompanion()
+            },
+        )
+        embeddedCompanion = companion
+        val main = player
+        companion.start(uri, trackId, (main?.currentPosition ?: 0L) - syncDelays.subtitleMs)
+        embeddedCompanionJob = lifecycleScope.launch {
+            while (isActive) {
+                val now = player ?: break
+                companion.align(
+                    now.currentPosition - syncDelays.subtitleMs,
+                    now.playWhenReady,
+                    now.playbackParameters.speed,
+                )
+                delay(250)
+            }
+        }
+    }
+
+    /** Takes the embedded companion down, and its lines off the shared subtitle view. */
+    private fun stopEmbeddedCompanion() {
+        embeddedCompanionJob?.cancel()
+        embeddedCompanionJob = null
+        embeddedCompanion?.stop()
+        embeddedCompanion = null
+        if (companionFile == null && companionNow.isNotEmpty()) {
+            companionNow = emptyList()
+            renderCues()
+        }
+    }
+
     /** Fits the subtitles again after 3D changed, as the picture's next layout would. */
     private fun refitSubtitles() {
         touchSurface?.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)?.let(::fitSubtitlesTo)
@@ -5285,6 +5342,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         mainCues = emptyList()
         companionId = null
         setCompanionSubtitle(null)
+        stopEmbeddedCompanion()
     }
 
     /**
@@ -6396,12 +6454,31 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     override fun companionTrackId(): String? = companionId
 
     override fun takeCompanion(trackId: String?, file: File?) {
+        // One companion at a time: a file companion ends any embedded one standing.
+        stopEmbeddedCompanion()
         // The id kept is the loaded file's own, which the picker matches its rows against:
         // a format id can carry a prefix of the player's, the file's id never changes.
         companionId = if (file == null) null else trackId?.let { asked ->
             subtitleFiles.files.firstOrNull { config -> ExternalSubtitle.isTrackId(asked, config.id.orEmpty()) }?.id ?: asked
         }
         setCompanionSubtitle(file)
+    }
+
+    override fun takeEmbeddedCompanion(trackId: String?): Boolean {
+        if (trackId == null) {
+            stopEmbeddedCompanion()
+            if (companionFile == null) companionId = null
+            return true
+        }
+        // The companion player reads the whole file off the disk, so only a
+        // downloaded video can give one: not a stream, not a split set.
+        val uri = downloadedVideo?.uri() ?: return false
+        if (streamUrl != null || joinedSource != null) return false
+        // One companion at a time: the embedded one ends any file companion standing.
+        setCompanionSubtitle(null)
+        companionId = trackId
+        startEmbeddedCompanion(uri, trackId)
+        return true
     }
 
     override fun loadedSubtitleFile(formatId: String?): File? {

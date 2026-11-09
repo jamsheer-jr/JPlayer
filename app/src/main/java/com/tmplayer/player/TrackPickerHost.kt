@@ -40,6 +40,15 @@ interface TrackPickerHost {
     fun takeCompanion(trackId: String?, file: File?) {}
 
     /**
+     * Takes the video's own track named [trackId] on as the companion, read out of
+     * the file itself by a second, silent player (dual subtitles Phase B); a null
+     * [trackId] takes the embedded companion off again. False where this video
+     * cannot give one (it is streamed, or split into pieces), and the picker
+     * keeps its older way for the pair.
+     */
+    fun takeEmbeddedCompanion(trackId: String?): Boolean = false
+
+    /**
      * The file a loaded subtitle track stands for, named by its format id; null when
      * the id names none of the files loaded onto this video (an embedded track).
      */
