@@ -96,17 +96,28 @@ object TitleMediaLoad {
         // noted as they land, so the versions fill in as they come. One chat's
         // search is bounded too (owner, v1.0.21): a chat Telegram never answers
         // gives up its slot instead of holding the page's load open.
+        var incomplete = false
         kotlinx.coroutines.coroutineScope {
             val slots = kotlinx.coroutines.sync.Semaphore(CHATS_AT_ONCE)
             chats.map { chatId ->
                 async {
                     slots.withPermit {
-                        val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, chatId, query) }.orEmpty()
-                        if (found.isNotEmpty()) KnownMedia.note(found)
+                        val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, chatId, query) }
+                        if (found == null) {
+                            incomplete = true
+                        } else if (found.isNotEmpty()) {
+                            KnownMedia.note(found)
+                        }
                     }
                 }
             }.awaitAll()
         }
+        // A load a slow chat cut short does not stand as the title's one ask
+        // (owner, v1.0.21): titles opened from the banner or a category page
+        // showed only the versions the first, thinnest fill found. The mark
+        // comes off, so the next open asks the missing chats again, still
+        // behind the page, never in its way.
+        if (incomplete) loaded.remove(item.id)
     }
 
     /**
