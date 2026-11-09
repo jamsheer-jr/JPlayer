@@ -210,12 +210,16 @@ class OnlineSubtitles(
      * v1.0.23): a season pack is ONE hit holding every episode's file, so the
      * key names the episode the file was taken for. Under the hit's own key,
      * the first episode downloaded stood for the whole pack, and the next
-     * episode was handed the first one's subtitle out of the cache. Hits that
-     * are one file for one video (and asks without an episode) keep the hit's
-     * key, as they always have.
+     * episode was handed the first one's subtitle out of the cache. Only the
+     * pack paths key this way (the site's season zips, SubDL's packs): the
+     * MSone gateway hands out one file per hit, so its hits keep the hit's
+     * own key, as do hits that are one file for one video and asks without
+     * an episode.
      */
     private fun episodeKey(hit: SubtitleHit, target: SubtitleTarget?): String {
-        if (hit.provider != SubtitleProvider.Msone && hit.provider != SubtitleProvider.Subdl) return hit.id
+        val packPath = hit.provider == SubtitleProvider.Subdl ||
+            (hit.provider == SubtitleProvider.Msone && !msoneInBuild)
+        if (!packPath) return hit.id
         val parsed = target?.let { MediaName.parse(it.fileName, it.caption) } ?: return hit.id
         val episode = parsed.episode ?: return hit.id
         return "${hit.id}|s${parsed.season ?: hit.featureSeason ?: 0}e$episode"
