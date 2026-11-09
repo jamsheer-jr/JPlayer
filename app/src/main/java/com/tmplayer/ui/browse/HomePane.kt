@@ -422,10 +422,17 @@ internal fun HomePane(
             chipRows.filterIsInstance<HomeRow.Catalog>().firstOrNull { it.kind == wanted }?.all
         }.orEmpty()
     }
+    // The trending row's titles, in TMDB's rank order: the banner's second tier
+    // (owner, v1.0.21: the banner is mainly the newest years, the trending titles
+    // and the latest posts).
+    val bannerTrending = remember(chipRows) {
+        chipRows.filterIsInstance<HomeRow.Catalog>().firstOrNull { it.kind == "trending" }?.all.orEmpty()
+    }
     // Off in Settings, nothing is picked or turned over for it either.
     val featured = rememberFeatured(
         bannerRecent.takeIf { carouselOn },
         extraEntries = bannerExtras,
+        trendingEntries = bannerTrending,
         pinEntries = bannerPinEntries,
         pinKeys = if (bannerMode == "pinned") bannerPins.toSet() else emptySet(),
     )
@@ -3044,10 +3051,10 @@ private val TV_DOWN_STEP = 200.dp
  * asked for or the fill is still deciding (the carousel then holds its frame with a stand-in, at
  * most [HomeFeatured.FILL_WAIT_MS] once the row is in), empty for nothing to feature, which hides
  * the carousel. Only complete pages ([com.tmplayer.ui.online.completeFeatured]). Each fill draws
- * the unpinned pages in a fresh order (owner, v1.0.17), drawn once when the fill starts, so a
- * refresh brings different banners rather than the same ones again, and a page that completes
- * late takes its drawn place instead of reshuffling the banner under the viewer. A refresh
- * keeps the pages up until the new ones are decided.
+ * its order once when the fill starts (the tiers at [fillOrder]: pinned, trending, the newest
+ * years, then the rest shuffled, owner, v1.0.21), so a page that completes late takes its drawn
+ * place instead of reshuffling the banner under the viewer. A refresh keeps the pages up until
+ * the new ones are decided.
  *
  * On a phone's Movies or Shows shape the banner also draws from the shape's own shelf
  * ([extraEntries], owner, v1.0.19): the Recent row cut to one kind is a thin pool, and its
@@ -3062,28 +3069,46 @@ private val TV_DOWN_STEP = 200.dp
 private fun rememberFeatured(
     recent: HomeRow.Recent?,
     extraEntries: List<ShelfEntry> = emptyList(),
+    trendingEntries: List<ShelfEntry> = emptyList(),
     pinEntries: List<ShelfEntry> = emptyList(),
     pinKeys: Set<String> = emptySet(),
 ): List<com.tmplayer.data.FeaturedPick>? {
     val online = com.tmplayer.online.OnlineMetadata.current
     val enabled = online?.settings?.collectAsState()?.value?.enabled == true
-    val candidates = remember(recent, extraEntries, pinEntries) {
+    val candidates = remember(recent, extraEntries, trendingEntries, pinEntries) {
         val auto = recent?.takeIf { it.loaded }?.let { com.tmplayer.data.HomeFeatured.pick(it.entries, com.tmplayer.data.HomeFeatured.CANDIDATES) }
         val extra = extraEntries.takeIf { it.isNotEmpty() }?.let { com.tmplayer.data.HomeFeatured.pick(it, com.tmplayer.data.HomeFeatured.CANDIDATES) }
+        // The trending titles are candidates in their own right (owner, v1.0.21): a
+        // trending title no chat posted lately is still banner stock.
+        val trending = trendingEntries.takeIf { it.isNotEmpty() }?.let { com.tmplayer.data.HomeFeatured.pick(it, com.tmplayer.data.HomeFeatured.LIMIT) }
         // The pinned titles are candidates in their own right, ahead of the newest: the
         // newest-first candidate cut must not crowd a pinned title out of its own banner.
         val pins = pinEntries.takeIf { it.isNotEmpty() }?.let { com.tmplayer.data.HomeFeatured.pick(it, com.tmplayer.data.HomeFeatured.LIMIT) }
         when {
-            auto == null && extra == null && pins == null -> null
-            else -> (pins.orEmpty() + auto.orEmpty() + extra.orEmpty()).distinctBy { it.key }
+            auto == null && extra == null && pins == null && trending == null -> null
+            else -> (pins.orEmpty() + trending.orEmpty() + auto.orEmpty() + extra.orEmpty()).distinctBy { it.key }
         }
     }
     val isPinned = { pick: com.tmplayer.data.FeaturedPick ->
         pinKeys.isNotEmpty() && com.tmplayer.data.VideoCopies.keyOf(pick.item) in pinKeys
     }
-    // The fill's order, drawn once: pinned titles lead in their order, the rest shuffled.
-    val fillOrder = remember(candidates, pinKeys) {
-        candidates?.let { list -> list.filter(isPinned) + list.filterNot(isPinned).shuffled() }
+    // The fill's order, drawn once (owner, v1.0.21: the banner is mainly the newest
+    // years, the trending titles and the latest posts): the pinned titles lead in
+    // their order, the trending titles follow in TMDB's rank order, then the newest
+    // years in the picks' own order, and the rest shuffled, as the refresh variety
+    // the owner asked for in v1.0.17, kept to the tail.
+    val fillOrder = remember(candidates, pinKeys, trendingEntries) {
+        candidates?.let { list ->
+            val now = com.tmplayer.platform.currentYear()
+            val ranks = trendingEntries.withIndex().associate { (index, entry) -> entry.key to index }
+            val pinned = list.filter(isPinned)
+            val trending = list.filterNot(isPinned).filter { it.key in ranks }.sortedBy { ranks[it.key] ?: Int.MAX_VALUE }
+            val trendingKeys = trending.mapTo(HashSet()) { it.key }
+            val latest = list.filterNot(isPinned).filter { it.key !in trendingKeys && com.tmplayer.data.HomeFeatured.isLatestYear(it.year, now) }
+            val latestKeys = latest.mapTo(HashSet()) { it.key }
+            val rest = list.filterNot(isPinned).filter { it.key !in trendingKeys && it.key !in latestKeys }.shuffled()
+            pinned + trending + latest + rest
+        }
     }
     // The fill itself is NOT keyed on the candidates (owner, v1.0.20: the Shows shape
     // stood with no banner while Movies stood). A rows rebuild, and Home rebuilds its

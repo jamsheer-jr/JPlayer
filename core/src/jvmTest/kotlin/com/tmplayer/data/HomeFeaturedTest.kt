@@ -53,6 +53,16 @@ class HomeFeaturedTest {
     }
 
     @Test
+    fun `the newest years lead the picks, the rest by post date`() {
+        val now = com.tmplayer.platform.currentYear()
+        val old = video("Old Favourite ${now - 5}.mkv", date = 100)
+        val fresh = video("Fresh Drop $now.mkv", date = 1)
+        val lastYear = video("Last Year Hit ${now - 1}.mkv", date = 2)
+        val picks = HomeFeatured.pick(listOf(file(old), file(fresh), file(lastYear)))
+        assertEquals(listOf(fresh.id, lastYear.id, old.id), picks.map { it.item.id })
+    }
+
+    @Test
     fun `copies of one film in two chats are one page`() {
         val hd = video("Night.Train.2019.1080p.mkv", date = 10, chatId = 1)
         val sd = video("Night.Train.2019.720p.mkv", date = 9, chatId = 2)

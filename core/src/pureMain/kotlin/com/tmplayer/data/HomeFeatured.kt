@@ -47,6 +47,9 @@ data class FeaturedPick(val entry: ShelfEntry) {
 
     /** When it was posted: a show by its newest episode. */
     val date: Int get() = item.date
+
+    /** The title's own year, read off its name: the banner's latest tier goes by it. */
+    val year: Int? get() = item.parsedName.year
 }
 
 /**
@@ -113,6 +116,13 @@ object HomeFeatured {
      */
     const val LOOKUPS_AT_ONCE = 6
 
+    /**
+     * A title of the newest years (this year or the one before): the banner's main
+     * stock (owner, v1.0.21: the banner is mainly the newest years, the trending
+     * titles and the latest posts, not whatever was posted last).
+     */
+    fun isLatestYear(year: Int?, now: Int): Boolean = year != null && year >= now - 1
+
     /** The newest [limit] different films and shows in [entries] (see [HomeFeatured]). */
     fun pick(
         entries: List<ShelfEntry>,
@@ -121,8 +131,11 @@ object HomeFeatured {
     ): List<FeaturedPick> {
         if (limit <= 0) return emptyList()
         val seen = HashSet<String>()
+        val now = com.tmplayer.platform.currentYear()
         val newestFirst = entries.sortedWith(
-            compareByDescending<ShelfEntry> { FeaturedPick(it).date }.thenByDescending { FeaturedPick(it).item.messageId },
+            compareByDescending<ShelfEntry> { if (isLatestYear(FeaturedPick(it).year, now)) 1 else 0 }
+                .thenByDescending { FeaturedPick(it).date }
+                .thenByDescending { FeaturedPick(it).item.messageId },
         )
         // Copies the shelf did not fold (another chat, another name, the same online match) as one
         // page, led by the best copy, where the newest of them stood.
