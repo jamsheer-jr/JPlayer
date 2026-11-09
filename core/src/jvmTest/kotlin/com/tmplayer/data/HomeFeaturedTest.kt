@@ -56,7 +56,7 @@ class HomeFeaturedTest {
     fun `the newest years lead the picks, the rest by post date`() {
         val now = com.tmplayer.platform.currentYear()
         val old = video("Old Favourite ${now - 5}.mkv", date = 100)
-        val fresh = video("Fresh Drop $now.mkv", date = 1)
+        val fresh = video("Fresh Drop $now.mkv", date = 3)
         val lastYear = video("Last Year Hit ${now - 1}.mkv", date = 2)
         val picks = HomeFeatured.pick(listOf(file(old), file(fresh), file(lastYear)))
         assertEquals(listOf(fresh.id, lastYear.id, old.id), picks.map { it.item.id })
