@@ -187,8 +187,16 @@ data class ResultGroup(
     /** A show with more than one episode found, which opens the series page rather than a video. */
     val isShow: Boolean get() = show != null && episodeCount > 1
 
-    /** How many different episodes a show group holds. */
-    val episodeCount: Int get() = copies.mapNotNull { SeriesShelf.sameVideoKey(it) }.distinct().size.coerceAtLeast(1)
+    /**
+     * How many different episodes a show group holds, counted by the season and
+     * episode the names carry: a copy posted with a brand tag before the show's
+     * name (owner, v1.0.25) is the same episode as the bare one, where a key
+     * built from the whole title would count it again.
+     */
+    val episodeCount: Int get() = copies.mapNotNull { item ->
+        val name = SeriesShelf.episodeOf(item)
+        name.episode?.let { (name.season ?: 1) to it }
+    }.distinct().size.coerceAtLeast(1)
 
     /** The best picture any copy has, as [MediaFacts] names it, or null when none says. */
     val bestQuality: String? get() = copies.mapNotNull(GlobalSearch::qualityOf).maxByOrNull(GlobalSearch::qualityRank)
