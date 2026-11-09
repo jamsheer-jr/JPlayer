@@ -869,14 +869,26 @@ fun SettingsScreen(
                 }
 
                 // The accent colour, under the theme it is drawn in. The phone's wallpaper colours win
-                // when they are on, so there the swatches are faded and the line says why.
+                // when they are on, so there the swatches are faded and the line says why; a pick is
+                // the viewer's own answer to the same question, so it turns the wallpaper colours
+                // off and stands in both themes (owner, v1.0.23).
                 item(key = "accent") {
                     AccentRow(
                         selected = accent,
                         wallpaper = touch && dynamicColour && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
-                        onPick = { scope.launch { settings.setAccent(it) } },
+                        onPick = {
+                            scope.launch {
+                                settings.setAccent(it)
+                                settings.setDynamicColour(false)
+                            }
+                        },
                         custom = customAccent,
-                        onCustom = { argb -> scope.launch { settings.setCustomAccent(argb) } },
+                        onCustom = { argb ->
+                            scope.launch {
+                                settings.setCustomAccent(argb)
+                                settings.setDynamicColour(false)
+                            }
+                        },
                     )
                 }
 
