@@ -1073,8 +1073,10 @@ fun DownloadsScreen(
                     modifier = Modifier.padding(start = TEXT_EDGE, end = TEXT_EDGE, top = 16.dp, bottom = 4.dp),
                 )
             }
-            // Watch and Save to Downloads, the two things only this list does. Clearing them, and
-            // the unmatched files beside them, is Free up space's review on the Downloaded tab.
+            // Watch and Save to Downloads, the two things only this list does. A card's
+            // Delete clears that one video's cache (owner, v1.0.23); clearing them all,
+            // and the unmatched files beside them, is Free up space's review on the
+            // Downloaded tab.
             items(cachedRows, key = { it.key }) { row ->
                 DownloadCard(
                     row = row,
@@ -1082,7 +1084,7 @@ fun DownloadsScreen(
                     checked = false,
                     onPlay = { onPlay(row.record) },
                     onShare = { saveToDownloads(row) },
-                    onDelete = null,
+                    onDelete = { confirmingDelete = row },
                     onToggle = {},
                     onHold = null,
                 )
@@ -1228,7 +1230,8 @@ fun DownloadsScreen(
                     modifier = Modifier.padding(start = TEXT_EDGE, end = TEXT_EDGE, bottom = 4.dp),
                 )
             }
-            // Watch and Save to Downloads; clearing them is Free up space's review at the top.
+            // Watch and Save to Downloads; a card's Delete clears that one video's
+            // cache (owner, v1.0.23), clearing them all is Free up space's review at the top.
             items(cachedRows, key = { it.key }) { row ->
                 DownloadCard(
                     row = row,
@@ -1236,7 +1239,7 @@ fun DownloadsScreen(
                     checked = false,
                     onPlay = { onPlay(row.record) },
                     onShare = { saveToDownloads(row) },
-                    onDelete = null,
+                    onDelete = { confirmingDelete = row },
                     onToggle = {},
                     onHold = null,
                 )
@@ -1907,7 +1910,7 @@ private fun DownloadCard(
     checked: Boolean,
     onPlay: () -> Unit,
     onShare: () -> Unit,
-    /** Delete; null for a recently played video, which Free up space's review clears. */
+    /** Delete; on a recently played video it clears that one's cache (owner, v1.0.23). */
     onDelete: (() -> Unit)?,
     onToggle: () -> Unit,
     onHold: (() -> Unit)?,
@@ -2067,9 +2070,10 @@ private fun DownloadCard(
                     row.cached -> {
                         // A phone's card plays on a tap; a television's needs the button.
                         if (!tapToPlay) PrimaryAction(s.navWatch, TmIcons.Play, onPlay)
-                        // What a recently played video wants is keeping. Clearing it is Free up
-                        // space's review, with the rest of what playing left behind.
+                        // Clearing this one video's cache stands here as well as in
+                        // Free up space's review of the whole set (owner, v1.0.23).
                         SecondaryAction(s.downloadsSaveToDownloads, TmIcons.Download, onShare)
+                        if (onDelete != null) IconOnlyAction(s.commonDelete, TmIcons.Delete, onDelete, danger = true)
                     }
                     row.partial -> {
                         PrimaryAction(s.commonResume, TmIcons.Refresh, onPlay)
