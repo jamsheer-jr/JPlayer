@@ -78,8 +78,13 @@ object TitleMediaLoad {
         item: MediaItem,
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
     ) {
-        val gate = ChatGate.awaitBrowsing()
-        val gateKnown = ChatGate.awaitBrowsingKnown()
+        // The gate is a settings read, quick on any healthy device; the bound is
+        // the non-blocking rule's insurance (owner, v1.0.21: an info page must
+        // never feel stuck): a gate that does not answer in time reads as
+        // unknown, and the load asks the title's own chat only, unremembered,
+        // exactly as an unread gate already does.
+        val gate = withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsing() }
+        val gateKnown = withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsingKnown() } ?: false
         if (gate != null || gateKnown) loaded[item.id] = Unit
         val query = SeriesShelf.episodeOf(item).title.trim()
         if (query.isBlank()) return
@@ -88,13 +93,15 @@ object TitleMediaLoad {
         // in a line, a title whose copies sit in a dozen chats kept the page's
         // other asks waiting behind the whole line of searches, and the page
         // felt stuck while its versions filled. Each chat's finds are still
-        // noted as they land, so the versions fill in as they come.
+        // noted as they land, so the versions fill in as they come. One chat's
+        // search is bounded too (owner, v1.0.21): a chat Telegram never answers
+        // gives up its slot instead of holding the page's load open.
         kotlinx.coroutines.coroutineScope {
             val slots = kotlinx.coroutines.sync.Semaphore(CHATS_AT_ONCE)
             chats.map { chatId ->
                 async {
                     slots.withPermit {
-                        val found = search(fetch, chatId, query)
+                        val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, chatId, query) }.orEmpty()
                         if (found.isNotEmpty()) KnownMedia.note(found)
                     }
                 }
@@ -129,6 +136,12 @@ object TitleMediaLoad {
         val session = Td.awaitConnectedSessionOrNull() ?: return null
         return ChatRepository(session.client).mediaPage(chatId, cursors, query = query, pageSize = SeriesFill.PAGE)
     }
+
+    /** How long the browsing gate's read may take before the load goes on without it. */
+    private const val GATE_WAIT_MS = 3_000L
+
+    /** How long one chat's search may run before that chat is left out of this load. */
+    private const val CHAT_SEARCH_MS = 25_000L
 
     /** Titles asked after in a run: a session's worth of pages opened. */
     private const val KEPT = 96

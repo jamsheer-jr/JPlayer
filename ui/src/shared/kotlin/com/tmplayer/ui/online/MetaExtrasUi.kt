@@ -830,6 +830,22 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                 if (person.role.isNotBlank()) {
                     Text(person.role, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
                 }
+                if (page == null) {
+                    // The page asks TMDB and the chats behind itself; until the first
+                    // answer lands the wait must read as loading, not as a stuck
+                    // page (owner, v1.0.21).
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                        )
+                        Text(s.commonLoading, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                    }
+                }
                 page?.let { data ->
                     LazyColumn(
                         Modifier.fillMaxWidth().heightIn(max = 420.dp),
