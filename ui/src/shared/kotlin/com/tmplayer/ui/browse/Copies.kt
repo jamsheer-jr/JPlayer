@@ -576,7 +576,7 @@ private fun CopyChooser(
     // owner, v1.0.18.)
     val tiers: List<Pair<String?, List<Pair<MediaItem, List<MediaItem>>>>> = remember(files, item.id) {
         val mapped = files.map { (lead, same) -> (same.firstOrNull { it.id == item.id } ?: lead) to same }
-        VideoCopies.tiersOf(mapped, { it.first }, originalLanguage)
+        VideoCopies.tiersOf(mapped, originalLanguage) { it.first }
             .map { (height, group) -> (height?.let { group.first().first.copyQuality() }) to group }
     }
     val rows = remember(tiers) { tiers.flatMap { it.second } }

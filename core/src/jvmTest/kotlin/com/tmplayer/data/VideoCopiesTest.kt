@@ -458,7 +458,7 @@ class VideoCopiesTest {
         val dub = video(2, 81, "Seoul.Story.2023.1080p.Hindi.WEB-DL.x265.mkv", size = 1_600L shl 20)
         val plain = video(2, 82, "Seoul.Story.2023.1080p.WEB-DL.x265.mkv", size = 900L shl 20)
         val named = video(2, 83, "Seoul.Story.2023.1080p.Korean.WEB-DL.x264.mkv", size = 800L shl 20)
-        val tiers = VideoCopies.tiersOf(listOf(dub, plain, named), { it }, originalLanguage = "ko")
+        val tiers = VideoCopies.tiersOf(listOf(dub, plain, named), originalLanguage = "ko") { it }
         assertEquals(listOf(plain.id, named.id, dub.id), tiers[0].second.map { it.id })
         // No original language known: the order stands as it always was.
         val plainTiers = VideoCopies.tiersOf(listOf(plain, dub)) { it }

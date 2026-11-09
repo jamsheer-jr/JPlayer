@@ -334,7 +334,7 @@ object VideoCopies {
      * else. The one grouping both copies choosers draw (the detail page's Versions and the
      * player's Copies), so the two lists never disagree about the order or the groups.
      */
-    fun <T> tiersOf(rows: List<T>, copyOf: (T) -> MediaItem, originalLanguage: String? = null): List<Pair<Int?, List<T>>> {
+    fun <T> tiersOf(rows: List<T>, originalLanguage: String? = null, copyOf: (T) -> MediaItem): List<Pair<Int?, List<T>>> {
         val sorted = rows.sortedWith(
             compareByDescending<T> { heightOf(copyOf(it)) ?: 0 }
                 .thenByDescending { if (isOriginalLanguage(copyOf(it), originalLanguage)) 1 else 0 }

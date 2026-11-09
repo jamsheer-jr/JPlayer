@@ -1196,7 +1196,7 @@ internal fun CopiesSheet(
     // levels (HD+, FHD, QHD) belong to the quality chooser, not to this list (owner, v1.0.18:
     // "Copies avide alla, ath pazhe pole thanne").
     val tiers: List<Pair<String?, List<MediaItem>>> = remember(visible, originalLanguage) {
-        VideoCopies.tiersOf(visible, { it }, originalLanguage)
+        VideoCopies.tiersOf(visible, originalLanguage) { it }
             .map { (height, group) -> (height?.let { group.first().copyQuality() }) to group }
     }
     // The best copy standing (item 13, v1.0.16): the head of the tiers' order among the
