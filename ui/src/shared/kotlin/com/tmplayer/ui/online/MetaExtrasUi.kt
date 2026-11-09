@@ -62,6 +62,7 @@ import com.tmplayer.data.NameInitial
 import com.tmplayer.i18n.Messages
 import com.tmplayer.i18n.Translator
 import com.tmplayer.online.FilmographyEntry
+import com.tmplayer.online.PersonCredit
 import com.tmplayer.online.HeroPreview
 import com.tmplayer.online.KnownMedia
 import com.tmplayer.online.KnownTitle
@@ -87,7 +88,10 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.Focus
 import com.tmplayer.ui.theme.Tone
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -722,23 +726,38 @@ private suspend fun personPage(person: MetaPerson, held: List<PersonTitle> = per
     } catch (failure: Exception) {
         null
     } ?: return PersonPageData(null, held)
-    val heldByKey = held.associateBy { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) }
-    val entries = PersonFilmography.mark(credits, online.knownTitles(KnownMedia.all())).map { entry ->
-        if (entry.playable) entry else heldByKey[entry.credit.ref.matchKey]?.let { entry.copy(item = it.item) } ?: entry
-    }
+    val entries = markCredits(credits, held)
     val covered = credits.mapTo(HashSet()) { it.ref.matchKey }
     return PersonPageData(entries, held.filter { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) !in covered })
+}
+
+/**
+ * [credits] marked against the titles the chats hold: the matched titles the
+ * pool knows ([OnlineMetadata.knownTitles]) first, then the page's own name
+ * matched held titles where the pool's marking missed one.
+ */
+private fun markCredits(credits: List<PersonCredit>, held: List<PersonTitle>): List<FilmographyEntry> {
+    val online = OnlineMetadata.current ?: return PersonFilmography.mark(credits, emptyList())
+    val heldByKey = held.associateBy { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) }
+    return PersonFilmography.mark(credits, online.knownTitles(KnownMedia.all())).map { entry ->
+        if (entry.playable) entry else heldByKey[entry.credit.ref.matchKey]?.let { entry.copy(item = it.item) } ?: entry
+    }
 }
 
 /** How many missing credits one page opening asks Telegram for at most. */
 private const val PERSON_SEARCH_ASKS = 10
 
+/** Missing credits asked at once: a few in flight, never the whole list at once. */
+private const val PERSON_SEARCH_AT_ONCE = 3
+
 /**
  * [entries] with the still missing credits asked for on Telegram itself (owner,
  * v1.0.17): the local marking only knows the titles the app has already listed, and
  * most of a viewer's titles sit in chats nothing has listed yet, so they read "Not
- * in your chats" wrongly. A few credits at a time, in the list's own order (newest
- * first), one page each through the same ask the search screen makes
+ * in your chats" wrongly. The first [PERSON_SEARCH_ASKS] missing credits, in the
+ * list's own order (newest first), are asked together, a few in flight at once
+ * (owner, v1.0.24: one after another read as a page that never finished), each
+ * through the same ask the search screen makes
  * ([com.tmplayer.ui.browse.VideoSearchSource.Telegram]), so the chats choice and
  * the Global Search switch rule it the same way. A find counts when its name reads
  * as the credit's title and its year does not fight the credit's; finds are noted
@@ -746,39 +765,62 @@ private const val PERSON_SEARCH_ASKS = 10
  * Offline, or Telegram refusing, simply leaves the local marking as it stood.
  */
 private suspend fun personSearchFill(entries: List<FilmographyEntry>): List<FilmographyEntry> {
-    if (entries.none { !it.playable }) return entries
+    val missing = entries.filter { !it.playable && it.credit.ref.title.trim().length >= 3 }.take(PERSON_SEARCH_ASKS)
+    if (missing.isEmpty()) return entries
     val found = HashMap<String, MediaItem>()
-    var asks = 0
-    for (entry in entries) {
-        if (entry.playable) continue
-        if (asks >= PERSON_SEARCH_ASKS) break
-        val credit = entry.credit
-        val title = credit.ref.title.trim()
-        if (title.length < 3) continue
-        asks++
-        val page = try {
-            com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
-                title,
-                com.tmplayer.data.AllChatsCursor(),
-                com.tmplayer.data.SearchFilters(),
-            )
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            break
-        }
-        if (page.items.isEmpty()) continue
-        com.tmplayer.online.KnownMedia.note(page.items)
-        val wanted = com.tmplayer.data.Fuzzy.tokens(title).toSet()
-        val hit = page.items.firstOrNull { item ->
-            val parsed = com.tmplayer.data.MediaName.parse(item.fileName, item.caption)
-            val yearsOk = credit.year == null || parsed.year == null || credit.year == parsed.year
-            yearsOk && com.tmplayer.data.Fuzzy.tokens(parsed.title).toSet() == wanted
-        }
-        if (hit != null) found[credit.ref.matchKey] = hit
+    kotlinx.coroutines.coroutineScope {
+        val slots = kotlinx.coroutines.sync.Semaphore(PERSON_SEARCH_AT_ONCE)
+        missing.map { entry ->
+            kotlinx.coroutines.async {
+                slots.withPermit {
+                    val hit = personCreditAsk(entry) ?: return@withPermit
+                    synchronized(found) { found[entry.credit.ref.matchKey] = hit }
+                }
+            }
+        }.awaitAll()
     }
     if (found.isEmpty()) return entries
     return entries.map { entry -> found[entry.credit.ref.matchKey]?.let { entry.copy(item = it) } ?: entry }
+}
+
+/**
+ * The find among [items] that is [entry]'s title: its name reads as the
+ * credit's title and its year does not fight the credit's.
+ */
+private fun creditHit(entry: FilmographyEntry, items: List<MediaItem>): MediaItem? {
+    val credit = entry.credit
+    val wanted = com.tmplayer.data.Fuzzy.tokens(credit.ref.title.trim()).toSet()
+    return items.firstOrNull { item ->
+        val parsed = com.tmplayer.data.MediaName.parse(item.fileName, item.caption)
+        val yearsOk = credit.year == null || parsed.year == null || credit.year == parsed.year
+        yearsOk && com.tmplayer.data.Fuzzy.tokens(parsed.title).toSet() == wanted
+    }
+}
+
+/**
+ * One credit asked for on Telegram itself, at the viewer's own press on its
+ * row (owner, v1.0.24): the same ask [personSearchFill] makes in its line,
+ * for the one title the viewer is looking at. A find is noted into the pool
+ * and handed back; no find, or Telegram refusing, hands back null and the
+ * row keeps its marking.
+ */
+private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
+    val title = entry.credit.ref.title.trim()
+    if (title.length < 3) return null
+    val page = try {
+        com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
+            title,
+            com.tmplayer.data.AllChatsCursor(),
+            com.tmplayer.data.SearchFilters(),
+        )
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        return null
+    }
+    if (page.items.isEmpty()) return null
+    com.tmplayer.online.KnownMedia.note(page.items)
+    return creditHit(entry, page.items)
 }
 
 /**
@@ -787,9 +829,14 @@ private suspend fun personSearchFill(entries: List<FilmographyEntry>): List<Film
  * filmography from TMDB, newest first. A title one of the viewer's chats holds is marked
  * "In your chats" and opens by the page's own opener; the rest stand as filmography
  * entries marked "Not in your chats", the same honesty as a season list's missing
- * episodes, and are not presses. Credits the local marking misses are then asked
+ * episodes. Credits the local marking misses are then asked
  * for on Telegram itself ([personSearchFill]), so a title held in a chat nothing
- * has listed yet is upgraded in place rather than standing as missing. Where TMDB has nothing for the person, only the titles
+ * has listed yet is upgraded in place rather than standing as missing, and the
+ * marking is kept against the pool as it fills behind the standing page, so a
+ * credit the chats hold never stands as missing for the page's whole life
+ * (owner, v1.0.24). A press on a row still marked missing asks for that one
+ * title there and then ([personCreditAsk]) and opens it when it is found.
+ * Where TMDB has nothing for the person, only the titles
  * in the chats are listed, as the page always did. Back, a press outside the card, or
  * the close button leaves; on a television the close button takes the remote first, as
  * the enlarged face's does, and Down walks to the rows.
@@ -816,7 +863,42 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
             val filled = withContext(Dispatchers.Default) { personSearchFill(films) }
             if (filled !== films) value = PersonPageData(filled, local.extraHeld)
         }
+        // The pool keeps filling behind the standing page (owner, v1.0.24):
+        // Home's deepening and other pages' loads note titles the marking
+        // above never saw, and a credit they hold stood as not in the chats
+        // for as long as the page stood, however long that was. Each pool
+        // change re-marks the credits against it, and a row once upgraded,
+        // by whatever stage upgraded it, is never taken back down.
+        val standing = value
+        val filmsNow = standing?.filmography
+        if (standing != null && filmsNow != null && filmsNow.any { !it.playable }) {
+            var current = filmsNow
+            var extraNow = standing.extraHeld
+            com.tmplayer.online.KnownMedia.version.collect {
+                val heldNow = withContext(Dispatchers.Default) { personTitles(person.name) }
+                val remarked = withContext(Dispatchers.Default) {
+                    val fresh = markCredits(current.map { it.credit }, heldNow)
+                    fresh.map { entry ->
+                        if (entry.playable) entry
+                        else current.firstOrNull { it.credit.ref.matchKey == entry.credit.ref.matchKey }?.takeIf { it.playable } ?: entry
+                    }
+                }
+                val covered = remarked.mapTo(HashSet()) { it.credit.ref.matchKey }
+                val extra = heldNow.filter { MetaRef.matchKey(it.info.provider, it.info.kind, it.info.id) !in covered }
+                if (remarked != current || extra != extraNow) {
+                    current = remarked
+                    extraNow = extra
+                    value = PersonPageData(remarked, extra)
+                }
+            }
+        }
     }
+    // A press on a row still marked as not in the chats asks Telegram for that
+    // one title there and then (owner, v1.0.24): the upgrades it finds stand
+    // on the row, and a find opens at once, as a held row's press opens.
+    val askScope = androidx.compose.runtime.rememberCoroutineScope()
+    var upgrades by remember(person.name) { mutableStateOf<Map<String, MediaItem>>(emptyMap()) }
+    var asking by remember(person.name) { mutableStateOf<Set<String>>(emptySet()) }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
@@ -879,7 +961,26 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                             }
                         }
                         items(data.filmography.orEmpty(), key = { "credit-" + it.credit.ref.matchKey }) { entry ->
-                            FilmographyRow(entry) { entry.item?.let(onOpenItem) }
+                            val shown = upgrades[entry.credit.ref.matchKey]?.let { found -> entry.copy(item = found) } ?: entry
+                            FilmographyRow(
+                                entry = shown,
+                                asking = entry.credit.ref.matchKey in asking,
+                                onOpen = { shown.item?.let(onOpenItem) },
+                                onAsk = {
+                                    val key = entry.credit.ref.matchKey
+                                    if (key !in asking) {
+                                        asking = asking + key
+                                        askScope.launch {
+                                            val hit = personCreditAsk(entry)
+                                            asking = asking - key
+                                            if (hit != null) {
+                                                upgrades = upgrades + (key to hit)
+                                                onOpenItem(hit)
+                                            }
+                                        }
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -952,11 +1053,17 @@ private fun PersonTitleRow(title: PersonTitle, onOpen: () -> Unit) {
 /**
  * One row of the filmography: the poster, the title, its year and the part played or the job
  * done, then where it stands with the viewer's chats. A title the chats hold is a press that
- * opens it, marked in the accent; one they do not hold is dimmed, marked as not here, and no
- * press at all, so a remote never lands on a dead row.
+ * opens it, marked in the accent. One they do not hold stands dimmed, marked as not here,
+ * and its press is not dead either (owner, v1.0.24): it asks Telegram for that one title
+ * ([onAsk]), the row showing the ask while it runs, and a find upgrades the row and opens.
  */
 @Composable
-private fun FilmographyRow(entry: FilmographyEntry, onOpen: () -> Unit) {
+private fun FilmographyRow(
+    entry: FilmographyEntry,
+    asking: Boolean = false,
+    onOpen: () -> Unit,
+    onAsk: (() -> Unit)? = null,
+) {
     val s = LocalStrings.current
     val tv = !isTouch()
     val playable = entry.playable
@@ -970,10 +1077,10 @@ private fun FilmographyRow(entry: FilmographyEntry, onOpen: () -> Unit) {
             .clip(RoundedCornerShape(Corner.Medium))
             .background(if (focused) Tone.focusFill else Tone.surfaceHigh)
             .then(
-                if (playable) {
-                    Modifier.clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onOpen)
-                } else {
-                    Modifier
+                when {
+                    playable -> Modifier.clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onOpen)
+                    onAsk != null -> Modifier.clickable(interactionSource = interactions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onAsk)
+                    else -> Modifier
                 },
             )
             .padding(8.dp),
@@ -1001,7 +1108,11 @@ private fun FilmographyRow(entry: FilmographyEntry, onOpen: () -> Unit) {
                 Text(facts, style = MaterialTheme.typography.bodySmall, color = if (focused) Tone.onFocusFill else Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(
-                if (playable) s.metadataInYourChats else s.metadataNotInYourChats,
+                when {
+                    playable -> s.metadataInYourChats
+                    asking -> s.commonLoading
+                    else -> s.metadataNotInYourChats
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = when {
                     focused -> Tone.onFocusFill

@@ -27,6 +27,19 @@ interface TrackPickerHost {
     fun attachOnlineSubtitle(file: File, label: String)
 
     /**
+     * The viewer turned subtitles off on this video, by the Off row or by
+     * tapping the standing track again. The default host notes nothing.
+     */
+    fun subtitleTurnedOff() {}
+
+    /**
+     * The viewer deliberately chose a different subtitle on this video: an
+     * embedded track from the list, or an online subtitle that is not the
+     * series' remembered kind. The default host notes nothing.
+     */
+    fun subtitleSwitched() {}
+
+    /**
      * An MSone release the viewer just picked for this video (owner, v1.0.23):
      * where the video is an episode, the pick is remembered for its series, so
      * the next episode asks the same release for its own file on its own. The

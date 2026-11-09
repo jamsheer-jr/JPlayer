@@ -2780,7 +2780,16 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     private fun findCopies() {
         val here = currentItem()
-        setCopies(CopyHandoff.copiesOf(here))
+        // The copies handed over, widened by everything the pool already holds
+        // of this video (owner, v1.0.24): an episode opened from a series page
+        // whose fill was still running, or resumed, carried only the copies
+        // that page had gathered when it was tapped, so the player showed the
+        // one version while other chats' copies of the same episode stood in
+        // the pool unasked. The detail page's Versions widens the same way
+        // ([com.tmplayer.data.SameTitle.withPoolCopies]); the two lists are
+        // unioned here so neither source narrows the other.
+        val widened = com.tmplayer.data.SameTitle.withPoolCopies(here, com.tmplayer.online.KnownMedia.all())
+        setCopies(CopyHandoff.copiesOf(here) + widened.versions)
         // The quality played counts towards the one chosen for the viewer next time.
         val played = copies.firstOrNull { it.id == here.id } ?: here
         App.backgroundScope.launch { runCatching { settings.notePlayedQuality(played) } }
@@ -6338,6 +6347,30 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     override fun attachOnlineSubtitle(file: File, label: String) = subtitleFiles.attachFile(file, label)
+
+    /**
+     * The viewer turned subtitles off on this video (owner, v1.0.24): the off
+     * ends the series' MSone memory, so the next episode does not load the
+     * release again unasked. He had turned MSone on for a first episode and
+     * off again in the same sitting, and the third episode still loaded it:
+     * the pick was remembered (v1.0.23), but the off was not. A fresh MSone
+     * pick on any episode remembers it again, as before.
+     */
+    override fun subtitleTurnedOff() = forgetSeriesMsone()
+
+    /**
+     * The viewer chose a different subtitle on this video (owner, v1.0.24):
+     * the switch ends the series' MSone memory the same way turning
+     * subtitles off does, or the next episode would stand the remembered
+     * release over the subtitle he just chose.
+     */
+    override fun subtitleSwitched() = forgetSeriesMsone()
+
+    /** Forgets this video's series' MSone pick, if it has one. */
+    private fun forgetSeriesMsone() {
+        val key = seriesKey
+        App.backgroundScope.launch { runCatching { settings.setMsoneSeries(key, null) } }
+    }
 
     /**
      * Remembers an MSone pick for this video's series (owner, v1.0.23): the

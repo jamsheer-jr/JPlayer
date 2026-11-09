@@ -242,8 +242,10 @@ class TrackPickerFragment : Fragment() {
                         host?.attachOnlineSubtitle(done.file, done.label)
                         // An MSone pick on an episode is the series' pick too
                         // (owner, v1.0.23): the host remembers it, and the next
-                        // episode asks the same release for its own file.
-                        if (hit.provider == SubtitleProvider.Msone) host?.noteMsonePick(hit)
+                        // episode asks the same release for its own file. Any
+                        // other online pick is a switch away from it (owner,
+                        // v1.0.24), and the host hears about that too.
+                        if (hit.provider == SubtitleProvider.Msone) host?.noteMsonePick(hit) else host?.subtitleSwitched()
                         close()
                     }
                     is DownloadResult.Failed -> subtitleDownload.failed.value = hit to done.notice
@@ -517,10 +519,18 @@ class TrackPickerFragment : Fragment() {
             val builder = player.trackSelectionParameters.buildUpon().clearOverridesOfType(trackType)
             if (option.group == null) {
                 builder.setTrackTypeDisabled(trackType, true)
+                // An explicit off is a decision the host hears about (owner,
+                // v1.0.24): it ends what an earlier pick set standing, the
+                // series' MSone memory among them.
+                if (trackType == C.TRACK_TYPE_TEXT) host?.subtitleTurnedOff()
             } else {
                 builder
                     .setTrackTypeDisabled(trackType, false)
                     .setOverrideForType(TrackSelectionOverride(option.group.mediaTrackGroup, option.trackIndex))
+                // A deliberate switch to another subtitle is a decision too
+                // (owner, v1.0.24): what an earlier pick set standing for the
+                // series does not survive the viewer choosing differently.
+                if (trackType == C.TRACK_TYPE_TEXT) host?.subtitleSwitched()
             }
             player.trackSelectionParameters = builder.build()
         }

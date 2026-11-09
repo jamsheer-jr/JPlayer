@@ -13,17 +13,27 @@ import com.tmplayer.data.SizeFilter
 import com.tmplayer.data.Td
 import com.tmplayer.platform.LruMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * A show's page with every episode the chats hold, not only those the screen it was opened from
- * had read ([SeriesFill]): [series] on the first frame, then the show made whole once the chats
- * have been searched for it, a page at a time up to [SeriesFill.MAX_PAGES]. Kept per show for the
+ * had read ([SeriesFill]): [series] on the first frame, then the show made whole as the chats
+ * are searched for it, a page at a time up to [SeriesFill.MAX_PAGES]. Kept per show for the
  * run, so opening it again draws it whole at once and asks again only behind it.
  */
 @Composable
 fun rememberWholeSeries(series: Series): Series {
     val whole by produceState(WholeSeries.peek(series) ?: series, series) {
-        val read = runCatching { WholeSeries.read(series) }.getOrElse { failure ->
+        val read = runCatching {
+            WholeSeries.read(series, onProgress = { grown -> if (grown != value) value = grown })
+        }.getOrElse { failure ->
             if (failure is CancellationException) throw failure
             null
         }
@@ -51,29 +61,68 @@ object WholeSeries {
      * loaded pages of stand for the visible ones; while the gate is unread, the show's own
      * chat alone is asked (see [TitleScope]). A chat that holds none of the show costs one
      * empty page and is asked no further.
+     *
+     * The other chats are asked together, not one after another, and the show grows on the
+     * page as each chat answers ([onProgress] with the show as it stands), the same shape
+     * [TitleMediaLoad] fills a title's copies in (owner, v1.0.24: a series he was already
+     * watching showed only its own chat's episodes for as long as a line of chats was read
+     * one by one, and leaving early lost everything the line had found). Each chat's finds
+     * are noted into the pool as they land, so episodes opened from the page carry every
+     * chat's copies, and one chat's search is bounded the title load's own way: a chat
+     * Telegram never answers gives up its slot. A read a slow chat cut short is not kept,
+     * so a later open asks the missing chats again.
      */
     suspend fun read(
         series: Series,
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors, topicId: Int) -> MediaPage? = ::telegram,
+        onProgress: (Series) -> Unit = {},
     ): Series {
         val query = SeriesFill.queryOf(series) ?: return series
         val chatId = series.cover.chatId
-        val found = ArrayList<MediaItem>()
-        found += search(fetch, chatId, query, series.cover.topicId)
-        // The gate awaited, not only read: at a cold open the stored choice may not have
-        // been read yet, and the value standing there would narrow the set to nothing.
-        // The chats asked are the title load's own decision ([TitleScope], v1.0.15): an
-        // unread gate asks the show's own chat alone rather than every listed chat, and
-        // that narrower answer is not kept, so a later open asks again with the real scope.
-        val gate = com.tmplayer.data.ChatGate.awaitBrowsing()
-        val gateKnown = com.tmplayer.data.ChatGate.awaitBrowsingKnown()
-        val others = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()).drop(1)
-        for (other in others) {
-            // The show's topic is its own chat's; another chat is asked whole.
-            found += search(fetch, other, query, topicId = 0)
+        var whole = peek(series) ?: series
+        val own = search(fetch, chatId, query, series.cover.topicId)
+        if (own.isNotEmpty()) {
+            com.tmplayer.online.KnownMedia.note(own)
+            val merged = SeriesFill.merge(whole, own)
+            if (merged != whole) {
+                whole = merged
+                onProgress(whole)
+            }
         }
-        val whole = SeriesFill.merge(peek(series) ?: series, found)
-        if (gate != null || gateKnown) kept[keyOf(series)] = whole
+        // The gate awaited, but bounded, as the title load bounds it: at a cold open
+        // the stored choice may not have been read yet, and an unanswered gate reads
+        // as unknown, asking the show's own chat alone, unremembered.
+        // The chats asked are the title load's own decision ([TitleScope], v1.0.15).
+        val gate = withTimeoutOrNull(GATE_WAIT_MS) { com.tmplayer.data.ChatGate.awaitBrowsing() }
+        val gateKnown = withTimeoutOrNull(GATE_WAIT_MS) { com.tmplayer.data.ChatGate.awaitBrowsingKnown() } ?: false
+        val others = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()).drop(1)
+        var incomplete = false
+        if (others.isNotEmpty()) {
+            val lock = Mutex()
+            coroutineScope {
+                val slots = Semaphore(CHATS_AT_ONCE)
+                others.map { other ->
+                    async {
+                        slots.withPermit {
+                            // The show's topic is its own chat's; another chat is asked whole.
+                            val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, other, query, topicId = 0) }
+                            if (found == null) {
+                                incomplete = true
+                            } else if (found.isNotEmpty()) {
+                                com.tmplayer.online.KnownMedia.note(found)
+                                val merged = lock.withLock {
+                                    val next = SeriesFill.merge(whole, found)
+                                    whole = next
+                                    next
+                                }
+                                onProgress(merged)
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+        if ((gate != null || gateKnown) && !incomplete) kept[keyOf(series)] = whole
         return whole
     }
 
@@ -101,6 +150,15 @@ object WholeSeries {
     }
 
     private fun keyOf(series: Series) = "${series.cover.chatId}|${series.key}"
+
+    /** How long the browsing gate's read may take before the read goes on without it. */
+    private const val GATE_WAIT_MS = 3_000L
+
+    /** How long one chat's search may run before that chat is left out of this read. */
+    private const val CHAT_SEARCH_MS = 15_000L
+
+    /** Chats asked at once for one show: a handful in flight, never the whole line at once. */
+    private const val CHATS_AT_ONCE = 6
 
     /** Shows kept made whole: a run's worth of pages opened. */
     private const val KEPT = 48
