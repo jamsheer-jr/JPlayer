@@ -361,8 +361,24 @@ object SeriesShelf {
                 ?.takeIf { other -> mine.count { it in numbersOf[other].orEmpty() } * 2 >= mine.size }
                 ?: key
         }
+        // A show some chats post with a brand tag before its name ("KC Vikings
+        // Valhalla" beside "Vikings Valhalla") is the same show (owner, v1.0.25):
+        // its key joins the bare key it ends with, under the same guard as the
+        // starts with rule above, and only where the word before the name reads
+        // as a brand tag, so a title word never folds a show into another.
+        val aliased = strictShowKeys.associateWith { key ->
+            val own = strictAlias.getValue(key)
+            if (own != key) return@associateWith own
+            val first = strict.filterNotNull().firstOrNull { it.key == key }?.name?.title
+                ?.trim()?.split(' ')?.firstOrNull().orEmpty()
+            if (!brandWord(first)) return@associateWith key
+            val mine = numbersOf[key].orEmpty()
+            brandTarget(key, strictShowKeys)
+                ?.takeIf { other -> mine.count { it in numbersOf[other].orEmpty() } * 2 >= mine.size }
+                ?: key
+        }
         // A show established by bare episodes alone is known by its own name as it stands.
-        val alias = strictAlias + (showKeys - strictShowKeys).associateWith { it }
+        val alias = aliased + (showKeys - strictShowKeys).associateWith { it }
 
         // Everything else gets a second look, now that the chat has said which shows it holds. A
         // file the viewer renamed, or one that is a trailer, is read only as it now reads. A
@@ -683,6 +699,26 @@ object SeriesShelf {
      * other way round. The longest such show, and only when it stands alone at that
      * length, so two shows a name could tail-match never share a pack.
      */
+    /**
+     * Whether [word] reads as a brand tag an uploader puts before a title: two or
+     * three characters, capitals and digits with at least one letter ("KC", "MM").
+     * A word of a real title never reads as one, so a show that merely begins with
+     * another show's name keeps its own name.
+     */
+    fun brandWord(word: String): Boolean =
+        word.length in 2..3 && word.any { it.isLetter() } && word.all { it.isUpperCase() || it.isDigit() }
+
+    /**
+     * The show key [key] folds into for wearing a word before that show's name:
+     * the longest key [key] ends with, on a word boundary, itself at least two
+     * words, or null. The caller checks the word before the name reads as a
+     * brand tag ([brandWord]) and that the episodes agree, so a longer title
+     * that is a show of its own never folds.
+     */
+    fun brandTarget(key: String, keys: Set<String>): String? =
+        keys.filter { other -> other != key && key.endsWith(" $other") && other.split(' ').size >= 2 }
+            .maxByOrNull { it.length }
+
     private fun suffixKin(key: String, showKeys: Set<String>): String? {
         val kin = showKeys.filter { other -> other != key && (key.endsWith(" $other") || other.endsWith(" $key")) }
         if (kin.isEmpty()) return null

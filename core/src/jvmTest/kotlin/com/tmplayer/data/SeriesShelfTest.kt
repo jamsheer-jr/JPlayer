@@ -83,6 +83,58 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `a brand tag before the name folds into the bare show`() {
+        val items = listOf(
+            video("Vikings.Valhalla.S01E01.720p.mkv"),
+            video("Vikings.Valhalla.S01E02.720p.mkv"),
+            video("KC Vikings Valhalla S01E01 720p.mkv"),
+            video("KC Vikings Valhalla S01E02 720p.mkv"),
+            video("MM Vikings Valhalla S01E01 720p.mkv"),
+            video("MM Vikings Valhalla S01E02 720p.mkv"),
+        )
+        val show = shows(SeriesShelf.arrange(items)).single()
+        assertEquals("vikings valhalla", show.key)
+        assertEquals(2, show.episodeCount)
+        assertEquals(3, show.episodes[0].copies.size)
+        assertEquals(3, show.episodes[1].copies.size)
+    }
+
+    @Test
+    fun `a branded show with no bare show stands as its own show`() {
+        val items = listOf(
+            video("KC Vikings Valhalla S01E01 720p.mkv"),
+            video("KC Vikings Valhalla S01E02 720p.mkv"),
+        )
+        val show = shows(SeriesShelf.arrange(items)).single()
+        assertEquals("kc vikings valhalla", show.key)
+        assertEquals(2, show.episodeCount)
+    }
+
+    @Test
+    fun `a sequel named after its parent stays apart from it`() {
+        val items = listOf(
+            video("Vikings.S01E01.720p.mkv"),
+            video("Vikings.S01E02.720p.mkv"),
+            video("Vikings.Valhalla.S01E01.720p.mkv"),
+            video("Vikings.Valhalla.S01E02.720p.mkv"),
+        )
+        val keys = shows(SeriesShelf.arrange(items)).map { it.key }
+        assertEquals(listOf("vikings", "vikings valhalla"), keys.sorted())
+    }
+
+    @Test
+    fun `a title word before the name is no brand tag`() {
+        val items = listOf(
+            video("Star.Wars.S01E01.720p.mkv"),
+            video("Star.Wars.S01E02.720p.mkv"),
+            video("Lego Star Wars S01E01 720p.mkv"),
+            video("Lego Star Wars S01E02 720p.mkv"),
+        )
+        val keys = shows(SeriesShelf.arrange(items)).map { it.key }
+        assertEquals(listOf("lego star wars", "star wars"), keys.sorted())
+    }
+
+    @Test
     fun `seasons come out in order with their episodes in order`() {
         val items = listOf(
             video("Studio.Sessions.S02E02.mkv"),

@@ -261,6 +261,25 @@ class GlobalSearchTest {
     }
 
     @Test
+    fun `a brand tag before the name is the same show in search`() {
+        val groups = GlobalSearch.merge(
+            emptyList(),
+            listOf(
+                video(1, 1, "Vikings.Valhalla.S01E01.720p.mkv"),
+                video(1, 2, "Vikings.Valhalla.S01E02.720p.mkv"),
+                video(2, 3, "KC Vikings Valhalla S01E01 720p.mkv"),
+                video(2, 4, "KC Vikings Valhalla S01E02 720p.mkv"),
+                video(2, 5, "MM Vikings Valhalla S01E01 720p.mkv"),
+            ),
+            q("vikings valhalla"),
+        )
+        val show = groups.single()
+        assertTrue(show.isShow)
+        assertEquals(2, show.episodeCount)
+        assertEquals(5, show.copies.size)
+    }
+
+    @Test
     fun `a season pack and a file matched to the show join the show's card, on a later page too`() {
         val matched = object : SearchIdentity by SearchIdentity.Default {
             override fun onlineKey(item: MediaItem): String? =

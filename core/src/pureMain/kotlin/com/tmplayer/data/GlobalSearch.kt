@@ -396,6 +396,38 @@ object GlobalSearch {
         }
         building.removeAll(gone)
 
+        // A show wearing a brand tag before its name ("KC Vikings Valhalla" beside
+        // "Vikings Valhalla") is the same show (owner, v1.0.25): its card joins the
+        // bare show's card when most of its episodes are ones the bare card holds,
+        // the rule the shelves use ([SeriesShelf.brandTarget]). It runs on every
+        // merge, so a branded card from an earlier page folds when the bare card
+        // arrives on a later one. A card that folds away itself receives nothing.
+        fun numbersOf(group: Building): Set<Pair<Int, Int>> =
+            group.copies.mapNotNullTo(HashSet()) { item ->
+                val name = SeriesShelf.episodeOf(item)
+                name.episode?.let { (name.season ?: 1) to it }
+            }
+        val showGroups = building.filter { it.show != null && !it.extra }
+        val showKeys = showGroups.mapTo(HashSet()) { SeriesShelf.keyOf(it.show.orEmpty()) }
+        val foldInto = HashMap<Building, Building>()
+        for (group in showGroups) {
+            val title = group.show.orEmpty()
+            val first = title.trim().split(' ').firstOrNull().orEmpty()
+            if (!SeriesShelf.brandWord(first)) continue
+            val targetKey = SeriesShelf.brandTarget(SeriesShelf.keyOf(title), showKeys) ?: continue
+            val owner = showGroups.firstOrNull { SeriesShelf.keyOf(it.show.orEmpty()) == targetKey } ?: continue
+            val mine = numbersOf(group)
+            if (mine.isNotEmpty() && mine.count { it in numbersOf(owner) } * 2 >= mine.size) foldInto[group] = owner
+        }
+        val receivers = foldInto.values.toSet()
+        val folded = HashSet<Building>()
+        for ((group, owner) in foldInto) {
+            if (group in receivers) continue
+            owner.copies += group.copies
+            folded += group
+        }
+        building.removeAll(folded)
+
         val built = building.map { group ->
             val old = group.old
             if (old != null && group.copies.size == old.copies.size) old else ResultGroup(group.key, identity.copyOrder(group.copies), group.show, group.extra)
