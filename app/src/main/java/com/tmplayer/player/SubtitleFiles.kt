@@ -154,7 +154,7 @@ class SubtitleFiles(
             val copied = withContext(Dispatchers.IO) { runCatching { copy(uri, name, extension, fps) }.getOrNull() }
             when (copied) {
                 null -> say(L.tracksFileUnreadable(name))
-                is Copy.Refused -> copied.reason?.let(::say)
+                is Copy.Refused -> copied.reason?.let { say(it) }
                 is Copy.Done -> {
                     val (ready, label) = maybeTranslate(copied, copied.entryName ?: name)
                     attach(ready, label)
@@ -196,7 +196,7 @@ class SubtitleFiles(
                     }
                     when (stored) {
                         null -> say(L.tracksUrlFailed)
-                        is Copy.Refused -> stored.reason?.let(::say)
+                        is Copy.Refused -> stored.reason?.let { say(it) }
                         is Copy.Done -> {
                             val (ready, label) = maybeTranslate(stored, stored.entryName ?: name)
                             attach(ready, label)
