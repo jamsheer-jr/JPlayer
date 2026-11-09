@@ -404,7 +404,7 @@ object SeriesShelf {
             val showKey = when {
                 name.titleKey in shows -> name.titleKey
                 alias[name.titleKey] in shows -> alias.getValue(name.titleKey)
-                else -> return@forEach
+                else -> suffixKin(name.titleKey, shows.keys) ?: return@forEach
             }
             packGroups.getOrPut(showKey to name.season) { ArrayList() } += index
         }
@@ -675,6 +675,21 @@ object SeriesShelf {
      * A shortened name has to keep two words at least, so "Harbour" never swallows a file into
      * "Harbour Notes".
      */
+    /**
+     * The one show [key] is the tail of, or that is the tail of [key], word boundaried:
+     * a show's own episode files can lose the head of their title in the reading (a
+     * dotted name whose opening words read as a site address, "Make.Me.Tingle.S01E01"
+     * read as the show "Tingle"), while the season pack keeps the title whole, or the
+     * other way round. The longest such show, and only when it stands alone at that
+     * length, so two shows a name could tail-match never share a pack.
+     */
+    private fun suffixKin(key: String, showKeys: Set<String>): String? {
+        val kin = showKeys.filter { other -> other != key && (key.endsWith(" $other") || other.endsWith(" $key")) }
+        if (kin.isEmpty()) return null
+        val longest = kin.maxOf { it.length }
+        return kin.singleOrNull { it.length == longest }
+    }
+
     private fun joining(found: Found, showKeys: Set<String>): String? {
         val keys = listOf(found.key) + found.alternates
         keys.firstOrNull { it in showKeys }?.let { return it }

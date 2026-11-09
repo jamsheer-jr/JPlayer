@@ -507,27 +507,7 @@ class SeriesShelfTest {
     }
 
     @Test
-    fun `diagnose the dotted pack arrangement`() {
-        val items = listOf(
-            video("Make.Me.Tingle.S01E01.mkv"),
-            video("Make.Me.Tingle.S01E02.mkv"),
-            video("Make Me Tingle S01 720p HEVC COMBINED AMZN WEB-DL.mkv"),
-        )
-        items.forEach { item ->
-            val name = SeriesShelf.episodeOf(item)
-            println("DIAG ${item.fileName} -> title='${name.title}' key='${name.titleKey}' season=${name.season} episode=${name.episode} extra=${name.extra} year=${name.year}")
-        }
-        val entries = SeriesShelf.arrange(items)
-        entries.forEach { entry ->
-            when (entry) {
-                is ShelfEntry.Show -> println("DIAG show key='${entry.series.key}' title='${entry.series.title}' episodes=${entry.series.episodes.map { it.episode }} packs=${entry.series.packs.size}")
-                is ShelfEntry.File -> println("DIAG file '${entry.item.fileName}'")
-            }
-        }
-    }
-
-    @Test
-    fun `bisect dotted singles with a season pack`() {
+    fun `singles whose dotted title lost its head words still take their season pack`() {
         val items = listOf(
             video("Make.Me.Tingle.S01E01.mkv"),
             video("Make.Me.Tingle.S01E02.mkv"),
@@ -538,7 +518,7 @@ class SeriesShelfTest {
     }
 
     @Test
-    fun `bisect spaced singles with a season pack, guide dates and sizes`() {
+    fun `spaced singles with plain dates and sizes take their season pack`() {
         val items = listOf(
             video("Make Me Tingle S01E01.mkv", date = 11, size = 100),
             video("Make Me Tingle S01E02.mkv", date = 12, size = 100),
