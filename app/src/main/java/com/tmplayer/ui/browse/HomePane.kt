@@ -51,6 +51,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -123,6 +124,7 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.Focus
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
 import androidx.compose.material3.Text as M3Text
@@ -1975,14 +1977,17 @@ private fun LanguageTile(
  * them carries one, the first entry heads it anyway and the banner's own
  * metadata art fills in as it lands, as it does today.
  */
+/** Whether [entry] carries a picture of its own, the hero's ask (see [heroEntry]). */
+private fun entryHasPicture(entry: ShelfEntry): Boolean {
+    val item = when (entry) {
+        is ShelfEntry.File -> entry.item
+        is ShelfEntry.Show -> entry.series.cover
+    }
+    return item.thumbnailFileId > 0 || item.miniThumbnail?.isNotEmpty() == true
+}
+
 private fun heroEntry(entries: List<ShelfEntry>): ShelfEntry =
-    entries.firstOrNull { entry ->
-        val item = when (entry) {
-            is ShelfEntry.File -> entry.item
-            is ShelfEntry.Show -> entry.series.cover
-        }
-        item.thumbnailFileId > 0 || item.miniThumbnail?.isNotEmpty() == true
-    } ?: entries.first()
+    entries.firstOrNull { entry -> entryHasPicture(entry) } ?: entries.first()
 
 /**
  * A category page's banner (owner, v1.0.17): the category's first title standing wide
@@ -2180,9 +2185,22 @@ private fun CatalogSeeAll(
         // columns fit, the banner shrank to them and its Play pill's label
         // was crushed to its first letters by the pill's own padding.
         // A See all page keeps the plain grid it always had.
+        // The banner turns like Home's (owner, v1.0.23): the page's first
+        // pictured titles, a plain cut every few seconds, Play and My List
+        // following the title shown.
         if (hero && touch && entries.isNotEmpty()) {
+            val heroPool = remember(entries) { entries.filter { entry -> entryHasPicture(entry) }.take(5) }
+            var heroIndex by remember(entries) { mutableIntStateOf(0) }
+            LaunchedEffect(heroPool.size) {
+                if (heroPool.size > 1) {
+                    while (true) {
+                        delay(3_000L)
+                        heroIndex = (heroIndex + 1) % heroPool.size
+                    }
+                }
+            }
             CategoryHero(
-                entry = heroEntry(entries),
+                entry = heroPool.getOrNull(heroIndex) ?: heroEntry(entries),
                 watch = watch,
                 chatTitle = chatTitle,
                 onPlay = onPlay,
@@ -2196,8 +2214,14 @@ private fun CatalogSeeAll(
             // give it (owner, v1.0.19: inside a category the posters stood
             // stretched wide, two big ones across, not Home's size): the cells
             // are the measure, and a narrower screen simply fits fewer across.
+            // A category page on a phone is the exception (owner, v1.0.23):
+            // three across, the posters a step narrower than the rows'.
             columns = if (poster) {
-                androidx.compose.foundation.lazy.grid.GridCells.FixedSize(posterWidth(touch))
+                if (hero && touch) {
+                    androidx.compose.foundation.lazy.grid.GridCells.Fixed(3)
+                } else {
+                    androidx.compose.foundation.lazy.grid.GridCells.FixedSize(posterWidth(touch))
+                }
             } else {
                 androidx.compose.foundation.lazy.grid.GridCells.Adaptive(wideWidth(touch))
             },
