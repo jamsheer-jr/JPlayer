@@ -240,6 +240,10 @@ class TrackPickerFragment : Fragment() {
                     null -> subtitleDownload.failed.value = hit to SubtitleNotice.Offline
                     is DownloadResult.Done -> {
                         host?.attachOnlineSubtitle(done.file, done.label)
+                        // An MSone pick on an episode is the series' pick too
+                        // (owner, v1.0.23): the host remembers it, and the next
+                        // episode asks the same release for its own file.
+                        if (hit.provider == SubtitleProvider.Msone) host?.noteMsonePick(hit)
                         close()
                     }
                     is DownloadResult.Failed -> subtitleDownload.failed.value = hit to done.notice
@@ -591,9 +595,11 @@ class TrackPickerFragment : Fragment() {
                 }
             }
             else -> {
-                // A pair of tracks both inside the video: a downloaded video gives
-                // its second track to the silent companion player; a streamed one
-                // cannot, and keeps the pair-of-overrides way below.
+                // A pair of tracks both inside the video: the second track goes
+                // to the silent companion player, which reads the same source
+                // the main player reads (a file, a stream link, a Telegram
+                // video). Only a split set joined from pieces has no such
+                // source, and keeps the pair-of-overrides way below.
                 val embeddedId = group.getTrackFormat(option.trackIndex).id
                 if (embeddedId != null && pickerHost.takeEmbeddedCompanion(embeddedId)) {
                     close()
@@ -605,13 +611,14 @@ class TrackPickerFragment : Fragment() {
     }
 
     /**
-     * The leftover path for a pair of tracks both inside a STREAMED video: the pair is
-     * rebuilt as two overrides of the text type, the main track first. Media3 renders
-     * only one of them (1.11.1: one text definition per type), and a stream has no
-     * whole file for the companion player to read a second track out of, so this
-     * stands for streams (see [pickTrack], which takes every other pair itself).
-     * Picking the track that is already the companion takes it off again; picking
-     * with nothing playing makes the pick the only track.
+     * The leftover path for a pair of tracks both inside a video the companion
+     * player cannot read (a split set joined from pieces): the pair is rebuilt
+     * as two overrides of the text type, the main track first. Media3 renders
+     * only one of them (1.11.1: one text definition per type), so on such a
+     * video the tap names the companion without the pair ever standing
+     * together; every other source goes to the companion player instead (see
+     * [pickTrack]). Picking the track that is already the companion takes it
+     * off again; picking with nothing playing makes the pick the only track.
      */
     private fun chooseSecond(option: Option) {
         val player = host?.player

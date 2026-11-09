@@ -170,6 +170,7 @@ import com.tmplayer.online.OnlineMetadata
 import com.tmplayer.online.SkipSegment
 import com.tmplayer.online.SkipSegments
 import com.tmplayer.online.DownloadResult
+import com.tmplayer.online.MsoneSeriesPick
 import com.tmplayer.online.OnlineSubtitles
 import com.tmplayer.online.SubtitleTarget
 import java.io.File
@@ -2410,6 +2411,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             c.ready = true
             if (c.connected && !c.casting) c.begin(resumeMs.takeIf { it > 0 })
         }
+        // This series' MSone pick stands on this episode too, where one was
+        // made (owner, v1.0.23): asked behind the opening, never in its way.
+        restoreSeriesMsone()
     }
 
     /**
@@ -3058,6 +3062,14 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val exo = player ?: return false
         if (castUp() || streamUrl != null || downloadedVideo != null || joinedSource != null) return false
         if (copy.fileId <= 0 || copy.playingQuality != 0 || copy.isJoined) return false
+        // A swap onto another episode of the series, read before the fields
+        // below are overwritten: the new episode re-arms the asks an opening
+        // makes (companion restore, the MSone pick), which a swap never
+        // passes through (v1.0.23).
+        val leftEpisode = MediaName.parse(mediaFileName, mediaCaption)
+        val nextEpisode = MediaName.parse(copy.fileName, copy.caption)
+        val episodeChanged = nextEpisode.episode != null &&
+            (nextEpisode.episode != leftEpisode.episode || nextEpisode.season != leftEpisode.season)
         val targetChatTitle = copyChatTitle(copy).ifBlank { chatTitle }
         // The copy being left keeps its place, as leaving it for a new player wrote it.
         saveResumePosition(leaving = true)
@@ -3122,6 +3134,28 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         exo.setMediaItem(subtitleFiles.item(source), resumeMs)
         exo.prepare()
         exo.playWhenReady = wasReady
+        if (episodeChanged) {
+            // The new episode's own asks (v1.0.23): the companion this series
+            // was watched with is re-armed from its memory, as an opening
+            // arms it, and the series' MSone pick is asked for. The tracks
+            // callback may land before the memory is read back, so the
+            // restore is run from here as well once the choice stands.
+            companionTouched = false
+            companionLanguageNow = null
+            companionRestorePending = false
+            val key = seriesKey
+            App.backgroundScope.launch {
+                val choice = runCatching { settings.trackChoice(key) }.getOrDefault(TrackChoice())
+                withContext(Dispatchers.Main) {
+                    if (seriesKey == key) {
+                        tracks = choice
+                        companionRestorePending = choice.companionTextLanguage != null
+                        player?.let { restoreCompanion(it.currentTracks) }
+                    }
+                }
+            }
+            restoreSeriesMsone()
+        }
         return true
     }
 
@@ -3648,7 +3682,58 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
      * layer, never as a view of its own).
      */
     private fun renderCues() {
-        showCues(companionNow + mainCues)
+        if (companionNow.isEmpty()) {
+            showCues(mainCues)
+            return
+        }
+        // The pair is normalised before it is laid (owner, v1.0.23, from his
+        // screenshot: the two languages printed on top of each other, one
+        // unreadable mash): a cue that brings its own line or place out of
+        // its track keeps it in the merge, and the two lines land on the same
+        // spot. With line, place and width unset, the view stacks the lines
+        // in order instead. The companion's lines are also made smaller and
+        // dimmer, so the pair reads as one main line with a helper over it,
+        // not two equal lines doubled. A line both tracks carry word for word
+        // stands once, as the main track's.
+        val mainTexts = mainCues.mapNotNull { it.text?.toString()?.trim()?.takeIf(String::isNotEmpty) }.toSet()
+        val companion = companionNow
+            .filter { cue -> cue.text?.toString()?.trim() !in mainTexts }
+            .map { cue -> stackedCue(cue, companion = true) }
+        showCues(companion + mainCues.map { cue -> stackedCue(cue, companion = false) })
+    }
+
+    /**
+     * [cue] ready to stand in the merged pair (see [renderCues]): its own line,
+     * place and width taken off, so the subtitle view stacks it with the other
+     * track's lines instead of painting it where its track alone would have.
+     * A picture cue keeps the shape the film gave it. The companion's text is
+     * shrunk and dimmed a step; the main track's text is left as it stands.
+     */
+    private fun stackedCue(cue: Cue, companion: Boolean): Cue {
+        if (cue.bitmap != null) return cue
+        val builder = cue.buildUpon()
+            .setLine(Cue.DIMEN_UNSET, cue.lineType)
+            .setPosition(Cue.DIMEN_UNSET)
+            .setSize(Cue.DIMEN_UNSET)
+        if (companion) {
+            cue.text?.let { text ->
+                val wrapped = android.text.SpannableString(text)
+                wrapped.setSpan(
+                    android.text.style.RelativeSizeSpan(0.85f),
+                    0,
+                    wrapped.length,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                wrapped.setSpan(
+                    android.text.style.ForegroundColorSpan(0xBFFFFFFF.toInt()),
+                    0,
+                    wrapped.length,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                builder.setText(wrapped)
+            }
+        }
+        return builder.build()
     }
 
     /**
@@ -3699,14 +3784,20 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     }
 
     /**
-     * Takes the embedded track [trackId] of the downloaded video at [uri] on as the
-     * companion: a silent second player reads that one track out of the file, and
-     * its lines join the main track's in the one subtitle view, the same merge the
-     * file companion uses ([renderCues]). A follower keeps the second player where
-     * the main one is, at its speed, with the subtitle sync offset read the way
-     * the file companion's follower reads it.
+     * Takes the embedded track [trackId] of the video at [uri] on as the
+     * companion: a silent second player reads that one track out of the same
+     * source the main player reads ([factory] reads it where the plain data
+     * source cannot, a Telegram video), and its lines join the main track's in
+     * the one subtitle view, the same merge the file companion uses
+     * ([renderCues]). A follower keeps the second player where the main one
+     * is, at its speed, with the subtitle sync offset read the way the file
+     * companion's follower reads it.
      */
-    private fun startEmbeddedCompanion(uri: android.net.Uri, trackId: String) {
+    private fun startEmbeddedCompanion(
+        uri: android.net.Uri,
+        factory: androidx.media3.exoplayer.source.MediaSource.Factory?,
+        trackId: String,
+    ) {
         stopEmbeddedCompanion()
         val companion = EmbeddedCompanion(
             this,
@@ -3715,7 +3806,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 renderCues()
             },
             onUnavailable = {
-                // The track could not be read out of this file: the companion ends
+                // The track could not be read out of this source: the companion ends
                 // quietly and the main track plays on alone.
                 if (companionId == trackId) companionId = null
                 stopEmbeddedCompanion()
@@ -3723,7 +3814,7 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         )
         embeddedCompanion = companion
         val main = player
-        companion.start(uri, trackId, (main?.currentPosition ?: 0L) - syncDelays.subtitleMs)
+        companion.start(uri, factory, trackId, (main?.currentPosition ?: 0L) - syncDelays.subtitleMs)
         embeddedCompanionJob = lifecycleScope.launch {
             while (isActive) {
                 val now = player ?: break
@@ -4301,16 +4392,8 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         //
         // Wrapped last so a Dolby Vision track this device would not show as Dolby Vision reaches
         // the player as its HEVC base layer, which both decoders take ([DolbyVisionBaseLayer]).
-        val extractors = DolbyVisionBaseLayer(
-            this,
-            DefaultExtractorsFactory()
-                .setConstantBitrateSeekingEnabled(true)
-                .setTsExtractorFlags(
-                    androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS or
-                        androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES,
-                )
-                .setTsExtractorTimestampSearchBytes(TS_TIMESTAMP_SEARCH_BYTES),
-        )
+        // The companion shadow reads with the same set ([playerExtractors]).
+        val extractors = playerExtractors()
 
         return ExoPlayer.Builder(this, renderers)
             .setLoadControl(loadControl)
@@ -5218,9 +5301,9 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
     /**
      * Stands the companion this video's series was watched with (companion
      * persistence): a second text track in the remembered language, never the
-     * main track itself. An embedded track goes to the companion player where
-     * the video is a download; a loaded subtitle file of that language is drawn
-     * the file way. Nothing stands where the language is not among this video's
+     * main track itself. An embedded track goes to the companion player; a
+     * loaded subtitle file of that language is drawn the file way. Nothing
+     * stands where the language is not among this video's
      * other tracks, and the memory itself is left as it was.
      */
     private fun restoreCompanion(current: Tracks) {
@@ -6513,6 +6596,57 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
 
     override fun attachOnlineSubtitle(file: File, label: String) = subtitleFiles.attachFile(file, label)
 
+    /**
+     * Remembers an MSone pick for this video's series (owner, v1.0.23): the
+     * pick belongs to the show, as the track languages do, so the next episode
+     * can stand the same release on its own ([restoreSeriesMsone]). A video
+     * that is not an episode remembers nothing.
+     */
+    override fun noteMsonePick(hit: com.tmplayer.online.SubtitleHit) {
+        val parsed = MediaName.parse(mediaFileName, mediaCaption)
+        val episode = parsed.episode ?: return
+        val key = seriesKey
+        val pick = MsoneSeriesPick(hit, parsed.season, episode)
+        App.backgroundScope.launch { runCatching { settings.setMsoneSeries(key, pick.encode()) } }
+    }
+
+    /**
+     * Stands this video's series' MSone pick on this episode (owner, v1.0.23):
+     * where an earlier episode was watched with an MSone release the viewer
+     * picked, this episode asks the same release for its own file (the pack
+     * read strictly for this episode, kept under its own cache key) and the
+     * answer is attached the way a pick attaches it. The pick was the viewer's
+     * own, for this series: nothing is asked for a series they never chose
+     * MSone for, which is what keeps this apart from the auto-apply removed in
+     * v1.0.21. A failure (offline, the pack holding no file for this episode)
+     * leaves the video with its own subtitles, and the picker's page still
+     * stands to ask by hand. Asked at every opening and at every in-place
+     * episode swap; an episode the pick already stood for is left alone, its
+     * attached file being the picker's own saving, kept per video.
+     */
+    private fun restoreSeriesMsone() {
+        val parsed = MediaName.parse(mediaFileName, mediaCaption)
+        val episode = parsed.episode ?: return
+        val season = parsed.season
+        val key = seriesKey
+        App.backgroundScope.launch {
+            val pick = MsoneSeriesPick.decode(runCatching { settings.msoneSeries(key) }.getOrNull()) ?: return@launch
+            if (pick.appliedSeason == season && pick.appliedEpisode == episode) return@launch
+            val online = OnlineSubtitles.current ?: return@launch
+            val target = onlineTarget() ?: return@launch
+            val result = runCatching { online.download(pick.hit, target) }.getOrNull()
+            if (result is DownloadResult.Done) {
+                runCatching { settings.setMsoneSeries(key, pick.applied(season, episode).encode()) }
+                withContext(Dispatchers.Main) {
+                    // The video may have moved on while the pack was fetched.
+                    if (seriesKey == key && MediaName.parse(mediaFileName, mediaCaption).episode == episode) {
+                        attachOnlineSubtitle(result.file, result.label)
+                    }
+                }
+            }
+        }
+    }
+
     override fun companionTrackId(): String? = companionId
 
     override fun takeCompanion(trackId: String?, file: File?) {
@@ -6541,10 +6675,31 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             player?.currentTracks?.let { rememberTracks(it) }
             return true
         }
-        // The companion player reads the whole file off the disk, so only a
-        // downloaded video can give one: not a stream, not a split set.
-        val uri = downloadedVideo?.uri() ?: return false
-        if (streamUrl != null || joinedSource != null) return false
+        // The companion player reads the same source the main player reads
+        // (v1.0.23): a stream link over the network, a downloaded file off the
+        // disk, a Telegram video through the TDLib chain. Only a split set
+        // joined from pieces declines: its pieces are the main player's own
+        // joining, with no single source a second player could read.
+        if (joinedSource != null) return false
+        val downloaded = downloadedVideo
+        val stream = streamUrl
+        val uri: android.net.Uri
+        var factory: androidx.media3.exoplayer.source.MediaSource.Factory? = null
+        when {
+            stream != null -> {
+                uri = android.net.Uri.parse(stream)
+                factory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    androidx.media3.datasource.DefaultDataSource.Factory(this),
+                    playerExtractors(),
+                )
+            }
+            downloaded != null -> uri = downloaded.uri()
+            else -> {
+                val client = castClient ?: return false
+                uri = tdFileUri(fileId, streamType(mediaMime, mediaFileName))
+                factory = companionSourceFactory(client)
+            }
+        }
         // One companion at a time: the embedded one ends any file companion standing.
         setCompanionSubtitle(null)
         companionTouched = true
@@ -6555,10 +6710,48 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 id != null && (id == trackId || ExternalSubtitle.isTrackId(id, trackId))
             }?.let { (group, index) -> group.getTrackFormat(index).language }
         }?.takeIf { TrackLanguages.normalise(it) != null }
-        startEmbeddedCompanion(uri, trackId)
+        startEmbeddedCompanion(uri, factory, trackId)
         player?.currentTracks?.let { rememberTracks(it) }
         return true
     }
+
+    /**
+     * The extractor set every player in this activity reads with, the main one
+     * and the companion shadow alike (see buildPlayer for why each piece
+     * stands): constant bitrate seeking, the Blu ray DTS and recovery point
+     * allowances for MPEG-TS, the widened timestamp search, and the Dolby
+     * Vision wrapper that hands this device the HEVC base layer.
+     */
+    private fun playerExtractors(): androidx.media3.extractor.ExtractorsFactory =
+        DolbyVisionBaseLayer(
+            this,
+            DefaultExtractorsFactory()
+                .setConstantBitrateSeekingEnabled(true)
+                .setTsExtractorFlags(
+                    androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS or
+                        androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES,
+                )
+                .setTsExtractorTimestampSearchBytes(TS_TIMESTAMP_SEARCH_BYTES),
+        )
+
+    /**
+     * The main player's Telegram reading chain for the companion player
+     * (v1.0.23), minus the byte counter: the shadow reads the ranges the main
+     * player already fetched, and counting them again would double the data
+     * usage figures for one watching.
+     */
+    private fun companionSourceFactory(client: TdlClient): androidx.media3.exoplayer.source.MediaSource.Factory =
+        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+            androidx.media3.datasource.DefaultDataSource.Factory(
+                this,
+                JoinedDataSource.Factory(
+                    TdDataSource.Factory(client),
+                    androidx.media3.datasource.DefaultDataSource.Factory(this, TdDataSource.Factory(client)),
+                    ::leftPiece,
+                ),
+            ),
+            playerExtractors(),
+        ).setSubtitleParserFactory(SubtitleEncoding(androidx.media3.extractor.text.DefaultSubtitleParserFactory()))
 
     override fun loadedSubtitleFile(formatId: String?): File? {
         formatId ?: return null

@@ -27,6 +27,14 @@ interface TrackPickerHost {
     fun attachOnlineSubtitle(file: File, label: String)
 
     /**
+     * An MSone release the viewer just picked for this video (owner, v1.0.23):
+     * where the video is an episode, the pick is remembered for its series, so
+     * the next episode asks the same release for its own file on its own. The
+     * default host remembers nothing.
+     */
+    fun noteMsonePick(hit: com.tmplayer.online.SubtitleHit) {}
+
+    /**
      * The track id of the subtitle standing as the companion over the playing track
      * (dual subtitles), or null while none does. The companion is drawn by the app, so
      * the player never selects it; the picker reads the choice back from here.
@@ -41,10 +49,10 @@ interface TrackPickerHost {
 
     /**
      * Takes the video's own track named [trackId] on as the companion, read out of
-     * the file itself by a second, silent player (dual subtitles Phase B); a null
+     * the video's own source by a second, silent player (dual subtitles); a null
      * [trackId] takes the embedded companion off again. False where this video
-     * cannot give one (it is streamed, or split into pieces), and the picker
-     * keeps its older way for the pair.
+     * cannot give one (a split set joined from pieces), and the picker keeps
+     * its older way for the pair.
      */
     fun takeEmbeddedCompanion(trackId: String?): Boolean = false
 

@@ -12,16 +12,18 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 
 /**
- * A second, silent player that reads one embedded subtitle track out of a downloaded
- * video the main player is showing, so its lines can be drawn over the main track's
- * (dual subtitles Phase B, v1.0.22). The main player can only ever render one text
+ * A second, silent player that reads one embedded subtitle track out of the video
+ * the main player is showing, so its lines can be drawn over the main track's
+ * (dual subtitles, v1.0.22). The main player can only ever render one text
  * track (Media3 1.11.1 keeps one text definition per type), so the companion track
  * is played here, with the picture and the sound switched off, and its cues handed
  * to the activity, which lays them over the main track's in the one subtitle view.
  *
- * Downloaded videos only: the file stands complete on the disk, so this player
- * reads it the plain way, with no part in the Telegram streaming machinery. A
- * streamed video has no whole file to read a second track out of.
+ * Any source the main player reads (v1.0.23): a downloaded file the plain way, a
+ * stream link over the network, a Telegram video through the same TDLib reading
+ * chain the main player uses, handed in as a media source factory. A split video
+ * joined from pieces stands apart: its pieces are the main player's own joining,
+ * and the companion declines it.
  *
  * The low-end rule, the same as the split screen's: this player is built plainly,
  * only when a companion is actually picked, and if its making or its reading
@@ -41,6 +43,8 @@ class EmbeddedCompanion(
     private var wantedId: String? = null
     private var picked = false
     private var gone = false
+    /** When the last corrective seek was sent, to damp them (see [align]). */
+    private var lastSeekMs = 0L
 
     private val listener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
@@ -76,12 +80,22 @@ class EmbeddedCompanion(
         }
     }
 
-    /** Opens [uri] and takes the text track named [trackId] on, at [positionMs]. */
-    fun start(uri: Uri, trackId: String, positionMs: Long) {
+    /**
+     * Opens [uri] and takes the text track named [trackId] on, at [positionMs].
+     * [factory] reads the source where the plain data source cannot (a Telegram
+     * video); null reads it the plain way, as a downloaded file or a stream link.
+     */
+    fun start(
+        uri: Uri,
+        factory: androidx.media3.exoplayer.source.MediaSource.Factory?,
+        trackId: String,
+        positionMs: Long,
+    ) {
         stop()
         gone = false
         picked = false
         wantedId = trackId
+        lastSeekMs = 0L
         val selector = DefaultTrackSelector(appContext)
         selector.setParameters(
             selector.buildUponParameters()
@@ -92,6 +106,7 @@ class EmbeddedCompanion(
         val player = try {
             ExoPlayer.Builder(appContext)
                 .setTrackSelector(selector)
+                .apply { if (factory != null) setMediaSourceFactory(factory) }
                 .build()
         } catch (error: Throwable) {
             unavailable()
@@ -115,7 +130,16 @@ class EmbeddedCompanion(
         if (player.playWhenReady != playing) player.playWhenReady = playing
         if (player.playbackParameters.speed != speed) player.setPlaybackSpeed(speed)
         val drift = player.currentPosition - positionMs
-        if (drift > DRIFT_MS || drift < -DRIFT_MS) player.seekTo(positionMs.coerceAtLeast(0))
+        if (drift <= DRIFT_MS && drift >= -DRIFT_MS) return
+        // Seeks are damped (owner, v1.0.23, the lag beside a companion): a
+        // shadow still waiting on the stream sits far from the main player for
+        // seconds at a time, and a corrective seek every follower beat only
+        // makes it re-read and re-buffer without closing the gap. One seek a
+        // couple of seconds apart, unless the drift is far past any stall.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastSeekMs < SEEK_DAMP_MS && drift <= FAR_DRIFT_MS && drift >= -FAR_DRIFT_MS) return
+        lastSeekMs = now
+        player.seekTo(positionMs.coerceAtLeast(0))
     }
 
     /** Takes the companion player down; the main player never hears about it. */
@@ -139,5 +163,11 @@ class EmbeddedCompanion(
     private companion object {
         /** How far the companion may drift from the main player before it is pulled back. */
         const val DRIFT_MS = 700L
+
+        /** The least time between two corrective seeks while the drift stays ordinary. */
+        const val SEEK_DAMP_MS = 2_000L
+
+        /** A drift past this is a jump (the viewer seeked), never a stall: it is followed at once. */
+        const val FAR_DRIFT_MS = 5_000L
     }
 }
