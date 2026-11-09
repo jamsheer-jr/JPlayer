@@ -35,28 +35,6 @@ interface TrackPickerHost {
     fun noteMsonePick(hit: com.tmplayer.online.SubtitleHit) {}
 
     /**
-     * The track id of the subtitle standing as the companion over the playing track
-     * (dual subtitles), or null while none does. The companion is drawn by the app, so
-     * the player never selects it; the picker reads the choice back from here.
-     */
-    fun companionTrackId(): String? = null
-
-    /**
-     * Takes the loaded subtitle [file] on as the companion, remembered under the track
-     * id it was picked by; a null [file] takes the companion off again.
-     */
-    fun takeCompanion(trackId: String?, file: File?) {}
-
-    /**
-     * Takes the video's own track named [trackId] on as the companion, read out of
-     * the video's own source by a second, silent player (dual subtitles); a null
-     * [trackId] takes the embedded companion off again. False where this video
-     * cannot give one (a split set joined from pieces), and the picker keeps
-     * its older way for the pair.
-     */
-    fun takeEmbeddedCompanion(trackId: String?): Boolean = false
-
-    /**
      * The file a loaded subtitle track stands for, named by its format id; null when
      * the id names none of the files loaded onto this video (an embedded track).
      */

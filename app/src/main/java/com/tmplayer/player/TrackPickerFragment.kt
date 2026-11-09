@@ -396,21 +396,14 @@ class TrackPickerFragment : Fragment() {
                 }
                 return@buildList
             }
-            // The pair playing together, where there is one (see [pickTrack]): the player
-            // selects the main track alone, and the companion is the app's own drawing, so
-            // its row is read back from the host rather than from the player's selection.
-            val companionId = if (trackType == C.TRACK_TYPE_TEXT) host.companionTrackId() else null
             options.forEachIndexed { index, option ->
                 val selected = isSelected(player.currentTracks, option)
-                val isCompanion = companionId != null && option.group != null &&
-                    ExternalSubtitle.isTrackId(option.group.getTrackFormat(option.trackIndex).id, companionId)
                 add(
                     Line(
                         key = "track$index",
                         title = option.label,
                         detail = listOfNotNull(
-                            if (isCompanion) L.tracksDual else null,
-                            if (selected && !isCompanion) L.tracksPlayingNow else null,
+                            if (selected) L.tracksPlayingNow else null,
                             option.detail,
                         ).ifEmpty { null }?.joinToString("  ·  "),
                         selected = selected,
@@ -535,124 +528,32 @@ class TrackPickerFragment : Fragment() {
     }
 
     /**
-     * The one tap rule for the subtitle list (owner, v1.0.16): there is no second list
-     * and no dual toggle, the list itself is the whole control. A tap picks the track
-     * as the subtitle, as [choose] always did; a tap on another track while one is
-     * playing makes that track the companion shown together with the first; a tap on
-     * the companion takes the companion off again, leaving the main track playing.
-     * Sound, and the Off row, keep [choose] as they are.
-     *
-     * The companion is drawn by the app, not selected in the player (the player renders
-     * only one text track, Media3 1.11.1), so a companion is read by the app itself:
-     * a file picked second is drawn over the main track, and where the main is the file
-     * and the second pick is in the video, the two trade places, the video's track
-     * playing and the file's lines drawn over it. Two tracks in the video itself are
-     * read out of the file by a second, silent player where the video stands complete
-     * on the disk (a download); a streamed pair still goes through [chooseSecond].
+     * The one tap rule for the subtitle list (owner, v1.0.24): the list itself is
+     * the whole control. A tap picks the track as the subtitle; a tap on the
+     * track already playing turns subtitles off, as the Off row does; that is
+     * the whole of it. Dual subtitles stood here until this release (a tap on
+     * another track named it the companion shown together with the first), and
+     * the owner ordered them out: the pair never stood on his phone, and the
+     * rule was itself why changing language needed Off first, a tap on another
+     * language never changing the subtitle at all. Sound keeps [choose] as it
+     * always was.
      */
     private fun pickTrack(option: Option) {
         val player = host?.player
-        val group = option.group
-        if (trackType != C.TRACK_TYPE_TEXT || group == null || player == null) {
-            if (trackType == C.TRACK_TYPE_TEXT && group == null) host?.takeCompanion(null, null)
-            choose(option)
-            return
-        }
-        val pickerHost = host
-        if (pickerHost == null) {
+        if (trackType != C.TRACK_TYPE_TEXT || option.group == null || player == null) {
             choose(option)
             return
         }
         val options = optionsOf(player)
         val main = options.firstOrNull { it.group != null && isSelected(player.currentTracks, it) }
-        val companionId = pickerHost.companionTrackId()
-        val isCompanion = companionId != null &&
-            ExternalSubtitle.isTrackId(group.getTrackFormat(option.trackIndex).id, companionId)
-        val isMain = main != null && main.group === group && main.trackIndex == option.trackIndex
-        when {
-            isCompanion -> {
-                pickerHost.takeCompanion(null, null)
-                close()
-            }
-            isMain || main == null -> choose(option)
-            isLoadedTrack(option) -> {
-                val file = pickerHost.loadedSubtitleFile(group.getTrackFormat(option.trackIndex).id)
-                if (file != null) {
-                    pickerHost.takeCompanion(group.getTrackFormat(option.trackIndex).id, file)
-                    close()
-                } else {
-                    chooseSecond(option)
-                }
-            }
-            main != null && isLoadedTrack(main) -> {
-                val mainId = main.group?.getTrackFormat(main.trackIndex)?.id
-                val mainFile = pickerHost.loadedSubtitleFile(mainId)
-                if (mainFile != null) {
-                    choose(option)
-                    pickerHost.takeCompanion(mainId, mainFile)
-                } else {
-                    chooseSecond(option)
-                }
-            }
-            else -> {
-                // A pair of tracks both inside the video: the second track goes
-                // to the silent companion player, which reads the same source
-                // the main player reads (a file, a stream link, a Telegram
-                // video). Only a split set joined from pieces has no such
-                // source, and keeps the pair-of-overrides way below.
-                val embeddedId = group.getTrackFormat(option.trackIndex).id
-                if (embeddedId != null && pickerHost.takeEmbeddedCompanion(embeddedId)) {
-                    close()
-                } else {
-                    chooseSecond(option)
-                }
+        if (main != null && main.group === option.group && main.trackIndex == option.trackIndex) {
+            val off = options.firstOrNull { it.group == null }
+            if (off != null) {
+                choose(off)
+                return
             }
         }
-    }
-
-    /**
-     * The leftover path for a pair of tracks both inside a video the companion
-     * player cannot read (a split set joined from pieces): the pair is rebuilt
-     * as two overrides of the text type, the main track first. Media3 renders
-     * only one of them (1.11.1: one text definition per type), so on such a
-     * video the tap names the companion without the pair ever standing
-     * together; every other source goes to the companion player instead (see
-     * [pickTrack]). Picking the track that is already the companion takes it
-     * off again; picking with nothing playing makes the pick the only track.
-     */
-    private fun chooseSecond(option: Option) {
-        val player = host?.player
-        val optionGroup = option.group
-        if (player != null && optionGroup != null) {
-            val chosen = optionsOf(player).filter { it.group != null && isSelected(player.currentTracks, it) }
-            val main = chosen.firstOrNull()
-            val isSecond = chosen.getOrNull(1)
-                ?.let { it.group === optionGroup && it.trackIndex == option.trackIndex } == true
-            // The pair that stands after this tap: the tapped track taken on as the
-            // companion (an older companion gives its place up), the companion taken
-            // off again, or the pair untouched when the main track itself was tapped.
-            val pair: List<Option> = when {
-                main == null -> listOf(option)
-                isSecond -> listOf(main)
-                main.group === optionGroup && main.trackIndex == option.trackIndex -> chosen.take(2)
-                else -> listOf(main, option)
-            }
-            // One override per track group, holding every picked track of that group.
-            // The player's parameters keep a single override for a group, so a second
-            // override naming the same group quietly replaced the first, and two
-            // subtitles out of one file (the common case: one embedded set) could
-            // never stand together (owner's phone, v1.0.17).
-            val builder = player.trackSelectionParameters.buildUpon()
-                .clearOverridesOfType(trackType)
-                .setTrackTypeDisabled(trackType, false)
-            pair.mapNotNull { pick -> pick.group?.let { it.mediaTrackGroup to pick.trackIndex } }
-                .groupBy({ it.first }, { it.second })
-                .forEach { (group, indices) ->
-                    builder.addOverride(TrackSelectionOverride(group, indices))
-                }
-            player.trackSelectionParameters = builder.build()
-        }
-        close()
+        choose(option)
     }
 
     // ---- online -------------------------------------------------------------------------------
@@ -996,8 +897,8 @@ class TrackPickerFragment : Fragment() {
      * top, then the tracks, a divider, the opening and searching rows, the
      * synchronization (and for subtitles the speed) as steppers, a round button either
      * side of a value pill, and the panel and customization entries opening their
-     * controls in place under them. Subtitle tracks carry square checkboxes, the
-     * companion of a dual pair among them (item 6); sound carries radios, the playing
+     * controls in place under them. Subtitle tracks carry square checkboxes;
+     * sound carries radios, the playing
      * one filled, with Disable under them and the downmix to stereo as its checkbox
      * row. Every row carries a function the panel already had: the tracks and their
      * one tap rule, Open by file or by link, Online subtitles and MSone, Translate,
