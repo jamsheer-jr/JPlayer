@@ -88,6 +88,7 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.Focus
 import com.tmplayer.ui.theme.Tone
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -771,7 +772,7 @@ private suspend fun personSearchFill(entries: List<FilmographyEntry>): List<Film
     kotlinx.coroutines.coroutineScope {
         val slots = kotlinx.coroutines.sync.Semaphore(PERSON_SEARCH_AT_ONCE)
         missing.map { entry ->
-            kotlinx.coroutines.async {
+            async {
                 slots.withPermit {
                     val hit = personCreditAsk(entry) ?: return@withPermit
                     synchronized(found) { found[entry.credit.ref.matchKey] = hit }
@@ -872,7 +873,7 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
         val standing = value
         val filmsNow = standing?.filmography
         if (standing != null && filmsNow != null && filmsNow.any { !it.playable }) {
-            var current = filmsNow
+            var current: List<FilmographyEntry> = filmsNow
             var extraNow = standing.extraHeld
             com.tmplayer.online.KnownMedia.version.collect {
                 val heldNow = withContext(Dispatchers.Default) { personTitles(person.name) }
