@@ -78,6 +78,19 @@ class MsonePublicTest {
 
     private fun srt(text: String) = "1\n00:00:01,000 --> 00:00:02,000\n$text\n"
 
+    /** A season pack as the site serves it: one zip, an entry per episode. */
+    private fun pack(vararg entries: Pair<String, String>): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(out).use { zip ->
+            for ((name, text) in entries) {
+                zip.putNextEntry(java.util.zip.ZipEntry(name))
+                zip.write(srt(text).toByteArray())
+                zip.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
     private val film = SubtitleTarget(fileName = "Resident.Evil.2026.1080p.WEB-DL.mkv", sizeBytes = 1_000_000)
     private val episode = SubtitleTarget(fileName = "Squid.Game.S02E03.2025.1080p.WEB.mkv", sizeBytes = 1_000_000)
 
@@ -181,6 +194,39 @@ class MsonePublicTest {
         // Exactly one file was fetched: the third episode's own, not the pack in page order.
         assertEquals(1, http.count("/files/"))
         assertTrue(http.requests.any { "S02E03" in it.url })
+    }
+
+    @Test
+    fun `a season pack gives each episode its own file, never the first episode's`() = runBlocking {
+        // The owner's phone (v1.0.23): E2 stood with E1's subtitle. The pack is one
+        // hit for the whole season, so the episode in the ask decides both the
+        // cache key and the entry taken out of the zip; with the episode in the
+        // target (the player now sends the video's own file name), the second
+        // episode can never be handed the first one's file, kept or fresh.
+        http.on("?s=", html(200, seriesPage))
+        val page = html(200, """<a id="review-button" href="#" onclick="window.location.href='https://malayalamsubtitles.org/?wpdmdl=777'; return false;">Download</a>""")
+        http.on("/languages/", page, page)
+        val zip = HttpResponse(200, emptyMap(), pack("Squid.Game.S01E01.srt" to "episode one", "Squid.Game.S01E02.srt" to "episode two"))
+        http.on("?wpdmdl=", zip, zip)
+        val e1 = SubtitleTarget(fileName = "Squid.Game.S01E01.2021.1080p.WEB.mkv", sizeBytes = 1_000_000)
+        val e2 = SubtitleTarget(fileName = "Squid.Game.S01E02.2021.1080p.WEB.mkv", sizeBytes = 1_000_000)
+        val hit = online.searchMsoneSite(e1).hits.first { "squid-game-2021" in it.pageUrl }
+        val first = online.download(hit, e1)
+        assertTrue(first is DownloadResult.Done)
+        first as DownloadResult.Done
+        assertTrue(first.file.readText().contains("episode one"))
+        assertEquals("Squid.Game.S01E01.srt", first.label)
+        val second = online.download(hit, e2)
+        assertTrue(second is DownloadResult.Done)
+        second as DownloadResult.Done
+        assertTrue(second.file.readText().contains("episode two"))
+        assertFalse(second.file.readText().contains("episode one"))
+        assertEquals("Squid.Game.S01E02.srt", second.label)
+        // The pack was fetched once per episode; a repeat of the second is kept.
+        assertEquals(2, http.count("?wpdmdl="))
+        val again = online.download(hit, e2)
+        assertTrue(again is DownloadResult.Done && again.fromCache)
+        assertEquals(2, http.count("?wpdmdl="))
     }
 
     @Test

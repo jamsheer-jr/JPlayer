@@ -6584,8 +6584,14 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         // v1.0.16), so its answers come back ordered that way too.
         val subtitleOrder = runCatching { settings.trackPreferencesNow().subtitleOrder }
             .getOrDefault(com.tmplayer.player.TrackPreferences.DEFAULT_ORDER)
+        // The name the providers are asked about is the video's own file name,
+        // with its caption beside it (owner, v1.0.24): the display title carries
+        // no episode, and a season pack asked without one answered with the
+        // first episode's file for every episode. Every read of the target
+        // parses these two, the searches included.
         return SubtitleTarget(
-            fileName = mediaTitle,
+            fileName = mediaFileName.ifBlank { mediaTitle },
+            caption = mediaCaption.ifBlank { null },
             sizeBytes = size,
             hash = hash,
             languages = OnlineSubtitles.languagesInOrder(subtitleOrder, tracks.textLanguage),
