@@ -109,6 +109,7 @@ import com.tmplayer.ui.browse.ProfilePage
 import com.tmplayer.ui.browse.TouchNav
 import com.tmplayer.ui.browse.TouchNavHost
 import com.tmplayer.ui.browse.TouchPage
+import com.tmplayer.ui.browse.TouchPageSpec
 import com.tmplayer.ui.browse.TouchRoutes
 import com.tmplayer.ui.browse.LocalTouchPageKey
 import androidx.compose.animation.AnimatedContent
@@ -2384,9 +2385,11 @@ private fun Root() {
                 // With no PIN there is nothing to ask, and a PIN set from inside Settings must not
                 // lock the viewer out of the page they set it on.
                 LaunchedEffect(lock?.pinSet) { if (lock?.pinSet == false) settingsUnlocked = true }
-                // No floating bar: Settings is a screen pushed from the Profile page, with
-                // its own back arrow, as a chat is.
-                TouchPage(null)
+                // The floating bar stands on Settings too (owner, v1.0.31: the bar on
+                // every page, so a section can be reached from anywhere without backing
+                // out first). It reports as a page behind the picture, like the Profile
+                // page and Downloads do; its own back arrow stays.
+                TouchPage(TouchPageSpec(current = null, inProfile = true))
                 if (lock == null) return@screens
                 if (lock.pinSet && !settingsUnlocked) {
                     PinPad(

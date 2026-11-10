@@ -239,12 +239,13 @@ internal fun TouchPage(spec: TouchPageSpec?) {
  * picture, with the Profile page of Favourites, Downloads, History, Watch later, Settings and
  * Update behind the picture.
  *
- * The bar floats, so it takes no room from the listing: it slides away as the list is pushed up
- * and comes back on the first pull down, on a change of page and on the way back from the player.
- * It never hides while TalkBack is on (a control that moves away is one a screen reader cannot
- * find again), and it is out of the way while the keyboard is up. How much of the screen it keeps
+ * The bar floats, so it takes no room from the listing. It once slid away as the list was
+ * pushed up and came back on the first pull down; the owner asked for it standing on every
+ * page instead (v1.0.31: on a long page it was gone for the whole scroll, which read as the
+ * page having no bar at all), so it now stays, on every page that carries a [TouchPageSpec],
+ * and is out of the way only while the keyboard is up. How much of the screen it keeps
  * is [LocalBottomChrome], which the lists under it pad their ends by. A page with no
- * [TouchPageSpec] (a chat, Settings, About) has no bar.
+ * [TouchPageSpec] (a chat, About) has no bar.
  */
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -270,7 +271,6 @@ internal fun TouchNavHost(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val talkBack = rememberTouchExploration()
     val keyboard = WindowInsets.isImeVisible
 
     val density = LocalDensity.current
@@ -295,7 +295,9 @@ internal fun TouchNavHost(
         // bar as a rail down the start edge, as Material's adaptive layout asks: a bar across the
         // foot of a short, wide window takes height the page needs.
         val rail = maxWidth >= RAIL_FROM
-        val barShown = spec != null && !spec.hidden && (rail || ((bar.shown || talkBack) && !keyboard))
+        // The bar stands on every page that carries a spec (owner, v1.0.31): the scroll
+        // bookkeeping in [BarVisibility] is still kept, but no longer takes the bar away.
+        val barShown = spec != null && !spec.hidden && (rail || !keyboard)
         // What the bar keeps, measured from the bottom of the window, with the pill of the page's
         // own buttons over it when there is one. A rail keeps nothing at the foot but that pill.
         val room = if (spec == null) 0.dp else navigationBar + touchShellClearance(withActions = spec.actions != null, rail = rail)
