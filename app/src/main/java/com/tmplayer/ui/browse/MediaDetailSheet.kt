@@ -170,10 +170,18 @@ internal fun MediaDetailOpened(
         }
     }
     // A film posted more than once opens on the copy that would play (see SettingsStore.copyToPlay),
-    // so the page, its facts and Play all speak of the same file. Settled by the time it has run
-    // once: the copy it turns to picks itself again.
+    // so the page, its facts and Play all speak of the same file. The turn runs at most once from
+    // any one copy: the pick reads the resume points and what is on the device as they stand, and
+    // the copy it turns to carries a versions list of its own, whose pick can name a third copy in
+    // turn (the joined set names the resumed one, whose own set names the one already downloaded),
+    // so keyed on the item alone the effect looped the page between its copies for as long as it
+    // stood open, the facts and the summary changing places every turn (owner, v1.0.31). A copy
+    // already turned from is never turned from again: the chain still walks to a settled copy,
+    // and there the page stays.
+    val turnedFrom = remember { mutableSetOf<String>() }
     androidx.compose.runtime.LaunchedEffect(item.id) {
         if (item.versions.size <= 1 || onTurnTo == null) return@LaunchedEffect
+        if (!turnedFrom.add(item.id)) return@LaunchedEffect
         val pick = runCatching { settings.copyToPlay(item) }.getOrNull() ?: return@LaunchedEffect
         if (pick.id != item.id) onTurnTo(pick)
     }

@@ -268,11 +268,16 @@ internal fun Versions(
         return
     }
     var open by rememberSaveable(full.id) { mutableStateOf(false) }
-    val summary = remember(full, chatTitle, s) {
+    // The summary speaks of the copy the page stands on, never of the widened fold: the fold
+    // re-leads itself as each chat's finds land (the best of what is held so far leads), so a
+    // summary read off it changed under the viewer while the page's own copy stood still, the
+    // two lines naming different copies in the same moment (owner, v1.0.31). The widened list
+    // still feeds the rows and the count below.
+    val summary = remember(item, chatTitle, s) {
         listOfNotNull(
-            copyHeading(full),
-            full.sizeBytes.takeIf { it > 0 && VideoCopies.heightOf(full) != null }?.let { s.formatter.size(it) },
-            copyChat(full, full, chatTitle)?.let { s.detailCopyFrom(it) },
+            copyHeading(item),
+            item.sizeBytes.takeIf { it > 0 && VideoCopies.heightOf(item) != null }?.let { s.formatter.size(it) },
+            copyChat(item, item, chatTitle)?.let { s.detailCopyFrom(it) },
         ).joinToString("  ·  ")
     }
     // A phone lists the copies in its bottom sheet, over the page, and a television on a page of
@@ -282,7 +287,7 @@ internal fun Versions(
     val list: @Composable (Boolean, androidx.compose.ui.focus.FocusRequester?) -> Unit = { withHeader, chosenFocus ->
         CopyChooser(
             header = withHeader,
-            item = full,
+            item = item,
             files = files,
             chatTitle = chatTitle,
             started = started,
