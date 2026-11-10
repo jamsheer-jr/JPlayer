@@ -146,11 +146,15 @@ class SeriesShelfTest {
 
     @Test
     fun `a longer show established on its own episodes keeps them`() {
+        // The longer name carries episodes of its own (3 and 4, where the shorter
+        // show has 1 and 2), so it is a show in its own right: the exact key wins
+        // and the extension join never takes its files. (The same numbers under
+        // both names are the older two names for one season case, folded elsewhere.)
         val items = listOf(
             video("Harbour Notes S01E01.mkv"),
             video("Harbour Notes S01E02.mkv"),
-            video("Harbour Notes Extra S01E01.mkv"),
-            video("Harbour Notes Extra S01E02.mkv"),
+            video("Harbour Notes Extra S01E03.mkv"),
+            video("Harbour Notes Extra S01E04.mkv"),
         )
         val found = shows(SeriesShelf.arrange(items))
         assertEquals(setOf("harbour notes", "harbour notes extra"), found.map { it.key }.toSet())
