@@ -1617,11 +1617,12 @@ private const val EXTRAS_SWEEP_PER_ROUND = 24
  * ([homeTitleMeta]), and until now extras landed only for the banner's candidates and
  * for titles somebody opened, so on a large account the shelves sat under their
  * minimums and never stood (owner, 2026-11-08). This sweep walks the titles Home's
- * catalog rows carry, in the [PrefetchHomeArt] shape: a few at a time, only while no
- * video plays ([HomeViewModel.untilIdle]), each title's match asked the way the art
- * prefetch asks, and where the match's extras are not already stored, the provider's
- * extras fetched and stored. A title is asked once per run of the app, landed or not,
- * and a round that landed any asks the rows for one rebuild ([HomeViewModel.extrasTick]).
+ * catalog rows carry, in the [PrefetchHomeArt] shape: a few at a time, each title's
+ * match asked the way the art prefetch asks, and where the match's extras are not
+ * already stored, the provider's extras fetched and stored. A title is asked once
+ * per run of the app, landed or not, rounds run until the standing titles are all
+ * attempted, and a round that landed any asks the rows for one rebuild
+ * ([HomeViewModel.extrasTick]).
  */
 @Composable
 private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
@@ -1645,29 +1646,42 @@ private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
     val attempted = remember { mutableSetOf<String>() }
     LaunchedEffect(items) {
         val gate = Semaphore(PREFETCH_PARALLEL)
-        val landed = java.util.concurrent.atomic.AtomicInteger(0)
-        kotlinx.coroutines.coroutineScope {
-            var taken = 0
-            for ((item, show) in items) {
-                if (taken >= EXTRAS_SWEEP_PER_ROUND) break
-                val query = item.metaQuery?.let { if (show) it.showOnly() else it } ?: continue
-                val key = query.cacheKey(online.tmdbLanguage())
-                val fresh = synchronized(attempted) { attempted.add(key) }
-                if (!fresh) continue
-                taken++
-                launch(Dispatchers.IO) {
-                    gate.withPermit {
-                        model.untilIdle()
-                        val info = ((online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info)
-                            ?: ((online.lookup(query) as? com.tmplayer.online.MetaResult.Found)?.info)
-                            ?: return@withPermit
-                        if (online.storedExtras(info) != null) return@withPermit
-                        if (online.providerExtras(info) != null) landed.incrementAndGet()
+        // Rounds run back to back over the standing titles until every one has
+        // been attempted (owner, 2026-11-10): one round per rows change left a
+        // long list of facts waiting on rebuilds that might never come, and
+        // each fetch parked on Home standing fully idle, which a busy
+        // account's fetch queue rarely allows, so the genre and language
+        // pages never filled. The work is the provider's HTTP and the disk,
+        // not Telegram, so it no longer waits for Home's fetches; the round
+        // cap and the few-at-once gate stay, and a title is still asked once
+        // per run of the app.
+        while (true) {
+            val landed = java.util.concurrent.atomic.AtomicInteger(0)
+            var tookAny = false
+            kotlinx.coroutines.coroutineScope {
+                var taken = 0
+                for ((item, show) in items) {
+                    if (taken >= EXTRAS_SWEEP_PER_ROUND) break
+                    val query = item.metaQuery?.let { if (show) it.showOnly() else it } ?: continue
+                    val key = query.cacheKey(online.tmdbLanguage())
+                    val fresh = synchronized(attempted) { attempted.add(key) }
+                    if (!fresh) continue
+                    tookAny = true
+                    taken++
+                    launch(Dispatchers.IO) {
+                        gate.withPermit {
+                            val info = ((online.peek(query) as? com.tmplayer.online.MetaResult.Found)?.info)
+                                ?: ((online.lookup(query) as? com.tmplayer.online.MetaResult.Found)?.info)
+                                ?: return@withPermit
+                            if (online.storedExtras(info) != null) return@withPermit
+                            if (online.providerExtras(info) != null) landed.incrementAndGet()
+                        }
                     }
                 }
             }
+            if (landed.get() > 0) model.extrasTick++
+            if (!tookAny) break
         }
-        if (landed.get() > 0) model.extrasTick++
     }
 }
 
