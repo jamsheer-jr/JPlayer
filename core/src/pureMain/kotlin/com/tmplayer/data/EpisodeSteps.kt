@@ -62,8 +62,19 @@ object EpisodeNeighbours {
             .map { it.series }
             .firstOrNull { series -> series.episodes.any { holds(it, current) } }
             ?: return partsAround(current, arranged) ?: LessonSteps.around(current, all) ?: EpisodeSteps(current = tagOf(current))
+        return stepsIn(show, current) ?: EpisodeSteps(current = tagOf(current))
+    }
+
+    /**
+     * The steps either side of [current] inside a show already grouped, or null when the show
+     * does not hold it: the derivation [around] ends in, apart so a caller holding a whole
+     * series (the pool's grouping of a split show, a cross chat fill) steps through it without
+     * arranging again.
+     */
+    fun stepsIn(show: Series, current: MediaItem): EpisodeSteps? {
         val episodes = show.episodes
         val at = episodes.indexOfFirst { holds(it, current) }
+        if (at < 0) return null
         val before = episodes.getOrNull(at - 1)
         val after = episodes.getOrNull(at + 1)
         fun copyOf(episode: SeriesEpisode) = EpisodeCopies.closest(current, episode.copies) ?: episode.item
@@ -78,6 +89,50 @@ object EpisodeNeighbours {
             series = show,
         )
     }
+
+    /**
+     * [steps] widened by [wider], the same episode grouped from every chat the app holds or a
+     * fill gathered (owner, 2026-11-10: the playing file's chat stepped E04 to E09 while E05
+     * stood in another chat). On each side the nearer episode wins, a side only the wider
+     * grouping has is taken whole, and the wider show rides along for the player's episode
+     * list. Steps that name no episode on either side (a split film's pieces, a course's
+     * lessons) stand as they are, apart from the show riding along.
+     */
+    fun widened(steps: EpisodeSteps, wider: EpisodeSteps?): EpisodeSteps {
+        if (wider == null) return steps
+        val show = wider.series ?: steps.series
+        val here = steps.current
+        val there = wider.current
+        if (here == null || there == null || here.season != there.season || here.episode != there.episode) {
+            return if (show == steps.series) steps else steps.copy(series = show)
+        }
+        fun nearer(
+            mine: MediaItem?,
+            myTag: EpisodeTag?,
+            its: MediaItem?,
+            itsTag: EpisodeTag?,
+            forward: Boolean,
+        ): Pair<MediaItem?, EpisodeTag?> {
+            if (its == null || itsTag == null) return mine to myTag
+            if (mine == null || myTag == null) return its to itsTag
+            val myOrder = myTag.season * ORDER_SPAN + myTag.episode
+            val itsOrder = itsTag.season * ORDER_SPAN + itsTag.episode
+            return if (if (forward) itsOrder < myOrder else itsOrder > myOrder) its to itsTag else mine to myTag
+        }
+        val (previous, previousTag) = nearer(steps.previous, steps.previousTag, wider.previous, wider.previousTag, forward = false)
+        val (next, nextTag) = nearer(steps.next, steps.nextTag, wider.next, wider.nextTag, forward = true)
+        return EpisodeSteps(
+            previous = previous,
+            next = next,
+            current = steps.current,
+            previousTag = previousTag,
+            nextTag = nextTag,
+            series = show,
+        )
+    }
+
+    /** One season's span in an episode order key: episode numbers never reach it. */
+    private const val ORDER_SPAN = 100_000
 
     /**
      * The pieces either side of [current] when it is one piece of a split film ("CD1", "CD2"):

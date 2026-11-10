@@ -25,8 +25,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -111,6 +113,23 @@ fun SeasonsSection(
         if (found != null) com.tmplayer.data.PageQueries.cache.put(seriesKey, found) else com.tmplayer.data.PageQueries.cache.remove { it == seriesKey }
         value = found
     }
+    // The pool as it stands left a split show at "5 of 36 here" while its series page, which
+    // searches every chat, showed all 36 (owner, 2026-11-10): run that same fill behind this
+    // page, once per title, and the pool's own version re-derives the guide above as each
+    // chat's finds land. Keyed on the show's stable key, so the growth the fill itself causes
+    // never restarts it; a show a past page already made whole is not searched again.
+    var filling by remember(item.id) { mutableStateOf(false) }
+    var fillStarted by remember(item.id) { mutableStateOf(false) }
+    val fillKey = series?.let { "${it.cover.chatId}|${it.key}" }
+    LaunchedEffect(fillKey) {
+        val held = series ?: return@LaunchedEffect
+        if (fillStarted) return@LaunchedEffect
+        fillStarted = true
+        if (WholeSeries.peek(held) != null) return@LaunchedEffect
+        filling = true
+        runCatching { WholeSeries.read(held) }
+        filling = false
+    }
     val today = remember { LocalDate.now().toString() }
     val seasons = remember(series, extras, today) {
         EpisodeGuide.seasons(series, extras?.seasonList.orEmpty(), extras?.nextEpisode, today)
@@ -141,7 +160,11 @@ fun SeasonsSection(
         // Said plainly, in the caution colour: a gap in a season reads as the app losing episodes
         // unless something says they were never posted here. Upcoming ones are not missing.
         val missing = episodes.count { it.state == EpisodeGuide.State.Missing }
-        if (missing > 0) {
+        if (filling) {
+            // The fill is still asking the other chats: an episode one of them holds is not
+            // missing, so the caution note waits for the settled count.
+            Text(s.searchStillSearching, style = MaterialTheme.typography.bodyMedium, color = Tone.muted)
+        } else if (missing > 0) {
             Row(
                 Modifier
                     .clip(RoundedCornerShape(Corner.Medium))

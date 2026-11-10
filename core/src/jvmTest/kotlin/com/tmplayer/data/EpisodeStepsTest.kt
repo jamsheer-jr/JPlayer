@@ -204,4 +204,60 @@ class EpisodeStepsTest {
         assertNull(EpisodeNeighbours.showOf(film))
         assertEquals("Harbour Notes", EpisodeNeighbours.showOf(video("Harbour.Notes.S01E02.mkv")))
     }
+
+    /** The one show a set of files groups into, as the series view holds it. */
+    private fun showOf(vararg items: MediaItem): com.tmplayer.data.Series =
+        SeriesShelf.arrange(items.toList()).filterIsInstance<ShelfEntry.Show>().single().series
+
+    @Test
+    fun `steps in a grouped show are the chat lookup's steps`() {
+        val e04 = video("Harbour.Notes.S01E04.mkv")
+        val e05 = video("Harbour.Notes.S01E05.mkv")
+        val e06 = video("Harbour.Notes.S01E06.mkv")
+        val steps = EpisodeNeighbours.stepsIn(showOf(e04, e05, e06), e05)!!
+        assertEquals(e04.id, steps.previous?.id)
+        assertEquals(e06.id, steps.next?.id)
+        assertEquals("S01E06", steps.nextTag?.code)
+        assertEquals(listOf("S01E04", "S01E05", "S01E06"), steps.series?.episodes?.map { it.code })
+    }
+
+    @Test
+    fun `widening corrects a next step the playing chat skips`() {
+        // The playing file's chat holds E03, E04 and E09: its next step from E04 reads E09.
+        val e03 = video("Harbour.Notes.S01E03.mkv")
+        val e04 = video("Harbour.Notes.S01E04.mkv")
+        val e09 = video("Harbour.Notes.S01E09.mkv")
+        val chatSteps = EpisodeNeighbours.around(e04, listOf(e03, e04, e09))
+        assertEquals(e09.id, chatSteps.next?.id)
+        // Every chat together holds E05 too: widened, the next step is the true next episode.
+        val e05 = video("Harbour.Notes.S01E05.mkv")
+        val merged = EpisodeNeighbours.widened(chatSteps, EpisodeNeighbours.stepsIn(showOf(e03, e04, e05, e09), e04))
+        assertEquals(e05.id, merged.next?.id)
+        assertEquals("S01E05", merged.nextTag?.code)
+        assertEquals(e03.id, merged.previous?.id)
+    }
+
+    @Test
+    fun `widening fills a missing side and keeps the nearer own step`() {
+        val e04 = video("Harbour.Notes.S01E04.mkv")
+        val e05 = video("Harbour.Notes.S01E05.mkv")
+        val chatSteps = EpisodeNeighbours.around(e04, listOf(e04, e05))
+        assertNull(chatSteps.previous)
+        assertEquals(e05.id, chatSteps.next?.id)
+        // The wider grouping never saw E05, so its own next reads E09: the chat's nearer
+        // step stands, and the previous side the chat lacked arrives from the wider show.
+        val e03 = video("Harbour.Notes.S01E03.mkv")
+        val e09 = video("Harbour.Notes.S01E09.mkv")
+        val merged = EpisodeNeighbours.widened(chatSteps, EpisodeNeighbours.stepsIn(showOf(e03, e04, e09), e04))
+        assertEquals(e03.id, merged.previous?.id)
+        assertEquals("S01E03", merged.previousTag?.code)
+        assertEquals(e05.id, merged.next?.id)
+    }
+
+    @Test
+    fun `widening with nothing wider keeps the steps`() {
+        val e04 = video("Harbour.Notes.S01E04.mkv")
+        val steps = EpisodeNeighbours.around(e04, listOf(e04))
+        assertEquals(steps, EpisodeNeighbours.widened(steps, null))
+    }
 }

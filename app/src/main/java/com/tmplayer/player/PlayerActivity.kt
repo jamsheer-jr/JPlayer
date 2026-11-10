@@ -20,6 +20,7 @@ import android.util.Rational
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import com.tmplayer.ui.browse.WholeSeries
 import com.tmplayer.ui.components.haptic
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -97,6 +98,7 @@ import com.tmplayer.data.Trickplay
 import com.tmplayer.data.WatchNext
 import com.tmplayer.data.WatchNextPublisher
 import com.tmplayer.data.MediaName
+import com.tmplayer.data.EpisodeGuide
 import com.tmplayer.data.EpisodeNeighbours
 import com.tmplayer.data.EpisodeSteps
 import com.tmplayer.data.EpisodeTag
@@ -5470,9 +5472,38 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
             }
             _episodes.value = steps
             refreshSessionMetadata()
+            // The chat's steps are only its own posts (owner, 2026-11-10): a show split across
+            // chats stepped E04 to E09 here while E05 stood in another chat. Widen from the
+            // show as the app already holds it across chats, and where a side is still missing
+            // run the series page's own fill behind the picture, stepping again as each chat's
+            // finds land: the true next episode, wherever it was posted.
+            var best = steps
+            val held = withContext(Dispatchers.Default) {
+                EpisodeGuide.seriesOf(here, com.tmplayer.online.KnownMedia.all())
+            }
+            if (held != null) {
+                best = EpisodeNeighbours.widened(best, EpisodeNeighbours.stepsIn(held, here))
+                if (best != steps) {
+                    _episodes.value = best
+                    refreshSessionMetadata()
+                }
+                if (best.previous == null || best.next == null) {
+                    runCatching {
+                        WholeSeries.read(held, onProgress = { grown ->
+                            val widened = EpisodeNeighbours.widened(steps, EpisodeNeighbours.stepsIn(grown, here))
+                            if (widened != best) {
+                                best = widened
+                                _episodes.value = best
+                            }
+                        })
+                    }
+                    if (best != steps && _episodes.value != best) _episodes.value = best
+                    refreshSessionMetadata()
+                }
+            }
             // The providers' episode names, where lookups are on: a label first, then a better one.
-            val named = withContext(Dispatchers.IO) { EpisodeNames.named(steps, here, OnlineMetadata.current) }
-            if (named != steps) {
+            val named = withContext(Dispatchers.IO) { EpisodeNames.named(best, here, OnlineMetadata.current) }
+            if (named != best) {
                 _episodes.value = named
                 refreshSessionMetadata()
             }
