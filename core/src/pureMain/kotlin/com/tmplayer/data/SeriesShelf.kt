@@ -694,9 +694,10 @@ object SeriesShelf {
 
     /**
      * The established show [found] belongs to, or null. Its own key or one of its alternates,
-     * exactly; else the one show whose name starts with it, for a caption that shortens the name.
-     * A shortened name has to keep two words at least, so "Harbour" never swallows a file into
-     * "Harbour Notes".
+     * exactly; else the longest show whose key opens its key, for a name that carries a tail
+     * after the show's name; else the one show whose name starts with it, for a caption that
+     * shortens the name. A shortened name has to keep two words at least, so "Harbour" never
+     * swallows a file into "Harbour Notes".
      */
     /**
      * The one show [key] is the tail of, or that is the tail of [key], word boundaried:
@@ -736,6 +737,20 @@ object SeriesShelf {
     private fun joining(found: Found, showKeys: Set<String>): String? {
         val keys = listOf(found.key) + found.alternates
         keys.firstOrNull { it in showKeys }?.let { return it }
+        // A file naming an established show and a little more ("A Shop For Killers
+        // S2 END" beside the show "A Shop For Killers S2"): the show's key opens the
+        // file's key (owner, 2026-11-10: the season's last episode stood as a file
+        // of its own because its name carried the tail). The longest such show, and
+        // only when it stands alone at that length, as with [suffixKin], and the
+        // show at least two words, so a one word title never swallows a file.
+        for (candidate in keys) {
+            val opening = showKeys.filter { other ->
+                other != candidate && other.split(' ').size >= 2 && candidate.startsWith("$other ")
+            }
+            if (opening.isEmpty()) continue
+            val longest = opening.maxOf { it.length }
+            opening.singleOrNull { it.length == longest }?.let { return it }
+        }
         return keys.asSequence()
             .filter { it.split(' ').size >= 2 }
             .mapNotNull { short -> showKeys.filter { it.startsWith("$short ") }.singleOrNull() }

@@ -111,6 +111,53 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `an episode whose name carries a tail after the show's name joins the show`() {
+        // Owner, 2026-11-10: the season's last episode stood as a file of its own
+        // because its name carried "END" after the show's name ("...S2 END" beside
+        // the show "...S2"). The show's key opens the file's key, so the episode
+        // joins the longest show it names, here season two's, not season one's.
+        val e08 = "@ADrama_Lovers-E08.A.Shop.For.Killers.S2.END.x265.720p.DSNP.WEB-DL.mkv"
+        val items = listOf(
+            video("A.Shop.for.Killers.S01E01.1080p.mkv"),
+            video("A.Shop.for.Killers.S01E02.1080p.mkv"),
+            video("@ADrama_Lovers_E01_A_Shop_For_Killers_S2_AV1_1080p_DSNP_WEB_DL.mkv"),
+            video("@ADrama_Lovers_E02_A_Shop_For_Killers_S2_AV1_1080p_DSNP_WEB_DL.mkv"),
+            video(e08),
+        )
+        val entries = SeriesShelf.arrange(items)
+        assertFalse(files(entries).contains(e08))
+        val holder = shows(entries).single { show -> show.episodes.any { it.episode == 8 } }
+        assertEquals(2, holder.episodes.first { it.episode == 8 }.season)
+        assertEquals(setOf(1, 2, 8), holder.episodes.filter { it.season == 2 }.map { it.episode }.toSet())
+    }
+
+    @Test
+    fun `a file extending a one word show's name does not join it`() {
+        val extra = "Marimayam Special S01E03.mkv"
+        val items = listOf(
+            video("Marimayam S01E01.mkv"),
+            video("Marimayam S01E02.mkv"),
+            video(extra),
+        )
+        val entries = SeriesShelf.arrange(items)
+        assertEquals(2, shows(entries).single().episodeCount)
+        assertTrue(files(entries).contains(extra))
+    }
+
+    @Test
+    fun `a longer show established on its own episodes keeps them`() {
+        val items = listOf(
+            video("Harbour Notes S01E01.mkv"),
+            video("Harbour Notes S01E02.mkv"),
+            video("Harbour Notes Extra S01E01.mkv"),
+            video("Harbour Notes Extra S01E02.mkv"),
+        )
+        val found = shows(SeriesShelf.arrange(items))
+        assertEquals(setOf("harbour notes", "harbour notes extra"), found.map { it.key }.toSet())
+        assertTrue(found.all { it.episodeCount == 2 })
+    }
+
+    @Test
     fun `a sequel named after its parent stays apart from it`() {
         val items = listOf(
             video("Vikings.S01E01.720p.mkv"),
