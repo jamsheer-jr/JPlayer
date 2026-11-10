@@ -805,20 +805,30 @@ private fun creditHit(entry: FilmographyEntry, items: List<MediaItem>): MediaIte
  * and handed back; no find, or Telegram refusing, hands back null and the
  * row keeps its marking.
  */
+/** How long one credit's Telegram ask may run before it reads as no find. */
+private const val PERSON_ASK_MS = 20_000L
+
 private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
     val title = entry.credit.ref.title.trim()
     if (title.length < 3) return null
+    // Bounded (owner, 2026-11-10): the ask was the one unbounded wait on the
+    // page, a slow account-wide search held its row at "Loading..." for as
+    // long as it ran and held the whole fill behind it. A timeout reads as
+    // no find, as a refusal does; the row keeps its marking and its press
+    // can ask again.
     val page = try {
-        com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
-            title,
-            com.tmplayer.data.AllChatsCursor(),
-            com.tmplayer.data.SearchFilters(),
-        )
+        kotlinx.coroutines.withTimeoutOrNull(PERSON_ASK_MS) {
+            com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
+                title,
+                com.tmplayer.data.AllChatsCursor(),
+                com.tmplayer.data.SearchFilters(),
+            )
+        }
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
         return null
-    }
+    } ?: return null
     if (page.items.isEmpty()) return null
     com.tmplayer.online.KnownMedia.note(page.items)
     return creditHit(entry, page.items)
