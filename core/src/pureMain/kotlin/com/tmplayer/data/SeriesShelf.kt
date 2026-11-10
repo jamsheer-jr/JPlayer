@@ -184,7 +184,14 @@ object SeriesShelf {
         val key = name.titleKey.ifEmpty { return null }
         name.airDate?.let { return "date:$key|$it" }
         val episode = name.episode ?: return null
-        return "episode:$key|${name.season ?: 1}|$episode"
+        // A file of several episodes keys with its span (owner, 2026-11-10): keyed
+        // by its first episode alone, a combined pack read as one more copy of
+        // that episode everywhere the key rules (versions, copies, resume), while
+        // the shelf itself already stands it apart. Two posts of the same range
+        // share the key and stay copies of each other; a plain episode's key is
+        // unchanged, so its saved places keep their meaning.
+        val span = name.lastEpisode?.takeIf { it > episode }
+        return "episode:$key|${name.season ?: 1}|$episode" + (span?.let { "|$it" } ?: "")
     }
 
     /**

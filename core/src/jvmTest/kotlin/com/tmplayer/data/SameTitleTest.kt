@@ -84,6 +84,24 @@ class SameTitleTest {
     }
 
     @Test
+    fun `a combined pack is no copy of its first episode, and its own posts fold together`() {
+        // Owner, 2026-11-10: the E01 versions listed the EP(01-04) pack files as
+        // copies of episode one. A range file keys with its span, so it widens
+        // only its own range's posts, never a single episode's list.
+        val opened = video(1, 30, "Prince.of.Mollywood.S01E01.The.Dreamer.720p.mkv")
+        val pack = video(2, 31, "Prince of Mollywood (2026) S01 EP(01-04) combined.mkv")
+        val packAgain = video(3, 32, "Prince of Mollywood S01 EP(01-04) combined 1080p.mkv")
+        assertEquals(opened, SameTitle.withPoolCopies(opened, listOf(pack, packAgain)))
+        val widenedPack = SameTitle.withPoolCopies(pack, listOf(opened, packAgain))
+        assertEquals(setOf(31L, 32L), widenedPack.versions.map { it.messageId }.toSet())
+        // A plain episode's copy key carries no span, as before.
+        assertEquals(
+            SeriesShelf.sameVideoKey(video(1, 33, "Harbour.Notes.S01E02.720p.mkv")),
+            SeriesShelf.sameVideoKey(video(2, 34, "Harbour Notes S01E02 1080p.mkv")),
+        )
+    }
+
+    @Test
     fun `one online match is one tile whatever the names say`() {
         val entries = listOf(
             ShelfEntry.File(video(1, 1, "KLF_final_cut.mkv")),
