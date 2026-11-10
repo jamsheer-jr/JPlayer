@@ -70,6 +70,8 @@ import com.tmplayer.online.MetaExtras
 import com.tmplayer.online.MetaInfo
 import com.tmplayer.online.MetaKind
 import com.tmplayer.online.MetaPerson
+import com.tmplayer.online.MetaQuery
+import com.tmplayer.online.MetaResult
 import com.tmplayer.online.MetaProvider
 import com.tmplayer.online.MetaRef
 import com.tmplayer.online.PersonFilmography
@@ -745,9 +747,6 @@ private fun markCredits(credits: List<PersonCredit>, held: List<PersonTitle>): L
     }
 }
 
-/** How many missing credits one page opening asks Telegram for at most. */
-private const val PERSON_SEARCH_ASKS = 10
-
 /** Missing credits asked at once: a few in flight, never the whole list at once. */
 private const val PERSON_SEARCH_AT_ONCE = 3
 
@@ -755,18 +754,23 @@ private const val PERSON_SEARCH_AT_ONCE = 3
  * [entries] with the still missing credits asked for on Telegram itself (owner,
  * v1.0.17): the local marking only knows the titles the app has already listed, and
  * most of a viewer's titles sit in chats nothing has listed yet, so they read "Not
- * in your chats" wrongly. The first [PERSON_SEARCH_ASKS] missing credits, in the
- * list's own order (newest first), are asked together, a few in flight at once
- * (owner, v1.0.24: one after another read as a page that never finished), each
- * through the same ask the search screen makes
- * ([com.tmplayer.ui.browse.VideoSearchSource.Telegram]), so the chats choice and
- * the Global Search switch rule it the same way. A find counts when its name reads
- * as the credit's title and its year does not fight the credit's; finds are noted
- * into [com.tmplayer.online.KnownMedia], so the rest of the app keeps them.
- * Offline, or Telegram refusing, simply leaves the local marking as it stood.
+ * in your chats" wrongly. Every missing credit is asked, in the list's own order
+ * (newest first), a few in flight at once (owner, v1.0.24: one after another read
+ * as a page that never finished; owner, v1.0.29: the first ten only left the rest
+ * standing as missing however long the page stood), each through the same ask the
+ * search screen makes ([com.tmplayer.ui.browse.VideoSearchSource.Telegram]), so
+ * the chats choice and the Global Search switch rule it the same way. A find
+ * counts when its name reads as the credit's title and its year does not fight
+ * the credit's; finds are noted into [com.tmplayer.online.KnownMedia], so the
+ * rest of the app keeps them, and each find is handed to [onFound] as it lands so
+ * its row upgrades at once instead of when the whole fill finishes. Offline, or
+ * Telegram refusing, simply leaves the local marking as it stood.
  */
-private suspend fun personSearchFill(entries: List<FilmographyEntry>): List<FilmographyEntry> {
-    val missing = entries.filter { !it.playable && it.credit.ref.title.trim().length >= 3 }.take(PERSON_SEARCH_ASKS)
+private suspend fun personSearchFill(
+    entries: List<FilmographyEntry>,
+    onFound: (matchKey: String, item: MediaItem) -> Unit = { _, _ -> },
+): List<FilmographyEntry> {
+    val missing = entries.filter { !it.playable && it.credit.ref.title.trim().length >= 3 }
     if (missing.isEmpty()) return entries
     val found = HashMap<String, MediaItem>()
     kotlinx.coroutines.coroutineScope {
@@ -776,6 +780,7 @@ private suspend fun personSearchFill(entries: List<FilmographyEntry>): List<Film
                 slots.withPermit {
                     val hit = personCreditAsk(entry) ?: return@withPermit
                     synchronized(found) { found[entry.credit.ref.matchKey] = hit }
+                    onFound(entry.credit.ref.matchKey, hit)
                 }
             }
         }.awaitAll()
@@ -808,6 +813,9 @@ private fun creditHit(entry: FilmographyEntry, items: List<MediaItem>): MediaIte
 /** How long one credit's Telegram ask may run before it reads as no find. */
 private const val PERSON_ASK_MS = 20_000L
 
+/** Pages of search answers one credit's ask reads before it gives up. */
+private const val PERSON_ASK_PAGES = 3
+
 private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
     val title = entry.credit.ref.title.trim()
     if (title.length < 3) return null
@@ -815,23 +823,35 @@ private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
     // page, a slow account-wide search held its row at "Loading..." for as
     // long as it ran and held the whole fill behind it. A timeout reads as
     // no find, as a refusal does; the row keeps its marking and its press
-    // can ask again.
-    val page = try {
+    // can ask again. More than the first page is read (owner, v1.0.29): a
+    // title the chats hold can sit past the first page of its own search,
+    // and one page read as not held however long the page stood.
+    return try {
         kotlinx.coroutines.withTimeoutOrNull(PERSON_ASK_MS) {
-            com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
-                title,
-                com.tmplayer.data.AllChatsCursor(),
-                com.tmplayer.data.SearchFilters(),
-            )
+            var cursor = com.tmplayer.data.AllChatsCursor()
+            var hit: MediaItem? = null
+            var pages = 0
+            while (hit == null && pages < PERSON_ASK_PAGES) {
+                val page = com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
+                    title,
+                    cursor,
+                    com.tmplayer.data.SearchFilters(),
+                )
+                pages++
+                if (page.items.isNotEmpty()) {
+                    com.tmplayer.online.KnownMedia.note(page.items)
+                    hit = creditHit(entry, page.items)
+                }
+                if (page.cursor.done) break
+                cursor = page.cursor
+            }
+            hit
         }
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
-        return null
-    } ?: return null
-    if (page.items.isEmpty()) return null
-    com.tmplayer.online.KnownMedia.note(page.items)
-    return creditHit(entry, page.items)
+        null
+    }
 }
 
 /**
@@ -845,8 +865,9 @@ private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
  * has listed yet is upgraded in place rather than standing as missing, and the
  * marking is kept against the pool as it fills behind the standing page, so a
  * credit the chats hold never stands as missing for the page's whole life
- * (owner, v1.0.24). A press on a row still marked missing asks for that one
- * title there and then ([personCreditAsk]) and opens it when it is found.
+ * (owner, v1.0.24). A press on a row still marked missing opens that title's
+ * own profile at once ([CreditProfile]) and asks for its copy behind the
+ * profile ([personCreditAsk]); a find offers the copy on the profile itself.
  * Where TMDB has nothing for the person, only the titles
  * in the chats are listed, as the page always did. Back, a press outside the card, or
  * the close button leaves; on a television the close button takes the remote first, as
@@ -871,7 +892,20 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
         val local = value
         val films = local?.filmography
         if (local != null && films != null) {
-            val filled = withContext(Dispatchers.Default) { personSearchFill(films) }
+            // Each find stands on its row as it lands (owner, v1.0.29), not
+            // when the last ask of the fill finishes.
+            val filled = withContext(Dispatchers.Default) {
+                personSearchFill(films) { key, hit ->
+                    val now = value
+                    val nowFilms = now?.filmography
+                    if (now != null && nowFilms != null) {
+                        value = PersonPageData(
+                            nowFilms.map { entry -> if (entry.credit.ref.matchKey == key) entry.copy(item = hit) else entry },
+                            now.extraHeld,
+                        )
+                    }
+                }
+            }
             if (filled !== films) value = PersonPageData(filled, local.extraHeld)
         }
         // The pool keeps filling behind the standing page (owner, v1.0.24):
@@ -910,6 +944,21 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
     val askScope = androidx.compose.runtime.rememberCoroutineScope()
     var upgrades by remember(person.name) { mutableStateOf<Map<String, MediaItem>>(emptyMap()) }
     var asking by remember(person.name) { mutableStateOf<Set<String>>(emptySet()) }
+    // The profile a row's press opens (owner, v1.0.29): a title the chats have
+    // not been marked as holding opens its profile here at once, and the ask
+    // for its copy runs behind the profile instead of the press going nowhere.
+    var profile by remember(person.name) { mutableStateOf<PersonCredit?>(null) }
+    val askFor: (FilmographyEntry) -> Unit = { entry ->
+        val key = entry.credit.ref.matchKey
+        if (key !in asking) {
+            asking = asking + key
+            askScope.launch {
+                val hit = personCreditAsk(entry)
+                asking = asking - key
+                if (hit != null) upgrades = upgrades + (key to hit)
+            }
+        }
+    }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
@@ -926,6 +975,7 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (profile == null) {
                 Box(
                     Modifier.size(96.dp).clip(CircleShape).background(Tone.surfaceHigh),
                     contentAlignment = Alignment.Center,
@@ -937,7 +987,8 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                 if (person.role.isNotBlank()) {
                     Text(person.role, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
                 }
-                if (page == null) {
+                }
+                if (profile == null && page == null) {
                     // The page asks TMDB and the chats behind itself; until the first
                     // answer lands the wait must read as loading, not as a stuck
                     // page (owner, v1.0.21).
@@ -953,7 +1004,17 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                         Text(s.commonLoading, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
                     }
                 }
-                page?.let { data ->
+                profile?.let { credit ->
+                    CreditProfile(
+                        credit = credit,
+                        item = upgrades[credit.ref.matchKey]
+                            ?: page?.filmography?.firstOrNull { it.credit.ref.matchKey == credit.ref.matchKey }?.item,
+                        searching = credit.ref.matchKey in asking,
+                        onBack = { profile = null },
+                        onOpenItem = onOpenItem,
+                    )
+                }
+                if (profile == null) page?.let { data ->
                     LazyColumn(
                         Modifier.fillMaxWidth().heightIn(max = 420.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -978,18 +1039,8 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
                                 asking = entry.credit.ref.matchKey in asking,
                                 onOpen = { shown.item?.let(onOpenItem) },
                                 onAsk = {
-                                    val key = entry.credit.ref.matchKey
-                                    if (key !in asking) {
-                                        asking = asking + key
-                                        askScope.launch {
-                                            val hit = personCreditAsk(entry)
-                                            asking = asking - key
-                                            if (hit != null) {
-                                                upgrades = upgrades + (key to hit)
-                                                onOpenItem(hit)
-                                            }
-                                        }
-                                    }
+                                    profile = entry.credit
+                                    askFor(entry)
                                 },
                             )
                         }
@@ -1029,6 +1080,121 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
     }
 }
 
+/**
+ * One filmography title's own profile (owner, v1.0.29: "Suggest ullath edutha direct
+ * movie profile varatte"), opened by a press on a row the chats have not been marked
+ * as holding: the title's page stands at once from its provider entry, the poster,
+ * the year, the overview and the cast, fetched by the credit's own provider id
+ * rather than by another name search. Behind it the chats are asked for the title
+ * itself (the same ask the row's press always made), and the moment a copy is
+ * found the profile offers it for opening, so the press is never a dead end: the
+ * profile is here whether or not a copy is. Back returns to the filmography.
+ */
+@Composable
+private fun CreditProfile(
+    credit: PersonCredit,
+    item: MediaItem?,
+    searching: Boolean,
+    onBack: () -> Unit,
+    onOpenItem: (MediaItem) -> Unit,
+) {
+    val s = LocalStrings.current
+    val tv = !isTouch()
+    val loaded by produceState<Pair<MetaInfo, MetaExtras?>?>(null, credit.ref.matchKey) {
+        value = withContext(Dispatchers.Default) {
+            val online = OnlineMetadata.current ?: return@withContext null
+            val base = MetaInfo(credit.ref.provider, credit.ref.id, credit.ref.kind, credit.ref.title, credit.year, posterUrl = credit.posterUrl)
+            val byId = if (credit.ref.provider == MetaProvider.Tmdb) {
+                credit.ref.id.toIntOrNull()?.let { id ->
+                    kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                        (online.lookup(MetaQuery(credit.ref.title, credit.year, tmdbId = id, kind = credit.ref.kind)) as? MetaResult.Found)?.info
+                    }
+                }
+            } else null
+            val info = byId ?: base
+            val extras = kotlinx.coroutines.withTimeoutOrNull(10_000L) { online.extras(info) }
+            info to extras
+        }
+    }
+    val info = loaded?.first
+    val extras = loaded?.second
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val backInteractions = remember { MutableInteractionSource() }
+        val backFocused by backInteractions.collectIsFocusVisibleAsState()
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(Corner.Medium))
+                .background(if (backFocused) Tone.focusFill else Tone.surfaceHigh)
+                .clickable(interactionSource = backInteractions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = onBack)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(TmIcons.ArrowBack, contentDescription = s.commonBack, tint = if (backFocused) Tone.onFocusFill else Color.White, modifier = Modifier.size(18.dp))
+            Text(s.commonBack, style = MaterialTheme.typography.bodyMedium, color = if (backFocused) Tone.onFocusFill else Color.White)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(
+                Modifier.size(92.dp, 138.dp).clip(RoundedCornerShape(Corner.Small)).background(Tone.surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                MetaPicture(info?.posterUrl ?: credit.posterUrl, Modifier.fillMaxSize(), maxWidth = 360)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(info?.title ?: credit.ref.title, style = MaterialTheme.typography.headlineSmall, color = Color.White)
+                (info?.year ?: credit.year)?.let { year ->
+                    Text(year.toString(), style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f))
+                }
+                if (credit.role.isNotBlank()) {
+                    Text(credit.role, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
+                }
+            }
+        }
+        if (extras != null) MetaFactsLines(extras, runtime = false)
+        val overview = info?.overview?.trim().orEmpty()
+        if (overview.isNotEmpty()) {
+            Text(overview, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 6, overflow = TextOverflow.Ellipsis)
+        }
+        val cast = extras?.cast.orEmpty()
+        if (cast.isNotEmpty()) {
+            Text(
+                cast.take(8).joinToString(", ") { it.name },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.7f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        when {
+            item != null -> {
+                val openInteractions = remember { MutableInteractionSource() }
+                val openFocused by openInteractions.collectIsFocusVisibleAsState()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Corner.Medium))
+                        .background(if (openFocused) Tone.focusFill else Tone.surfaceHigh)
+                        .clickable(interactionSource = openInteractions, indication = if (tv) null else androidx.compose.foundation.LocalIndication.current, onClick = { onOpenItem(item) })
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(s.commonOpen, style = MaterialTheme.typography.titleMedium, color = if (openFocused) Tone.onFocusFill else Color.White)
+                    Text(s.metadataInYourChats, style = MaterialTheme.typography.bodyMedium, color = if (openFocused) Tone.onFocusFill else Color.White.copy(alpha = 0.7f))
+                }
+            }
+            searching -> Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                Text(s.searchStillSearching, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+            }
+            else -> Text(s.metadataNotInYourChats, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
+        }
+    }
+}
+
 /** One row of [PersonTitlesDialog]: the poster, the title and its year, a press to open it. */
 @Composable
 private fun PersonTitleRow(title: PersonTitle, onOpen: () -> Unit) {
@@ -1065,8 +1231,9 @@ private fun PersonTitleRow(title: PersonTitle, onOpen: () -> Unit) {
  * One row of the filmography: the poster, the title, its year and the part played or the job
  * done, then where it stands with the viewer's chats. A title the chats hold is a press that
  * opens it, marked in the accent. One they do not hold stands dimmed, marked as not here,
- * and its press is not dead either (owner, v1.0.24): it asks Telegram for that one title
- * ([onAsk]), the row showing the ask while it runs, and a find upgrades the row and opens.
+ * and its press is not dead either (owner, v1.0.24, widened v1.0.29): it opens the title's
+ * own profile ([onAsk] hands the row to the page, which shows [CreditProfile]) and asks
+ * Telegram for that one title behind it, the row showing the ask while it runs.
  */
 @Composable
 private fun FilmographyRow(

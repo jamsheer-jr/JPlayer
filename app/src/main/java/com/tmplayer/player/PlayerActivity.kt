@@ -5713,9 +5713,14 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         }
     }
 
-    /** Whether the video may be one cut into byte pieces: the grid said so, or its name does. */
+    /**
+     * Whether the video may be one cut into byte pieces: the grid said so, or its name does.
+     * An uncertain name (".part001.mkv") counts too (owner, v1.0.29): opened on its own from
+     * Continue Watching or Downloads it never even looked for its other pieces, so the film
+     * stopped where the first piece ended. The lookup itself settles whether it is a piece.
+     */
     private fun mayBeJoined(): Boolean =
-        hasMessage() && (pieces.isNotEmpty() || com.tmplayer.data.SplitPieces.pieceOf(mediaFileName)?.certain == true)
+        hasMessage() && (pieces.isNotEmpty() || com.tmplayer.data.SplitPieces.pieceOf(mediaFileName) != null)
 
     /**
      * The pieces of the video, from the intent or else from the chat ([SplitPieces.lookUp]), for a
@@ -5735,7 +5740,51 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
                 com.tmplayer.data.SplitPieces.among(currentItem(), settings.downloadsNow().map { it.toMediaItem() })
             }.getOrNull()?.takeIf { it.size > 1 } ?: found
         }
+        fillPieceGaps()
         return pieces.isNotEmpty()
+    }
+
+    /**
+     * A set still missing a piece after its own chat and Downloads were read is asked
+     * for across the other chats (owner, v1.0.29): a film's pieces posted across two
+     * chats still play as one video. The ask is the search screen's own, so the chats
+     * choice and the Global Search switch rule it, and it is bounded like the cast
+     * page's asks. Only numbers the set lacks can be filled, and only while the
+     * merged pieces still read as one cut ([com.tmplayer.data.SplitPieces.gapFill]).
+     */
+    private suspend fun fillPieceGaps() {
+        val before = pieces
+        if (before.isEmpty()) return
+        val report = com.tmplayer.data.SplitPieces.report(before) ?: return
+        val sizes = before.map { it.sizeBytes }
+        val full = sizes.maxOrNull() ?: 0L
+        val last = sizes.lastOrNull() ?: 0L
+        // A set whose highest piece is smaller than its full pieces already has
+        // its last piece: nothing past it can belong to the cut, so no ask.
+        if (report.complete && last > 0 && last < full) return
+        val lead = currentItem()
+        val title = com.tmplayer.data.MediaName.parse(lead.fileName, lead.caption).title
+        if (title.isBlank()) return
+        val foreign = ArrayList<com.tmplayer.data.MediaItem>()
+        runCatching {
+            kotlinx.coroutines.withTimeoutOrNull(20_000L) {
+                var cursor = com.tmplayer.data.AllChatsCursor()
+                var pages = 0
+                while (pages < 3) {
+                    val page = com.tmplayer.ui.browse.VideoSearchSource.Telegram.page(
+                        title,
+                        cursor,
+                        com.tmplayer.data.SearchFilters(),
+                    )
+                    pages++
+                    foreign += page.items.filter { it.chatId != lead.chatId }
+                    if (page.cursor.done) break
+                    cursor = page.cursor
+                }
+            }
+        }
+        if (foreign.isEmpty()) return
+        pieces = com.tmplayer.data.SplitPieces.gapFill(before, foreign)
     }
 
     /**

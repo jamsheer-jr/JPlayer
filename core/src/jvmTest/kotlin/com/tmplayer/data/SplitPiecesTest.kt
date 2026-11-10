@@ -242,6 +242,35 @@ class SplitPiecesTest {
     }
 
     @Test
+    fun `gap fill takes a missing piece from another chat`() {
+        val own = listOf(file("Holiday.part001.mkv", size = 100 * MB))
+        val foreign = listOf(file("Holiday.part002.mkv", size = 40 * MB, chatId = 8))
+        val merged = SplitPieces.gapFill(own, foreign)
+        assertEquals(listOf(1, 2), merged.map { it.splitPiece!!.number })
+    }
+
+    @Test
+    fun `gap fill closes a hole in the middle`() {
+        val own = listOf(file("Holiday.part001.mkv", size = 100 * MB), file("Holiday.part003.mkv", size = 40 * MB))
+        val foreign = listOf(file("Holiday.part002.mkv", size = 100 * MB, chatId = 8))
+        val merged = SplitPieces.gapFill(own, foreign)
+        assertEquals(listOf(1, 2, 3), merged.map { it.splitPiece!!.number })
+        assertTrue(SplitPieces.report(merged).complete)
+    }
+
+    @Test
+    fun `gap fill never replaces a held number or splices another cut`() {
+        val own = listOf(file("Holiday.part001.mkv", size = 100 * MB), file("Holiday.part003.mkv", size = 40 * MB))
+        // The same number the set lacks, but cut at another size: another encode.
+        val otherCut = listOf(file("Holiday.part002.mkv", size = 80 * MB, chatId = 8))
+        assertEquals(listOf(1, 3), SplitPieces.gapFill(own, otherCut).map { it.splitPiece!!.number })
+        // A number the own chat already holds is never taken from elsewhere.
+        val held = listOf(file("Holiday.part001.mkv", size = 100 * MB), file("Holiday.part002.mkv", size = 40 * MB))
+        val again = listOf(file("Holiday.part002.mkv", size = 40 * MB, chatId = 8))
+        assertEquals(listOf(7L, 7L), SplitPieces.gapFill(held, again).map { it.chatId })
+    }
+
+    @Test
     fun `names that could be whole files join only when cut alike`() {
         val cut = listOf(file("Holiday.part001.mkv", size = 100 * MB), file("Holiday.part002.mkv", size = 40 * MB))
         assertEquals(1, SplitPieces.join(cut).size)

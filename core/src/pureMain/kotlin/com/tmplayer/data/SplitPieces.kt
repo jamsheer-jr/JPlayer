@@ -286,6 +286,26 @@ object SplitPieces {
     }
 
     /**
+     * [own] (one chat's pieces of a cut video) with its missing numbers filled from
+     * [foreign] (pieces of the same cut in other chats, owner, v1.0.29: a set split
+     * across chats still plays as one video, 001 into 002 and 003 where there is
+     * one). A foreign piece joins only a number [own] lacks, and the merged order
+     * must still read as one cut ([cutAlike]), so another encode of the same film,
+     * cut at other sizes, never splices in; a number the own chat holds is never
+     * replaced. The pieces in play order, or [own] in play order when nothing
+     * foreign fits.
+     */
+    fun gapFill(own: List<MediaItem>, foreign: List<MediaItem>): List<MediaItem> {
+        if (own.isEmpty()) return own
+        val key = own.firstOrNull { it.splitPiece != null }?.splitPiece?.key ?: return ordered(own)
+        val held = own.mapNotNull { it.splitPiece?.number }.toHashSet()
+        val extra = foreign.filter { piece -> piece.splitPiece?.key == key && piece.splitPiece?.number !in held }
+        if (extra.isEmpty()) return ordered(own)
+        val merged = ordered(own + extra)
+        return if (merged.size > own.size && cutAlike(merged)) merged else ordered(own)
+    }
+
+    /**
      * The pieces of [lead]'s video among [items] (the Downloads list, for a player with no
      * connection to search the chat), in order, [lead] among them; empty when [lead] is not a piece.
      */

@@ -216,6 +216,18 @@ internal fun Versions(
     }
     // The same file posted twice is one choice, not two identical rows.
     val allFiles = remember(full.versions) { VideoCopies.distinctFiles(full.versions) }
+    // A page opened on one piece of a cut video (owner, v1.0.29) turns to the
+    // joined video as soon as the versions hold it, so the facts and Play speak
+    // of the whole film, not of the lone piece, which cannot play on its own.
+    val joinedLead = remember(allFiles, full.id) {
+        if (full.splitPiece != null && full.pieces.isEmpty()) {
+            allFiles.firstOrNull { (lead, _) -> lead.pieces.any { it.id == full.id } }?.first
+        } else null
+    }
+    androidx.compose.runtime.LaunchedEffect(joinedLead?.id) {
+        val lead = joinedLead
+        if (lead != null) onPick(lead.asVersion(full))
+    }
     if (allFiles.size <= 1) return
     val s = LocalStrings.current
     val files = remember(allFiles, hideCamCopies, hideShortVideos, hiddenCopies) {
