@@ -119,6 +119,35 @@ class GlobalSearchTest {
     }
 
     @Test
+    fun `a superseded local scan stops instead of finishing`() {
+        // Owner, 2026-11-10: the scan is checked as it goes, so a newer keystroke
+        // ends the old scan by cancellation instead of stacking another whole
+        // pool scan under it.
+        val known = (1..300).map { video(1, it.toLong(), "Harbour.Notes.Episode.$it.mkv") }
+        var calls = 0
+        val outcome = runCatching {
+            GlobalSearch.localVideos(known, q("harbour"), cancelled = { ++calls > 0 })
+        }
+        assertTrue(outcome.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+    }
+
+    @Test
+    fun `online names are asked only for a video its own fields do not answer`() {
+        val known = listOf(
+            video(1, 1, "Harbour_Notes_2024_1080p.mkv"),
+            video(1, 2, "Ledger.of.Small.Hours.2019.720p.mkv"),
+        )
+        val asked = mutableListOf<Long>()
+        val found = GlobalSearch.localVideos(known, q("harbour")) { item ->
+            asked += item.messageId
+            emptyList()
+        }
+        assertEquals(listOf(1L), found.map { it.messageId })
+        // The harbour file answered on its own name; only the other was asked.
+        assertEquals(listOf(2L), asked)
+    }
+
+    @Test
     fun `a year alone ranks the titles holding it first, then films of that year`() {
         val found = listOf(
             video(1, 1, "Harbour.Days.1917.Remastered.mkv", date = 90),

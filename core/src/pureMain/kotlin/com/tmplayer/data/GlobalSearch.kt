@@ -2,6 +2,7 @@ package com.tmplayer.data
 
 
 import com.tmplayer.platform.currentYear
+import kotlinx.coroutines.CancellationException
 
 /**
  * A chat as a search result draws it: enough for an avatar and a name, read from `getChat` as the
@@ -668,14 +669,24 @@ object GlobalSearch {
      * name, the caption, and [names] (the online title, in its own language and in English).
      * [Fuzzy] folds case, accents, dots, underscores and dashes, and forgives a typo.
      */
-    fun matchesLocally(item: MediaItem, query: SearchQuery, names: List<String> = emptyList()): Boolean {
+    fun matchesLocally(item: MediaItem, query: SearchQuery, names: List<String> = emptyList()): Boolean =
+        matchesLocally(item, query) { names }
+
+    /**
+     * [matchesLocally] with the online [names] asked for only when the item's own fields do
+     * not answer: the lookup behind them (a provider cache read per item) is the dear part of
+     * a whole pool scan, and most items in it answer or fail on their own name already
+     * (owner, 2026-11-10: typing in search felt laggy).
+     */
+    fun matchesLocally(item: MediaItem, query: SearchQuery, names: () -> List<String>): Boolean {
         if (query.filterOnly) {
             val token = query.server
             return Fuzzy.score(item.searchText, token) > 0
         }
         val text = query.titleWords.joinToString(" ").ifBlank { return false }
-        val fields = listOf(SeriesShelf.tileTitle(item), item.fileName, item.searchText) + names
-        return fields.any { it.isNotBlank() && Fuzzy.score(it, text) > 0 }
+        val own = listOf(SeriesShelf.tileTitle(item), item.fileName, item.searchText)
+        if (own.any { it.isNotBlank() && Fuzzy.score(it, text) > 0 }) return true
+        return names().any { it.isNotBlank() && Fuzzy.score(it, text) > 0 }
     }
 
     /**
@@ -712,13 +723,24 @@ object GlobalSearch {
         query: SearchQuery,
         allowed: Set<Long>? = null,
         names: (MediaItem) -> List<String> = { emptyList() },
+        cancelled: () -> Boolean = { false },
     ): List<MediaItem> {
         if (query.isEmpty) return emptyList()
-        return known.asSequence()
-            .filter { KidsLock.allows(allowed, it.chatId) }
-            .distinctBy { it.id }
-            .filter { matchesLocally(it, query, names(it)) }
-            .toList()
+        val found = ArrayList<MediaItem>()
+        val seen = HashSet<String>()
+        // A plain loop, not a sequence (owner, 2026-11-10): the scan is long on a
+        // big pool and has no suspension points, so a cancelled search job could
+        // not stop it and fast typing stacked whole scans on top of each other,
+        // which read as keyboard lag. The caller's hook is checked as it goes,
+        // and a scan it has given up on ends by cancellation, like any other.
+        var checked = 0
+        for (item in known) {
+            if (++checked % 128 == 0 && cancelled()) throw CancellationException("local search superseded")
+            if (!KidsLock.allows(allowed, item.chatId)) continue
+            if (!seen.add(item.id)) continue
+            if (matchesLocally(item, query) { names(item) }) found += item
+        }
+        return found
     }
 
     /**

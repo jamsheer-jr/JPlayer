@@ -27,6 +27,8 @@ import com.tmplayer.online.MetaResult
 import com.tmplayer.online.OnlineMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -505,7 +507,10 @@ class GlobalSearchViewModel(
             _state.update { it.copy(query = query) }
             localJob?.cancel()
             localJob = viewModelScope.launch {
-                val local = withContext(work) { GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames) }
+                val here = currentCoroutineContext()
+                val local = withContext(work) {
+                    GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames, cancelled = { !here.isActive })
+                }
                 localNow = local
                 regroup { s -> GlobalSearch.merge(GlobalSearch.order(s.groups, query, s.sort), local, query, s.sort, identity) }
             }
@@ -550,8 +555,12 @@ class GlobalSearchViewModel(
         job = viewModelScope.launch {
             // The local half, off the main thread: no connection needed and no wait. What was
             // listed and still answers the new words stays up until Telegram's answer takes its
-            // place.
-            val local = withContext(work) { GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames) }
+            // place. A newer keystroke cancels this job, and the scan reads that as it
+            // goes, so it stops instead of finishing under the next one.
+            val here = currentCoroutineContext()
+            val local = withContext(work) {
+                GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames, cancelled = { !here.isActive })
+            }
             localNow = local
             regroup { s ->
                 // On a re-run of the words on screen, the whole of what is shown is carried,
