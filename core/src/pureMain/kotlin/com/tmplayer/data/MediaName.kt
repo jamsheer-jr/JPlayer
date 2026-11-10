@@ -246,7 +246,12 @@ object MediaName {
                 )
         }
         val bracket = CAST_BRACKET.find(normalised)?.range?.first?.takeIf { it > 0 }
-        val cut = listOfNotNull(markers, part?.at, extra?.range?.first, bracket).minOrNull() ?: normalised.length
+        // A title carrying its alternate name behind an AKA is the first title only
+        // (owner, 2026-11-10: "A Shop for Killers A K A Sarinjaui Syopingmol" read as
+        // two names and split the show in two). The marker never opens a name: a
+        // title that IS the marker keeps it.
+        val aka = AKA_MARKER.find(normalised)?.range?.first?.takeIf { it > 0 }
+        val cut = listOfNotNull(markers, part?.at, extra?.range?.first, bracket, aka).minOrNull() ?: normalised.length
         // An outright episode number beats the word "promo": in a name like
         // "Show.S01E26.Its Own Title.promo.1080p" the word rides in the episode's own title,
         // and the file is that episode, not an extra beside the series (owner, 2026-11-08).
@@ -876,6 +881,13 @@ object MediaName {
     private val GROUP_TAG = Regex("""^\s*\[(?!\s*(?:19|20)\d{2}\s*\])[^\]]{1,40}\]\s*""")
 
     private val SEASON_ONLY = Regex("""\b(?:s|season\s?)(\d{1,2})\b""", RegexOption.IGNORE_CASE)
+
+    /**
+     * The "also known as" a release writes between a title and its alternate name.
+     * Read on the spaced name, where the dotted form has become single letters
+     * ("A K A"); the one-word and the spelled-out forms stand as they are.
+     */
+    private val AKA_MARKER = Regex("""\b(?:a\s+k\s+a|aka|also known as)\b""", RegexOption.IGNORE_CASE)
 
     /**
      * The word has to be there. A bare "E04" is too easy to find inside a title, and guessing

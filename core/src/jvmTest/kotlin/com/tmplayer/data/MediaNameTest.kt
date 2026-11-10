@@ -487,6 +487,26 @@ class MediaNameTest {
     }
 
     @Test
+    fun `an alternate name behind AKA is not part of the title`() {
+        val pack = parse("A.Shop.for.Killers.A.K.A.Sarinjaui.Syopingmol.S02.COMBINED.720p.WEBRip.mkv")
+        assertEquals("A Shop for Killers", pack.title)
+        assertEquals(2, pack.season)
+        assertNull(pack.episode)
+        val film = parse("Night Train AKA Midnight Run (2024) 1080p.mkv")
+        assertEquals("Night Train", film.title)
+        assertEquals(2024, film.year)
+        val spelled = parse("Night Train also known as Midnight Run 2024.mkv")
+        assertEquals("Night Train", spelled.title)
+    }
+
+    @Test
+    fun `a title that is the AKA marker keeps it`() {
+        val parsed = parse("AKA.2023.1080p.WEB-DL.mkv")
+        assertEquals("AKA", parsed.title)
+        assertEquals(2023, parsed.year)
+    }
+
+    @Test
     fun `a dash before a year or a resolution is not an episode`() {
         listOf(
             "City Archive - 2019 1080p BluRay.mkv",
