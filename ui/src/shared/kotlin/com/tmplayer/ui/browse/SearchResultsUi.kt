@@ -30,8 +30,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
@@ -64,9 +62,9 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.Motion
 import com.tmplayer.ui.theme.Tone
 
-// The search across every chat as the three platforms draw it (CP73): a result card, the chats
-// stacked as avatars, the words for its states. The phone and the desktop use the card as it is;
-// the television its poster. Taps, focus and keys are the caller's.
+// The search across every chat as the three platforms draw it (CP73): a result card and the
+// words for its states. The phone and the desktop use the card as it is; the television its
+// poster. Taps, focus and keys are the caller's.
 
 /**
  * [CircleShape] as a canvas clip on the television: `clip` is a graphics layer there, a View-backed
@@ -108,51 +106,6 @@ fun ChatAvatar(chat: ChatBrief?, size: Dp, modifier: Modifier = Modifier) {
 }
 
 /**
- * Up to three of [chatIds]' avatars, overlapping, then "and 4 more": where a video was posted,
- * at a glance. The names are what a screen reader says.
- */
-@Composable
-fun AvatarStack(
-    chatIds: List<Long>,
-    chats: Map<Long, ChatBrief>,
-    modifier: Modifier = Modifier,
-    size: Dp = 20.dp,
-    max: Int = 3,
-) {
-    val s = LocalStrings.current
-    val shown = chatIds.take(max)
-    val more = chatIds.size - shown.size
-    // Each name isolated, so a Hebrew chat between two English ones does not reorder the list.
-    val names = chatIds.mapNotNull { chats[it]?.title }.joinToString(", ") { "\u2068$it\u2069" }
-    Row(
-        modifier.semantics { contentDescription = s.searchInChats(names) },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.width(size + (size * 0.6f) * (shown.size - 1).coerceAtLeast(0)).height(size)) {
-            shown.forEachIndexed { index, id ->
-                ChatAvatar(
-                    chats[id],
-                    size,
-                    Modifier
-                        .offset(x = size * 0.6f * index)
-                        .border(1.5.dp, Tone.background, CircleShape),
-                )
-            }
-        }
-        val single = shown.singleOrNull()?.let { chats[it]?.title }
-        val label = when {
-            more > 0 -> s.searchAndMore(more)
-            single != null -> "\u2068$single\u2069"
-            else -> null
-        }
-        if (label != null) {
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, color = Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-/**
  * The facts under a card's title: the year when the title does not already say it, the best
  * picture, the length, and the sizes from the smallest copy to the largest.
  */
@@ -167,9 +120,10 @@ fun resultFacts(group: ResultGroup): String {
 
 /**
  * One result as a card a list holds: the 2:3 poster on the start side, then the full title (the
- * tile title, never cut down to a poster name), its facts, the chats it is in and how many copies
- * there are, with the watch progress along the poster's foot. [highlighted] is the keyboard's or
- * the remote's selection.
+ * tile title, never cut down to a poster name), its facts and how many copies there are, with
+ * the watch progress along the poster's foot. Which chats hold a result is not said here
+ * (owner, v1.0.31: the search reads as the viewer's own library, not a list of sources).
+ * [highlighted] is the keyboard's or the remote's selection.
  */
 @Composable
 fun SearchResultCard(
@@ -201,7 +155,6 @@ fun SearchResultCard(
                 Text(facts, style = MaterialTheme.typography.bodySmall, color = Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AvatarStack(group.chatIds, chats, Modifier.weight(1f, fill = false))
                 // Files, as the page counts its versions: the same file in two chats is one.
                 val files = remember(group.copies) { group.fileCount }
                 if (files > 1 && !group.isShow) CopiesChip(files)

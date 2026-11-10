@@ -538,27 +538,16 @@ private fun PosterCard(
         // Files, as the page counts its versions: the same file in two chats is one.
         val files = remember(group.copies) { group.fileCount }
         if (files > 1 && !group.isShow) CopiesChip(files, Modifier.align(Alignment.TopEnd).padding(6.dp), onArt = true)
-        AvatarStack(
-            group.chatIds,
-            chats,
-            Modifier.align(Alignment.BottomStart).padding(8.dp).clip(CircleShape).background(Tone.scrim).padding(4.dp),
-            size = 22.dp,
-        )
     }
 }
 
-/** What the remote is on, said in full under the grid: the whole title, its facts, the chats it is in. */
+/** What the remote is on, said in full under the grid: the whole title and its facts. */
 @Composable
 private fun DetailsStrip(group: ResultGroup?, chats: Map<Long, ChatBrief>) {
-    val s = LocalStrings.current
     Column(Modifier.fillMaxWidth().height(STRIP).padding(top = 12.dp, end = Tv.SafeH), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (group == null) return@Column
         Text(GlobalSearch.titleOf(group), style = MaterialTheme.typography.titleLarge, color = Tone.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(resultFacts(group), style = MaterialTheme.typography.bodyLarge, color = Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        val names = group.chatIds.mapNotNull { chats[it]?.title }.joinToString(", ") { "⁨$it⁩" }
-        if (names.isNotEmpty()) {
-            Text(s.searchInChats(names), style = MaterialTheme.typography.bodyMedium, color = Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
     }
 }
 

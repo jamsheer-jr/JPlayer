@@ -718,7 +718,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
                 chatsLine = {
                     val s = LocalStrings.current
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AvatarStack(group.chatIds, briefs, Modifier.weight(1f, fill = false))
                         // Files, as the page counts its versions: the same file in two chats is one.
                         val files = remember(group.copies) { group.fileCount }
                         if (files > 1 && !group.isShow) CopiesChip(files)
