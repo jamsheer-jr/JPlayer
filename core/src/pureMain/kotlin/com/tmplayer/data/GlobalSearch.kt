@@ -722,8 +722,8 @@ object GlobalSearch {
         known: List<MediaItem>,
         query: SearchQuery,
         allowed: Set<Long>? = null,
-        names: (MediaItem) -> List<String> = { emptyList() },
         cancelled: () -> Boolean = { false },
+        names: (MediaItem) -> List<String> = { emptyList() },
     ): List<MediaItem> {
         if (query.isEmpty) return emptyList()
         val found = ArrayList<MediaItem>()

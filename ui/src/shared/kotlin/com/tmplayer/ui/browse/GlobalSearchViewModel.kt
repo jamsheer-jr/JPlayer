@@ -509,7 +509,7 @@ class GlobalSearchViewModel(
             localJob = viewModelScope.launch {
                 val here = currentCoroutineContext()
                 val local = withContext(work) {
-                    GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames, cancelled = { !here.isActive })
+                    GlobalSearch.localVideos(localPool(), query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
                 }
                 localNow = local
                 regroup { s -> GlobalSearch.merge(GlobalSearch.order(s.groups, query, s.sort), local, query, s.sort, identity) }
@@ -559,7 +559,7 @@ class GlobalSearchViewModel(
             // goes, so it stops instead of finishing under the next one.
             val here = currentCoroutineContext()
             val local = withContext(work) {
-                GlobalSearch.localVideos(localPool(), query, allowed, ::onlineNames, cancelled = { !here.isActive })
+                GlobalSearch.localVideos(localPool(), query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
             }
             localNow = local
             regroup { s ->
