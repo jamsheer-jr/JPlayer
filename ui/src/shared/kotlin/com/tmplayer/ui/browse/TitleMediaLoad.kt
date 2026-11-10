@@ -124,12 +124,13 @@ object TitleMediaLoad {
             chats.map { chatId ->
                 async {
                     slots.withPermit {
-                        val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, chatId, query) }
-                        if (found == null) {
-                            incomplete = true
-                        } else if (found.isNotEmpty()) {
-                            KnownMedia.note(found)
+                        // Pages are noted as they land, so a chat cut short by
+                        // the bound still leaves what it found standing in the
+                        // pool; the load itself stays unremembered either way.
+                        val found = withTimeoutOrNull(CHAT_SEARCH_MS) {
+                            search(fetch, chatId, query) { page -> KnownMedia.note(page) }
                         }
+                        if (found == null) incomplete = true
                     }
                 }
             }.awaitAll()
@@ -143,22 +144,27 @@ object TitleMediaLoad {
     }
 
     /**
-     * One chat's pages for [query], up to [SeriesFill.MAX_PAGES]. Everything the search
-     * returns is noted, with none of [WholeSeries]' size filter: the pool is a record of what
-     * the app has listed, and the copies list and the episode guide do their own narrowing
-     * (the same file, the same show) over it, so a small copy is not kept out of the versions
-     * by a search default.
+     * One chat's pages for [query], up to [SeriesFill.MAX_PAGES]. Each page is handed
+     * to [onPage] as it lands (owner, 2026-11-10): a page noted only once the whole
+     * search had run made a title whose copies sit deep in a big chat wait for every
+     * page before any of them stood on its page. Everything the search returns is
+     * noted, with none of [WholeSeries]' size filter: the pool is a record of what
+     * the app has listed, and the copies list and the episode guide do their own
+     * narrowing (the same file, the same show) over it, so a small copy is not kept
+     * out of the versions by a search default.
      */
-    private suspend fun search(
+    internal suspend fun search(
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
         chatId: Long,
         query: String,
+        onPage: (List<MediaItem>) -> Unit = {},
     ): List<MediaItem> {
         val found = ArrayList<MediaItem>()
         var cursors = MediaCursors()
         for (page in 0 until SeriesFill.MAX_PAGES) {
             val read = fetch(chatId, query, cursors) ?: break
             found += read.items
+            if (read.items.isNotEmpty()) onPage(read.items)
             if (read.endReached || read.cursors.allDone) break
             cursors = read.cursors
         }

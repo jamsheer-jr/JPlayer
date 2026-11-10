@@ -36,6 +36,64 @@ class TitleScopeTest {
     }
 }
 
+/** [TitleMediaLoad.search]: a chat's finds are handed over page by page, as they land. */
+class TitleMediaLoadPagesTest {
+
+    private fun video(messageId: Long, name: String) = MediaItem(
+        chatId = 7,
+        messageId = messageId,
+        fileId = 1,
+        title = name,
+        sizeBytes = 900L * 1024 * 1024,
+        durationSec = 5_000,
+        mimeType = "video/mp4",
+        thumbnailFileId = 0,
+        miniThumbnail = null,
+        date = 1,
+        fileName = name,
+    )
+
+    @Test
+    fun `each page is handed over as it lands, in order`() = runTest {
+        val first = listOf(video(1, "Harbour Lights 2019 720p"), video(2, "Harbour Lights 2019 1080p"))
+        val second = listOf(video(3, "Harbour Lights 2019 2160p"))
+        val handed = mutableListOf<List<Long>>()
+        val found = TitleMediaLoad.search(
+            fetch = { _, _, cursors ->
+                when (cursors.video) {
+                    0L -> com.tmplayer.data.MediaPage(first, com.tmplayer.data.MediaCursors(video = 1), endReached = false)
+                    else -> com.tmplayer.data.MediaPage(second, com.tmplayer.data.MediaCursors(video = 2), endReached = true)
+                }
+            },
+            chatId = 7,
+            query = "Harbour Lights",
+            onPage = { page -> handed += page.map { it.messageId } },
+        )
+        assertEquals(listOf(listOf(1L, 2L), listOf(3L)), handed)
+        assertEquals(listOf(1L, 2L, 3L), found.map { it.messageId })
+    }
+
+    @Test
+    fun `a failed later page keeps the pages already handed over`() = runTest {
+        val first = listOf(video(1, "Harbour Lights 2019 720p"))
+        val handed = mutableListOf<List<Long>>()
+        val found = TitleMediaLoad.search(
+            fetch = { _, _, cursors ->
+                if (cursors.video == 0L) {
+                    com.tmplayer.data.MediaPage(first, com.tmplayer.data.MediaCursors(video = 1), endReached = false)
+                } else {
+                    null
+                }
+            },
+            chatId = 7,
+            query = "Harbour Lights",
+            onPage = { page -> handed += page.map { it.messageId } },
+        )
+        assertEquals(listOf(listOf(1L)), handed)
+        assertEquals(listOf(1L), found.map { it.messageId })
+    }
+}
+
 /** [TitleMediaLoad] itself, over a fake Telegram: the chats it asks are the chosen ones. */
 class TitleMediaLoadScopeTest {
 
