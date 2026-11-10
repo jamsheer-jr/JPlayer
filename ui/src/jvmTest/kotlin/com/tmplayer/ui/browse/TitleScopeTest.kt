@@ -123,4 +123,35 @@ class TitleMediaLoadScopeTest {
         }
         assertEquals(listOf(51L, 52L, 53L), asked)
     }
+
+    @Test
+    fun `a later load asks only the chats listed since the first`() = runTest {
+        // An every chat answer: the scope is whatever chats the pool knows.
+        com.tmplayer.online.KnownMedia.clear()
+        ChatGate.set(null)
+        AddedChats.set(AddedChoice(AddedMode.All, emptyList()))
+        val item = video(chatId = 61, messageId = 6161, name = "Harbour Lights 2019")
+        val first = mutableListOf<Long>()
+        TitleMediaLoad.load(item) { chatId, _, _ ->
+            first += chatId
+            null
+        }
+        assertEquals(listOf(61L), first)
+        // Home lists another chat behind the standing page, as a category
+        // page's deepening does while the viewer is looking at the title.
+        com.tmplayer.online.KnownMedia.note(listOf(video(chatId = 62, messageId = 6262, name = "Other Film 2021")))
+        val second = mutableListOf<Long>()
+        TitleMediaLoad.load(item) { chatId, _, _ ->
+            second += chatId
+            null
+        }
+        assertEquals(listOf(62L), second)
+        // Nothing new listed since: no ask at all.
+        val third = mutableListOf<Long>()
+        TitleMediaLoad.load(item) { chatId, _, _ ->
+            third += chatId
+            null
+        }
+        assertEquals(emptyList<Long>(), third)
+    }
 }

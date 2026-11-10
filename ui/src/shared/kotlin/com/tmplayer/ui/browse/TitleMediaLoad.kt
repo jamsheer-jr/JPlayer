@@ -27,8 +27,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * Non-blocking by shape: the page draws with what is known, each chat's finds are noted into
  * the pool as they land, and the sections that read the pool (the copies list, the seasons)
- * watch its version and redraw. Once per title per run, like [WholeSeries]' kept set, so
- * going back and forth over a page does not search again behind it.
+ * watch its version and redraw. Each chat is asked once per title per run and remembered,
+ * so going back and forth over a page does not search again behind it, and an open that
+ * comes after Home has listed more chats asks only those (owner, v1.0.30).
  */
 @Composable
 fun rememberTitleMediaLoad(item: MediaItem) {
@@ -41,7 +42,15 @@ fun rememberTitleMediaLoad(item: MediaItem) {
 
 /** The searches behind [rememberTitleMediaLoad]. */
 object TitleMediaLoad {
-    private val loaded = LruMap<String, Unit>(KEPT)
+    /**
+     * The chats each title's fill has fully asked, by item id (owner, v1.0.30):
+     * the mark used to be a plain once per run, and a title opened while Home
+     * was still listing (a category page's deepening above all) spent its one
+     * fill on the few chats listed so far, so the versions in the chats listed
+     * later never came for the whole run. Now the fill remembers which chats
+     * it asked, and a later open asks only the ones the scope has gained.
+     */
+    private val asked = LruMap<String, Set<Long>>(KEPT)
 
     private val loadingMutable = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
 
@@ -72,25 +81,29 @@ object TitleMediaLoad {
         item: MediaItem,
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage? = ::telegram,
     ) {
-        if (loaded[item.id] != null) return
-        fill(item, fetch)
+        // Asked in full over every chat the pool knows: nothing new can be
+        // asked until the pool learns of another chat (owner, v1.0.30).
+        val done = asked[item.id]
+        if (done != null && item.chatId in done && KnownMedia.all().all { it.chatId in done }) return
+        fill(item, fetch, refresh = false)
     }
 
     /**
      * The same search again at the viewer's own ask (owner, v1.0.20: a pull down on
-     * a title's page refreshes it, as Search's pull does): the once per run mark is
+     * a title's page refreshes it, as Search's pull does): the remembered chats are
      * no bar here, so copies or episodes posted since the page opened are asked for
      * again and land in the pool the open page already watches.
      */
-    suspend fun refresh(item: MediaItem) = fill(item, ::telegram)
+    suspend fun refresh(item: MediaItem) = fill(item, ::telegram, refresh = true)
 
     private suspend fun fill(
         item: MediaItem,
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
+        refresh: Boolean,
     ) {
         loadingMutable.value += item.id
         try {
-            fillNow(item, fetch)
+            fillNow(item, fetch, refresh)
         } finally {
             loadingMutable.value -= item.id
         }
@@ -99,6 +112,7 @@ object TitleMediaLoad {
     private suspend fun fillNow(
         item: MediaItem,
         fetch: suspend (chatId: Long, query: String, cursors: MediaCursors) -> MediaPage?,
+        refresh: Boolean,
     ) {
         // The gate is a settings read, quick on any healthy device; the bound is
         // the non-blocking rule's insurance (owner, v1.0.21: an info page must
@@ -107,18 +121,26 @@ object TitleMediaLoad {
         // exactly as an unread gate already does.
         val gate = withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsing() }
         val gateKnown = withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsingKnown() } ?: false
-        if (gate != null || gateKnown) loaded[item.id] = Unit
         val query = SeriesShelf.episodeOf(item).title.trim()
         if (query.isBlank()) return
-        val chats = TitleScope.chats(item.chatId, gate, gateKnown, KnownMedia.all().map { it.chatId }.toSet())
+        val scope = TitleScope.chats(item.chatId, gate, gateKnown, KnownMedia.all().map { it.chatId }.toSet())
+        // Only the chats this title has not been fully asked (owner, v1.0.30):
+        // the scope grows as Home lists more chats (a category page's deepening
+        // lists dozens behind the standing page), and each later open tops the
+        // fill up instead of standing at the first, thinnest one.
+        val already = if (refresh) emptySet() else asked[item.id] ?: emptySet()
+        val chats = scope.filter { it !in already }
+        if (chats.isEmpty()) return
         // The chats are asked a few at a time, not one by one (owner, v1.0.19):
         // in a line, a title whose copies sit in a dozen chats kept the page's
         // other asks waiting behind the whole line of searches, and the page
         // felt stuck while its versions filled. Each chat's finds are still
         // noted as they land, so the versions fill in as they come. One chat's
         // search is bounded too (owner, v1.0.21): a chat Telegram never answers
-        // gives up its slot instead of holding the page's load open.
-        var incomplete = false
+        // gives up its slot instead of holding the page's load open, and a
+        // chat cut short by the bound is not remembered as asked, so the next
+        // open asks it again (owner, v1.0.21, kept under the v1.0.30 memory).
+        val doneNow = java.util.Collections.synchronizedSet(HashSet<Long>())
         kotlinx.coroutines.coroutineScope {
             val slots = kotlinx.coroutines.sync.Semaphore(CHATS_AT_ONCE)
             chats.map { chatId ->
@@ -126,21 +148,16 @@ object TitleMediaLoad {
                     slots.withPermit {
                         // Pages are noted as they land, so a chat cut short by
                         // the bound still leaves what it found standing in the
-                        // pool; the load itself stays unremembered either way.
+                        // pool; the chat itself stays unremembered either way.
                         val found = withTimeoutOrNull(CHAT_SEARCH_MS) {
                             search(fetch, chatId, query) { page -> KnownMedia.note(page) }
                         }
-                        if (found == null) incomplete = true
+                        if (found != null) doneNow += chatId
                     }
                 }
             }.awaitAll()
         }
-        // A load a slow chat cut short does not stand as the title's one ask
-        // (owner, v1.0.21): titles opened from the banner or a category page
-        // showed only the versions the first, thinnest fill found. The mark
-        // comes off, so the next open asks the missing chats again, still
-        // behind the page, never in its way.
-        if (incomplete) loaded.remove(item.id)
+        if (gate != null || gateKnown) asked[item.id] = already + doneNow
     }
 
     /**

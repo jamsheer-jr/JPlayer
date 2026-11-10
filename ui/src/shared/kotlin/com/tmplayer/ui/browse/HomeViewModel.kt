@@ -703,8 +703,28 @@ class HomeViewModel(
 
     /** Asks for [chatId]'s deeper catalog read, once, and again when a refresh says fresh. */
     private fun fetchCatalog(chatId: Long, fresh: Boolean = false, minGapMs: Long = 0) {
-        fetches.ask("catalog:$chatId", fresh = fresh, minGapMs = minGapMs, before = if (fresh) ::untilIdle else null) {
+        fetches.ask("catalog:$chatId", fresh = fresh, minGapMs = minGapMs, before = if (fresh) ::untilIdle else ::untilTitlePageIdle) {
             fetchCatalogChat(chatId)
+        }
+    }
+
+    /**
+     * The catalog deepening's turn behind an open title page (owner, v1.0.30): a
+     * category page's open asks for up to a hundred chats' deep reads at once,
+     * and a title opened from it had its own versions fill starved behind that
+     * flood, its chats timing out or its asks spent on the chats listed so
+     * far. While a title page's fill is running ([TitleMediaLoad.loading]),
+     * a catalog read waits, outside the fetch budget where [HomeFetches] runs
+     * its before hooks, so it holds no fetch slot while it waits. A title fill
+     * is a handful of chats and soon done; the bound keeps a stuck fill from
+     * holding the deepening forever. No circle: a title fill asks
+     * [com.tmplayer.data.ChatRepository] directly, never this queue.
+     */
+    private suspend fun untilTitlePageIdle() {
+        var waited = 0L
+        while (TitleMediaLoad.loading.value.isNotEmpty() && waited < TITLE_PAGE_WAIT_MS) {
+            kotlinx.coroutines.delay(TITLE_PAGE_RECHECK_MS)
+            waited += TITLE_PAGE_RECHECK_MS
         }
     }
 
@@ -1159,6 +1179,12 @@ class HomeViewModel(
     companion object {
         /** Rows fetched at once: enough to fill a screen quickly, few enough to stay polite to Telegram. */
         const val PARALLEL = 3
+
+        /** How long a catalog read waits for an open title page's fill before going ahead anyway. */
+        const val TITLE_PAGE_WAIT_MS = 60_000L
+
+        /** The poll under [untilTitlePageIdle]: short, so the deepening resumes as soon as the fill lands. */
+        const val TITLE_PAGE_RECHECK_MS = 250L
 
         /**
          * Home's chats asked for as soon as they are picked ([fill]): a screen and a half of rows.
