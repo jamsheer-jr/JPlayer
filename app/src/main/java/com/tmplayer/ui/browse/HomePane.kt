@@ -299,15 +299,13 @@ internal fun HomePane(
     }
     if (rows.isEmpty()) {
         LaunchedEffect(Unit) { HomeFirstPaint.markReady() }
-        // Rows still being built: the page's heading over a blank page, not the first run's card.
-        // A list of the chats' videos that never comes back gives way to the card after a while,
-        // so a first run without a connection still says what to do.
-        var waitedOut by remember { mutableStateOf(false) }
-        if (!rowsReady) LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(ROWS_WAIT_MS)
-            waitedOut = true
-        }
-        if (!rowsReady && !waitedOut) {
+        // Rows still being built: the skeleton, for as long as the build takes. The first
+        // run's card below stands only once Home has settled (rowsReady): a slow start on a
+        // weak line used to outlast a fixed wait and land on that card, telling a viewer
+        // whose library was still arriving to bring a first video in (owner, 2026-11-10).
+        // A load that never answers settles through the model's own stall handling, so a
+        // first run without a connection still reaches the card.
+        if (!rowsReady) {
             Column(Modifier.fillMaxSize().padding(top = under)) {
                 tvHeader?.invoke(false)
                 if (touch) PhoneHomeBrand(Modifier.padding(start = start, top = BRAND_TOP), onArt = false)
@@ -3258,9 +3256,6 @@ private fun HomeLoadingSkeleton(start: androidx.compose.ui.unit.Dp, end: android
         }
     }
 }
-
-/** How long an empty Home waits for its rows before it takes itself for a first run. */
-private const val ROWS_WAIT_MS = 10_000L
 
 /** How long Home without a carousel waits for one to turn up before the cold start's loader lifts. */
 private const val NO_CAROUSEL_SETTLE_MS = 1_500L

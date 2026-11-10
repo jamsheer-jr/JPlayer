@@ -562,6 +562,9 @@ class HomeViewModel(
         while (busy() || !shown) kotlinx.coroutines.delay(BUSY_RECHECK_MS)
     }
 
+    /** Whether Home's fetch queue has nothing queued or running: what is still out is not coming. */
+    internal fun fetchesDone(): Boolean = !fetches.busy.value
+
     /**
      * Asks again for the rows of [chats], which had new or changed videos, and the shows in them:
      * each row at most once a [LIVE_GAP_MS], however busy the chat, and Recently added with them.
@@ -1500,7 +1503,11 @@ fun rememberHomeRows(
         // Rows that are there, or a list of where the videos are that has come back: either way
         // what Home shows now is the answer. Starred chats alone need no such list.
         // Starred chats alone need no such list, nor a Home whose Recently added and carousel are off.
-        if (built.isNotEmpty() || recent != null || !autoPick) model.rowsSettled = true
+        // An empty build over a whole chat list whose fetches have all answered settles too
+        // (owner, 2026-11-10): Home is not still loading then, it is empty, and the first
+        // video card is the truthful page. While anything is still out, the build does not
+        // settle, so a slow start never shows that card to a library on its way.
+        if (built.isNotEmpty() || recent != null || !autoPick || (fromList && model.fetchesDone())) model.rowsSettled = true
     }
     PrefetchHomeArt(rows, model)
     SweepHomeExtras(rows, model)
