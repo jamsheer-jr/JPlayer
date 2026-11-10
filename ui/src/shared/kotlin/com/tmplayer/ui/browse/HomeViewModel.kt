@@ -390,6 +390,18 @@ class HomeViewModel(
      */
     var extrasTick: Int by androidx.compose.runtime.mutableStateOf(0)
 
+    /**
+     * The lookup keys the extras sweep has already asked for, kept on the model rather
+     * than in the sweep's composition (owner, 2026-11-10): leaving Home and coming back
+     * dropped the set, the sweep started again from the first titles, and on a large
+     * account the slow page reads behind the later titles (MyDramaList answers a C-drama
+     * in two page fetches) never arrived, so the genre and language shelves stayed near
+     * empty. Kept here, a title is asked once per run of the app, as the sweep's own
+     * contract says, and short visits add up. Guarded by the sweep's own synchronized
+     * block, as it was in composition.
+     */
+    val extrasAttempted: MutableSet<String> = HashSet()
+
     private val _loaded = MutableStateFlow<Map<Long, List<MediaItem>>>(emptyMap())
 
     /** Each starred chat's videos, once fetched. A chat missing here has not answered yet. */
@@ -1382,9 +1394,25 @@ fun rememberHomeRows(
     // filled Home reads a dozen chats, each answer changed the inputs, and every build reads
     // hundreds of names. Built on the main thread, that held a TV stick past the ANR limit
     // (1.28.0, Bell Streamer). The last rows stay on screen meanwhile.
+    // Restarts of the still empty build the producer below has waited out: see its delay.
+    var emptySkips by remember { mutableStateOf(0) }
     val rows by produceState(model.lastRows, continueWatching, watchLater, chats, favourites, loaded, recent, partial, fresh, corrections, recentMinStarred, autoFill, stalled, layout, added, collections, watched, trendingRefs, hideShortVideos, hideCamCopies, seriesPool, catalogPool, pinnedChat, model.extrasTick) {
         // The setting not read yet: nothing is picked, built or fetched (see [layout]).
         val layout = layout ?: return@produceState
+        // An empty Home restarts this build on every answer the chats send (owner,
+        // 2026-11-10): each restart queued a whole build on the one build thread, a
+        // cancelled build still ran there to its end, and on a large account the queue
+        // never drained, so the skeleton stood for minutes with the answers already in.
+        // An empty build now waits for a moment's quiet first, the way a standing Home
+        // already waits below, and the wait is capped: after EMPTY_BUILD_MAX_SKIPS
+        // restarts it builds with what it has, so a busy account still gets its rows
+        // within seconds and the fuller builds follow behind them.
+        if (value.isNotEmpty()) {
+            emptySkips = 0
+        } else if (emptySkips < EMPTY_BUILD_MAX_SKIPS) {
+            emptySkips++
+            delay(HomeViewModel.ROWS_SETTLE_MS)
+        }
         // Home's chats picked for itself only feed Recently added and the carousel.
         val autoPick = autoFill && layout.needsRecent && added == null
         val chosen = layout.needsRecent && added != null
@@ -1619,6 +1647,9 @@ private fun PrefetchHomeArt(rows: List<HomeRow>, model: HomeViewModel) {
 /** How many titles one sweep round fetches extras for before it asks for a rebuild. */
 private const val EXTRAS_SWEEP_PER_ROUND = 24
 
+/** Restarts an empty Home build waits out before it builds with what it has: see rememberHomeRows. */
+private const val EMPTY_BUILD_MAX_SKIPS = 10
+
 /**
  * The genre, decade, star and language shelves read their facts from the extras cache
  * ([homeTitleMeta]), and until now extras landed only for the banner's candidates and
@@ -1650,7 +1681,7 @@ private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
             }
         }.distinctBy { it.first.id }
     }
-    val attempted = remember { mutableSetOf<String>() }
+    val attempted = model.extrasAttempted
     LaunchedEffect(items) {
         val gate = Semaphore(PREFETCH_PARALLEL)
         // Rounds run back to back over the standing titles until every one has
