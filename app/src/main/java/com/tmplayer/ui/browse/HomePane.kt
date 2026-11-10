@@ -298,7 +298,12 @@ internal fun HomePane(
         return
     }
     if (rows.isEmpty()) {
-        LaunchedEffect(Unit) { HomeFirstPaint.markReady() }
+        // The startup loader stays over this page until Home settles (owner, v1.0.31):
+        // marking ready here lifted it at once on every cold open, leaving the skeleton
+        // standing on the white ground for the whole first build, which read as a loading
+        // page rather than the app arriving. The loader's own hold is capped
+        // (HomeFirstPaint.HOLD_MAX_MS), so a build that never settles still gives way.
+        LaunchedEffect(rowsReady) { if (rowsReady) HomeFirstPaint.markReady() }
         // Rows still being built: the skeleton, for as long as the build takes. The first
         // run's card below stands only once Home has settled (rowsReady): a slow start on a
         // weak line used to outlast a fixed wait and land on that card, telling a viewer

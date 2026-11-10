@@ -383,6 +383,15 @@ class HomeViewModel(
         internal set
 
     /**
+     * True when [restore] found a Home cache snapshot standing: the first build then has the
+     * last session's rows' inputs in hand at once, so [rememberHomeRows] builds it without the
+     * empty build's quiet wait, which exists for fetch storms on a Home with nothing cached
+     * (owner, v1.0.31: a reopen showed the loading page for the whole wait, every time).
+     */
+    var restoredFromCache: Boolean = false
+        private set
+
+    /**
      * Bumped by the extras sweep (see SweepHomeExtras) when a round of genre, rating and
      * language facts has landed in the lookup caches: the rows build reads it as one of
      * its inputs, so the shelves those facts feed are rebuilt once per round instead of
@@ -605,6 +614,7 @@ class HomeViewModel(
     private fun restore() {
         val snapshot = HomeCache.load()
         if (snapshot != null && !snapshot.isEmpty) {
+            restoredFromCache = true
             _loaded.value = snapshot.loaded
             _recent.value = snapshot.recent
             _partial.value = snapshot.partial
@@ -1433,9 +1443,12 @@ fun rememberHomeRows(
         // already waits below, and the wait is capped: after EMPTY_BUILD_MAX_SKIPS
         // restarts it builds with what it has, so a busy account still gets its rows
         // within seconds and the fuller builds follow behind them.
+        // A Home restored from its cache skips the wait (owner, v1.0.31): its inputs are
+        // the last session's answers, already in hand, so the first build paints them at
+        // once and the fresher builds follow behind, as they do on a standing Home.
         if (value.isNotEmpty()) {
             emptySkips = 0
-        } else if (emptySkips < EMPTY_BUILD_MAX_SKIPS) {
+        } else if (!model.restoredFromCache && emptySkips < EMPTY_BUILD_MAX_SKIPS) {
             emptySkips++
             delay(HomeViewModel.ROWS_SETTLE_MS)
         }
