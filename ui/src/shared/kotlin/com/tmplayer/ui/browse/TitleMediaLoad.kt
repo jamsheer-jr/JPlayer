@@ -118,9 +118,9 @@ object TitleMediaLoad {
         // the non-blocking rule's insurance (owner, v1.0.21: an info page must
         // never feel stuck): a gate that does not answer in time reads as
         // unknown, and the load asks the title's own chat only, unremembered,
-        // exactly as an unread gate already does.
-        val gate = withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsing() }
-        val gateKnown = withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsingKnown() } ?: false
+        // exactly as an unread gate already does. The read itself is shared and
+        // briefly kept ([BrowsingGate], owner, v1.0.32).
+        val (gate, gateKnown) = BrowsingGate.read()
         val query = SeriesShelf.episodeOf(item).title.trim()
         if (query.isBlank()) return
         val scope = TitleScope.chats(item.chatId, gate, gateKnown, KnownMedia.all().map { it.chatId }.toSet())
@@ -193,9 +193,6 @@ object TitleMediaLoad {
         return ChatRepository(session.client).mediaPage(chatId, cursors, query = query, pageSize = SeriesFill.PAGE)
     }
 
-    /** How long the browsing gate's read may take before the load goes on without it. */
-    private const val GATE_WAIT_MS = 3_000L
-
     /** How long one chat's search may run before that chat is left out of this load. */
     private const val CHAT_SEARCH_MS = 15_000L
 
@@ -204,6 +201,46 @@ object TitleMediaLoad {
 
     /** Chats asked at once for one title: a handful in flight, never the whole line at once. */
     private const val CHATS_AT_ONCE = 6
+}
+
+/**
+ * The browsing gate's answer, read once and kept for a little while (owner, v1.0.32):
+ * every title and series fill used to read the gate twice, one bounded read after the
+ * other, before asking a single chat, so opening a page could spend seconds on a
+ * settings read the page before it had just answered, on top of the searches
+ * themselves. The two reads now run together and the answer is kept briefly; what
+ * the answer means is still [TitleScope]'s call, and what a page may show is still
+ * the gate's own flow, so a choice changed a moment ago rules the screen at once
+ * even while a fill finishes asking under the answer it started with. An answer
+ * where neither read landed is not kept: the next open reads again rather than
+ * standing on a scope nobody chose.
+ */
+internal object BrowsingGate {
+    private const val GATE_WAIT_MS = 3_000L
+    private const val KEEP_MS = 15_000L
+
+    @Volatile
+    private var kept: Pair<Set<Long>?, Boolean>? = null
+
+    @Volatile
+    private var keptAt: Long = 0L
+
+    suspend fun read(): Pair<Set<Long>?, Boolean> {
+        val now = System.currentTimeMillis()
+        kept?.let { if (now - keptAt in 0 until KEEP_MS) return it }
+        val answer = kotlinx.coroutines.coroutineScope {
+            val gate = async { withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsing() } }
+            val known = async { withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsingKnown() } ?: false }
+            gate.await() to known.await()
+        }
+        if (answer.first != null || answer.second) {
+            synchronized(this) {
+                kept = answer
+                keptAt = System.currentTimeMillis()
+            }
+        }
+        return answer
+    }
 }
 
 /**

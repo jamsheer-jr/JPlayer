@@ -53,8 +53,8 @@ object WholeSeries {
     /**
      * Searches the chats for [series] ([fetch], Telegram by default), within the default size
      * limits so a short sample is not taken for an episode, and folds in what belongs to it.
-     * The show's own chat is read first and as deeply as ever; then the other chats the viewer
-     * browses are asked the same question (owner, v1.0.14): a search gathers a show across
+     * Every chat in the scope is asked the same question together, the show's own among
+     * them (owner, v1.0.14, asked together since v1.0.32): a search gathers a show across
      * them, and the page is made whole from that same held set, so a show split across chats
      * opens with the same episodes from a category as from a search. While the browsing gate
      * narrows nothing and that is known to be the viewer's own answer, the chats the app has
@@ -80,47 +80,44 @@ object WholeSeries {
         val query = SeriesFill.queryOf(series) ?: return series
         val chatId = series.cover.chatId
         var whole = peek(series) ?: series
-        val own = search(fetch, chatId, query, series.cover.topicId)
-        if (own.isNotEmpty()) {
-            com.tmplayer.online.KnownMedia.note(own)
-            val merged = SeriesFill.merge(whole, own)
-            if (merged != whole) {
-                whole = merged
-                onProgress(whole)
-            }
-        }
         // The gate awaited, but bounded, as the title load bounds it: at a cold open
         // the stored choice may not have been read yet, and an unanswered gate reads
-        // as unknown, asking the show's own chat alone, unremembered.
+        // as unknown, asking the show's own chat alone, unremembered. The read is
+        // the shared one now ([BrowsingGate], owner, v1.0.32).
         // The chats asked are the title load's own decision ([TitleScope], v1.0.15).
-        val gate = withTimeoutOrNull(GATE_WAIT_MS) { com.tmplayer.data.ChatGate.awaitBrowsing() }
-        val gateKnown = withTimeoutOrNull(GATE_WAIT_MS) { com.tmplayer.data.ChatGate.awaitBrowsingKnown() } ?: false
-        val others = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()).drop(1)
+        val (gate, gateKnown) = BrowsingGate.read()
+        val scope = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet())
         var incomplete = false
-        if (others.isNotEmpty()) {
-            val lock = Mutex()
-            coroutineScope {
-                val slots = Semaphore(CHATS_AT_ONCE)
-                others.map { other ->
-                    async {
-                        slots.withPermit {
-                            // The show's topic is its own chat's; another chat is asked whole.
-                            val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, other, query, topicId = 0) }
-                            if (found == null) {
-                                incomplete = true
-                            } else if (found.isNotEmpty()) {
-                                com.tmplayer.online.KnownMedia.note(found)
-                                val merged = lock.withLock {
-                                    val next = SeriesFill.merge(whole, found)
-                                    whole = next
-                                    next
-                                }
-                                onProgress(merged)
+        // Every chat in the scope is asked together, the show's own among them
+        // (owner, v1.0.32): the own chat's full search used to finish before any
+        // other chat was asked at all, so a show whose own chat answered slowly
+        // (or held its episodes deep in its pages) kept every other chat's
+        // episodes waiting behind it, and the seasons stood thin for as long.
+        // The merges stay one at a time under the lock, each landing shown as it
+        // comes, and the own chat's search is bounded like the rest: a chat
+        // Telegram never answers gives up its slot instead of the whole read.
+        val lock = Mutex()
+        coroutineScope {
+            val slots = Semaphore(CHATS_AT_ONCE)
+            scope.map { other ->
+                async {
+                    slots.withPermit {
+                        // The show's topic is its own chat's; another chat is asked whole.
+                        val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, other, query, topicId = if (other == chatId) series.cover.topicId else 0) }
+                        if (found == null) {
+                            incomplete = true
+                        } else if (found.isNotEmpty()) {
+                            com.tmplayer.online.KnownMedia.note(found)
+                            val merged = lock.withLock {
+                                val next = SeriesFill.merge(whole, found)
+                                whole = next
+                                next
                             }
+                            onProgress(merged)
                         }
                     }
-                }.awaitAll()
-            }
+                }
+            }.awaitAll()
         }
         if ((gate != null || gateKnown) && !incomplete) kept[keyOf(series)] = whole
         return whole
@@ -150,9 +147,6 @@ object WholeSeries {
     }
 
     private fun keyOf(series: Series) = "${series.cover.chatId}|${series.key}"
-
-    /** How long the browsing gate's read may take before the read goes on without it. */
-    private const val GATE_WAIT_MS = 3_000L
 
     /** How long one chat's search may run before that chat is left out of this read. */
     private const val CHAT_SEARCH_MS = 15_000L

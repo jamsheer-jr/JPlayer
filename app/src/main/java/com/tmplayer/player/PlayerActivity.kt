@@ -147,6 +147,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -2838,6 +2839,36 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         // unioned here so neither source narrows the other.
         val widened = com.tmplayer.data.SameTitle.withPoolCopies(here, com.tmplayer.online.KnownMedia.all())
         setCopies(CopyHandoff.copiesOf(here) + widened.versions)
+        // The title's own fill runs behind the player too (owner, v1.0.32): a film
+        // opened straight into the player (from Home, a search, a resume) had no
+        // page behind it to ask the other chats for its copies, so its Copies list
+        // stood at the one own chat page read below plus whatever the pool
+        // happened to hold. The fill is the detail page's own load, remembered
+        // per title, so a page that already ran it makes this a return at once.
+        itemScope.launch {
+            runCatching { com.tmplayer.ui.browse.TitleMediaLoad.load(here) }.getOrElse { failure ->
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+            }
+        }
+        // And the copies re-widen as the pool grows (owner, v1.0.32): the fill
+        // above, the series fill and Home's deepening all note copies while the
+        // video plays, and the list follows them instead of standing at what the
+        // open happened to hold. The copies already gathered (an episode's, from
+        // the collector below) ride along, so neither source narrows the other.
+        itemScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // A moment's quiet first (collectLatest): the pool can note in
+                // bursts while a deepening runs, and a widening per note would
+                // churn behind the playing video for copies that are not this
+                // title's. What is already listed is not set again.
+                com.tmplayer.online.KnownMedia.version.collectLatest {
+                    delay(400)
+                    val grown = com.tmplayer.data.SameTitle.withPoolCopies(here, com.tmplayer.online.KnownMedia.all())
+                    val fresh = grown.versions.filter { v -> copies.none { it.id == v.id } }
+                    if (fresh.isNotEmpty()) setCopies(copies + fresh)
+                }
+            }
+        }
         // The quality played counts towards the one chosen for the viewer next time.
         val played = copies.firstOrNull { it.id == here.id } ?: here
         App.backgroundScope.launch { runCatching { settings.notePlayedQuality(played) } }
