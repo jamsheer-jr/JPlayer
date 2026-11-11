@@ -132,6 +132,7 @@ data class MediaItem(
     @Volatile private var copyKeyRead: Any? = null
     @Volatile private var canonRead: Any? = null
     @Volatile private var canonKeyRead: Any? = null
+    @Volatile private var factsRead: MediaFacts? = null
     @Volatile private var alternateKeysRead: List<String>? = null
     @Volatile private var looseHintRead: Int = 0
     @Volatile private var progressKeyRead: String? = null
@@ -158,6 +159,7 @@ data class MediaItem(
         looseHintRead = from.looseHintRead
         markersRead = from.markersRead
         captionLinesRead = from.captionLinesRead
+        if (width == from.width && height == from.height) factsRead = from.factsRead
         if (chatId == from.chatId && messageId == from.messageId) progressKeyRead = from.progressKeyRead
         // The keys also read whether it is an extra, and whether it stands for a cut video's pieces.
         if (extra == from.extra && pieces.isEmpty() == from.pieces.isEmpty()) {
@@ -318,6 +320,14 @@ data class MediaItem(
     /** [SameTitle.canonOf] with no correction of the viewer's on this video, kept the same way. */
     internal val canon: SameTitle.Canon?
         get() = read(canonRead) { SameTitle.canonOf(this, null).also { canonRead = it ?: NotFound } }
+
+    /**
+     * [MediaFacts.of] of this video, read once: the shelves and the copies lists ask
+     * for a copy's facts on every build, and the facts are read off the video's own
+     * name, caption and size, which never change on an instance.
+     */
+    internal val facts: MediaFacts
+        get() = factsRead ?: MediaFacts.compute(this).also { factsRead = it }
 
     /** The canonical reading's shelf key, kept with it: Home's keys ask for it on every build. */
     internal val canonKey: String?

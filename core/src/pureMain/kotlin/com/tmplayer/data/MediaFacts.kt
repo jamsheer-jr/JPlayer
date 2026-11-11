@@ -57,7 +57,10 @@ data class MediaFacts(
     enum class Track { DualAudio, MultiAudio, Subtitles }
 
     companion object {
-        fun of(item: MediaItem): MediaFacts {
+        fun of(item: MediaItem): MediaFacts = item.facts
+
+        /** [of]'s reading, worked out once per item and kept on it (see [MediaItem.facts]). */
+        internal fun compute(item: MediaItem): MediaFacts {
             val facts = read(item.fileName, item.width, item.height)
             // The languages a copy speaks are not always in its name: posts whose names
             // are bare release strings ("...AMZN.WEB-DL.DD+5.1...") state them in the
