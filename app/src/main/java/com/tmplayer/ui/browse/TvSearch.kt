@@ -140,7 +140,7 @@ internal fun TvSearchScreen(
     var focusedGroup by remember { mutableStateOf<ResultGroup?>(null) }
     val grid = com.tmplayer.ui.components.rememberAheadGridState()
 
-    // The field, the pills, the chats and the results scroll as one list, with the details strip
+    // The field, the pills and the results scroll as one list, with the details strip
     // fixed under it. They used to be a header over a grid of whatever height was left, which on
     // a television (960 by 540 dp at 1080p and at 720p alike) was less than one poster: the row
     // the remote was on stood cut in half above the strip. Now moving down into the results

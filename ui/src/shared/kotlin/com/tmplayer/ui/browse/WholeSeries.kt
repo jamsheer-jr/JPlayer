@@ -87,7 +87,6 @@ object WholeSeries {
         // The chats asked are the title load's own decision ([TitleScope], v1.0.15).
         val (gate, gateKnown) = BrowsingGate.read()
         val scope = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet())
-        var incomplete = false
         // Every chat in the scope is asked together, the show's own among them
         // (owner, v1.0.32): the own chat's full search used to finish before any
         // other chat was asked at all, so a show whose own chat answered slowly
@@ -96,8 +95,10 @@ object WholeSeries {
         // The merges stay one at a time under the lock, each landing shown as it
         // comes, and the own chat's search is bounded like the rest: a chat
         // Telegram never answers gives up its slot instead of the whole read.
+        // Each ask answers whether it ran out of time, so the kept mark below
+        // rests on the asks' own returns, not a flag written across threads.
         val lock = Mutex()
-        coroutineScope {
+        val incomplete = coroutineScope {
             val slots = Semaphore(CHATS_AT_ONCE)
             scope.map { other ->
                 async {
@@ -105,19 +106,22 @@ object WholeSeries {
                         // The show's topic is its own chat's; another chat is asked whole.
                         val found = withTimeoutOrNull(CHAT_SEARCH_MS) { search(fetch, other, query, topicId = if (other == chatId) series.cover.topicId else 0) }
                         if (found == null) {
-                            incomplete = true
-                        } else if (found.isNotEmpty()) {
-                            com.tmplayer.online.KnownMedia.note(found)
-                            val merged = lock.withLock {
-                                val next = SeriesFill.merge(whole, found)
-                                whole = next
-                                next
+                            true
+                        } else {
+                            if (found.isNotEmpty()) {
+                                com.tmplayer.online.KnownMedia.note(found)
+                                val merged = lock.withLock {
+                                    val next = SeriesFill.merge(whole, found)
+                                    whole = next
+                                    next
+                                }
+                                onProgress(merged)
                             }
-                            onProgress(merged)
+                            false
                         }
                     }
                 }
-            }.awaitAll()
+            }.awaitAll().any { it }
         }
         if ((gate != null || gateKnown) && !incomplete) kept[keyOf(series)] = whole
         return whole
