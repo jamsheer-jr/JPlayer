@@ -90,8 +90,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tmplayer.data.AllChatsSearch
-import com.tmplayer.data.ChatBrief
 import com.tmplayer.data.ChatSummary
+import com.tmplayer.data.copyQuality
 import com.tmplayer.data.GlobalSearch
 import com.tmplayer.data.MediaItem
 import com.tmplayer.data.ResultGroup
@@ -194,7 +194,6 @@ internal fun PhoneSearchScreen(
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
-    var allChats by rememberSaveable(state.query.text) { mutableStateOf(false) }
 
     BackHandler(enabled = !sheetOpen) { onClose() }
 
@@ -215,18 +214,8 @@ internal fun PhoneSearchScreen(
         if (query.isNotBlank()) snackbar.currentSnackbarData?.dismiss()
     }
     val byUsername = rememberUsernameChat(query)
-    // Every chat's name matched off the main thread, the last answer kept up meanwhile, so the
-    // field never waits for it between letters.
-    var localChats by remember { mutableStateOf(emptyList<ChatSummary>()) }
-    LaunchedEffect(chats, query, favourites) {
-        localChats = if (query.isBlank()) emptyList() else withContext(Dispatchers.Default) { GlobalSearch.localChats(chats, query, favourites) }
-    }
-    val chatMatches = remember(localChats, byUsername) { withUsernameChat(localChats, byUsername) }
     // A pasted post or invite link, or a public chat to join (CP79).
     val offer = rememberLinkOffer(query, byUsername)
-    val recentChats = remember(chats, favourites) { GlobalSearch.recentChats(chats, favourites) }
-    val briefs = remember(state.chats, chats) { state.chats + chats.associate { it.id to ChatBrief.of(it) } }
-    val titleOf: (Long) -> String = { id -> briefs[id]?.title.orEmpty() }
 
     // A pull down runs the search again fresh. The spinner stays for a short acknowledgement
     // at least, and until the fresh run lands at most, the way a pulled page of the browser
@@ -261,11 +250,9 @@ internal fun PhoneSearchScreen(
                 item(key = "top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(8.dp)) }
                 if (query.isBlank()) {
                     emptySearch(
-                        chats = recentChats,
                         recent = recentSearches.take(GlobalSearch.RECENT_SHOWN),
                         continueWatching = continueWatching.take(CONTINUE_SHOWN),
                         continueArt = continueArt,
-                        onOpenChat = onOpenChat,
                         onPick = { picked ->
                             onText(TextFieldValue(picked, TextRange(picked.length)))
                             onSubmit()
@@ -337,12 +324,7 @@ internal fun PhoneSearchScreen(
                     }
                     results(
                         state = state,
-                        chatMatches = chatMatches,
-                        allChats = allChats,
-                        onShowAllChats = { allChats = true },
-                        briefs = briefs,
                         progress = progress,
-                        onOpenChat = onOpenChat,
                         onOpenGroup = { keyboard?.hide(); onOpenGroup(it) },
                         onPlayGroup = onPlayGroup,
                         showHasNewEpisodes = showHasNewEpisodes,
@@ -505,11 +487,9 @@ private enum class FieldEnd { Clear, Voice, None }
 /** What an empty search offers: recent chats, recent searches, and videos to carry on with. */
 @OptIn(ExperimentalFoundationApi::class)
 private fun androidx.compose.foundation.lazy.LazyListScope.emptySearch(
-    chats: List<ChatSummary>,
     recent: List<String>,
     continueWatching: List<ResumeRecord>,
     continueArt: (ResumeRecord) -> MediaItem,
-    onOpenChat: (ChatSummary) -> Unit,
     onPick: (String) -> Unit,
     onFill: (String) -> Unit,
     onRemove: (String) -> Unit,
@@ -517,26 +497,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.emptySearch(
     onResume: (ResumeRecord) -> Unit,
     onPlayItem: (MediaItem, String) -> Unit,
 ) {
-    if (chats.isNotEmpty()) {
-        item(key = "chats-h") { Heading(LocalStrings.current.searchChatsHeading) }
-        item(key = "chats") {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(chats, key = { it.id }) { chat ->
-                    Column(
-                        Modifier.width(64.dp).clip(RoundedCornerShape(12.dp)).clickable { onOpenChat(chat) }.padding(vertical = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        ChatAvatar(ChatBrief.of(chat), 56.dp)
-                        Spacer(Modifier.height(6.dp))
-                        Text(chat.title, style = MaterialTheme.typography.labelSmall, color = Tone.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-    }
+    // No chats row here either (owner, v1.0.32): the landing carried a row of the
+    // viewer's chats with their pictures and names, the other half of "chats showing
+    // in search". The page is recent searches, Continue watching and the categories.
     if (recent.isNotEmpty()) {
         item(key = "recent-h") {
             val s = LocalStrings.current
@@ -589,7 +552,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.emptySearch(
             NetflixSearchRow(
                 item = item,
                 title = record.title,
-                facts = record.chatTitle,
+                // The video's own facts, not the chat it came from (owner, v1.0.32):
+                // this row printed the chat's title where the results print a year
+                // and a quality. The chat title still rides along on the play call
+                // itself, which names the source to the player, not to the page.
+                facts = recordFacts(item, record.title),
                 fraction = record.fraction(),
                 fresh = false,
                 onPlay = { onPlayItem(item, record.chatTitle) },
@@ -602,15 +569,24 @@ private fun androidx.compose.foundation.lazy.LazyListScope.emptySearch(
 private fun ResumeRecord.fraction(): Float? =
     if (durationMs <= 0) null else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
-/** What a search with text lists: matching chats, then the videos, then how the search is going. */
+/** A Continue watching row's facts: the video's own year, quality and length, as the result rows give theirs. */
+private fun recordFacts(item: MediaItem, title: String): String {
+    val year = com.tmplayer.data.SeriesShelf.episodeOf(item).year?.toString()?.takeIf { it !in title }
+    val duration = item.durationSec.takeIf { it > 0 }?.let(com.tmplayer.data.MediaMapper::formatDuration)
+    return listOfNotNull(year, item.copyQuality(), duration).joinToString("  ·  ")
+}
+
+/**
+ * What a search with text lists: the videos, then how the search is going. No chats are
+ * listed here at all (owner, v1.0.32): a section of matching chats stood over the videos
+ * with their pictures and names, which is what "chats showing in search" meant after the
+ * result rows themselves stopped naming their sources in v1.0.31. Chats live in the Chats
+ * tab; a pasted link or an exact @username still offers that one chat above (the offer is
+ * the viewer's own typing, not a listing).
+ */
 private fun androidx.compose.foundation.lazy.LazyListScope.results(
     state: GlobalSearchState,
-    chatMatches: List<ChatSummary>,
-    allChats: Boolean,
-    onShowAllChats: () -> Unit,
-    briefs: Map<Long, ChatBrief>,
     progress: (MediaItem) -> Float?,
-    onOpenChat: (ChatSummary) -> Unit,
     onOpenGroup: (ResultGroup) -> Unit,
     onPlayGroup: (ResultGroup) -> Unit,
     showHasNewEpisodes: (ResultGroup) -> Boolean,
@@ -618,27 +594,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
     onClearFilters: () -> Unit,
     onSearchWord: (String) -> Unit,
 ) {
-    if (chatMatches.isNotEmpty()) {
-        item(key = "chats-h") { Heading(LocalStrings.current.searchChatsHeading) }
-        val shown = if (allChats) chatMatches else chatMatches.take(GlobalSearch.CHAT_PREVIEW)
-        items(shown, key = { "chat-${it.id}" }) { chat ->
-            Row(
-                Modifier.fillMaxWidth().clickable { onOpenChat(chat) }.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                ChatAvatar(ChatBrief.of(chat), 40.dp)
-                Text(chat.title, style = MaterialTheme.typography.bodyLarge, color = Tone.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            }
-        }
-        if (!allChats && chatMatches.size > GlobalSearch.CHAT_PREVIEW) {
-            item(key = "chats-all") {
-                TextButton(onClick = onShowAllChats, modifier = Modifier.padding(start = 8.dp)) {
-                    Text(LocalStrings.current.searchShowAllChats(chatMatches.size))
-                }
-            }
-        }
-    }
     item(key = "videos-h") { Heading(LocalStrings.current.searchVideosHeading) }
     searchStatus(state)?.let { status ->
         item(key = "status") {

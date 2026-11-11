@@ -134,10 +134,6 @@ internal fun TvSearchScreen(
     }
 
     val byUsername = rememberUsernameChat(text)
-    val chatMatches = remember(chats, text, favourites, byUsername) {
-        if (text.isBlank()) GlobalSearch.recentChats(chats, favourites, limit = 10)
-        else withUsernameChat(GlobalSearch.localChats(chats, text, favourites), byUsername).take(10)
-    }
     // A typed post or invite link, or a public chat to join (CP79), as a pill beside the field.
     val offer = rememberLinkOffer(text, byUsername)
     val briefs = remember(state.chats, chats) { state.chats + chats.associate { it.id to ChatBrief.of(it) } }
@@ -268,18 +264,9 @@ internal fun TvSearchScreen(
                     }
                 }
 
-                if (chatMatches.isNotEmpty()) {
-                    item(span = full, key = "chats") {
-                        LazyRow(
-                            Modifier.bleedEnd(Tv.SafeH),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(end = Tv.SafeH),
-                        ) {
-                            items(chatMatches, key = { it.id }) { chat -> ChatCard(chat, reduced) { onOpenChat(chat) } }
-                        }
-                    }
-                }
-
+                // No chats row in search (owner, v1.0.32, as the phone): the row of
+                // chat cards with pictures and names that stood here, blank query or
+                // typed, is what "chats showing in search" meant on the TV as well.
                 searchStatus(state)?.let { status ->
                     item(span = full, key = "status") {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -478,37 +465,6 @@ private fun TvPill(label: String, icon: ImageVector?, chosen: Boolean = false, p
     ) {
         if (icon != null) Icon(icon, contentDescription = null, tint = if (plain && !focused) Tone.muted else ink, modifier = Modifier.size(20.dp))
         Text(label, style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-/** A chat as a card: its picture large, its name under it. */
-@Composable
-private fun ChatCard(chat: ChatSummary, reduced: Boolean, onClick: () -> Unit) {
-    val interactions = remember { MutableInteractionSource() }
-    val focused by interactions.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused && !reduced) Motion.FocusScale else 1f, Motion.standard(Motion.Fast), label = "chatCard")
-    Column(
-        Modifier
-            .width(112.dp)
-            .clickable(interactionSource = interactions, indication = null, onClick = onClick)
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        ChatAvatar(
-            ChatBrief.of(chat),
-            80.dp,
-            Modifier
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .border(if (focused) 3.dp else 0.dp, if (focused) Tone.accent else Color.Transparent, CircleShape),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            chat.title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (focused) Tone.text else Tone.muted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
