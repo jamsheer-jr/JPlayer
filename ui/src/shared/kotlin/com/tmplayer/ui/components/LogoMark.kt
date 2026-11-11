@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.Dp
  * draw pass only, so an animation of it redraws the mark and never recomposes it. The line is
  * the loader's progress treatment for this mark: the old design's playhead knob belonged to a
  * progress bar along the tile's foot, which the glyph leaves no room for, so the played part
- * of the line itself, in the glyph's white, is what moves (J Player, 2026-11-06).
+ * of the line itself is what moves (J Player, 2026-11-06).
  */
 @Composable
 fun LogoMark(size: Dp, modifier: Modifier = Modifier, progress: () -> Float = { RESTING }) {
@@ -53,7 +53,7 @@ fun LogoMark(size: Dp, modifier: Modifier = Modifier, progress: () -> Float = { 
         val end = at(BAR_END, BAR_Y)
         drawLine(TRACK, start, end, strokeWidth = bar, cap = StrokeCap.Round)
         val headX = BAR_START + (BAR_END - BAR_START) * progress().coerceIn(0f, 1f)
-        if (headX > BAR_START) drawLine(PLAY, start, at(headX, BAR_Y), strokeWidth = bar, cap = StrokeCap.Round)
+        if (headX > BAR_START) drawLine(LINE, start, at(headX, BAR_Y), strokeWidth = bar, cap = StrokeCap.Round)
     }
 }
 
@@ -75,3 +75,12 @@ private val TILE = Color(0xFFFFD400)
 private val TRACK = Color(0xFF8F6B00)
 
 private val PLAY = Color(0xFFFFFFFF)
+
+/**
+ * The progress line's played part: the app's own navy. It was the glyph's white
+ * when the mark went yellow (v1.0.35), and white on the yellow tile washed out
+ * to nothing at the line's slim width, so the loader's line read as missing
+ * (owner, v1.0.36). Navy is the one brand colour that stands on the tile and
+ * against the amber track alike.
+ */
+private val LINE = Color(0xFF050C1C)
