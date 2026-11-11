@@ -736,9 +736,14 @@ private fun NetflixSearchRow(
             Modifier.width(SEARCH_THUMB_WIDTH).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Tone.surfaceHigh),
         ) {
             val meta = rememberMeta(item)
+            // A title matched online stands in search by its poster, not by the file's
+            // own cover (owner, v1.0.35: "Dp maatt"): the covers uploaders set are
+            // branded with a channel logo, so a row wearing one reads as the channel's
+            // page rather than the film's. An unmatched row keeps the file's picture.
+            val matched = (meta?.wideUrl ?: meta?.posterUrl) != null
             PosterArt(
-                miniThumbnail = item.miniThumbnail,
-                thumbnailFileId = item.thumbnailFileId,
+                miniThumbnail = if (matched) null else item.miniThumbnail,
+                thumbnailFileId = if (matched) 0 else item.thumbnailFileId,
                 cover = rememberCover(item),
                 posterUrl = meta?.wideUrl ?: meta?.posterUrl,
                 modifier = Modifier.fillMaxSize(),

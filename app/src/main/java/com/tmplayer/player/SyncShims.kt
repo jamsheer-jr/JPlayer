@@ -112,10 +112,18 @@ class TranslatingTextOutput(
         askFor(group.cues, language)
     }
 
-    /** [cues] with every line the cache already holds carried into [language]. */
+    /**
+     * [cues] with every line the cache already holds carried into [language]. A line
+     * whose translation has not landed stands blank, never in its own language
+     * (owner, v1.0.35: "og language kanikkaruth"): while a translation stands, the
+     * original line is not shown at all, and a line the service never answers stays
+     * blank for that showing rather than falling back to it. The viewer who wants
+     * the original words turns translation off and has the track as it was posted.
+     */
     private fun translated(cues: List<Cue>, language: String): List<Cue> = cues.map { cue ->
         val words = wordsOf(cue) ?: return@map cue
-        LiveTranslationCache.get(key(language, words))?.let { cue.buildUpon().setText(it).build() } ?: cue
+        LiveTranslationCache.get(key(language, words))?.let { cue.buildUpon().setText(it).build() }
+            ?: cue.buildUpon().setText("").build()
     }
 
     /**
@@ -133,7 +141,7 @@ class TranslatingTextOutput(
         // display from this place. What can be shaped is the asking itself (owner, v1.0.32):
         // one call per group, each started cold at the line's first moment, made the free
         // service's busy moments land on whole lines (a refusal was final for that showing,
-        // so the original stood and the translation never came), and kept a call in flight
+        // so the line stood untranslated for good), and kept a call in flight
         // per line of dialogue. The lines now queue and one drain sends them in batches:
         // the first batch goes at once, the lines that arrive while it is out ride the next
         // one together, and a batch the service answers with nothing is asked once more
