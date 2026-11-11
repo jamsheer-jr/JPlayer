@@ -1249,6 +1249,12 @@ class HomeViewModel(
         /** How long the inputs stay still before Home's rows are built again ([rememberHomeRows]). */
         const val ROWS_SETTLE_MS = 300L
 
+        /**
+         * The longest a first build may stay unsettled before it settles with what stands
+         * (owner, v1.0.33): far past a slow start, short of a page that reads as stuck.
+         */
+        const val SETTLE_CAP_MS = 45_000L
+
         /** How often work held back by a video playing ([busy]) looks again. */
         const val BUSY_RECHECK_MS = 5_000L
 
@@ -1582,6 +1588,18 @@ fun rememberHomeRows(
         // video card is the truthful page. While anything is still out, the build does not
         // settle, so a slow start never shows that card to a library on its way.
         if (built.isNotEmpty() || recent != null || !autoPick || (fromList && model.fetchesDone())) model.rowsSettled = true
+    }
+    // The last word on a first build that never settles (owner, v1.0.33): every settle
+    // above waits on an answer (a fetch landing, the chat list arriving, a stall), and
+    // an answer that keeps almost coming can hold them all off for minutes, the loader
+    // long gone and the skeleton standing in its place: the blank Home again. After a
+    // generous bound the build settles with whatever stands. Settling only ends the
+    // loading presentation; the rows keep arriving behind it exactly as before, and
+    // the bound is far past a merely slow start, so the empty page it can show is a
+    // library that truly has had time to answer.
+    LaunchedEffect(model) {
+        delay(HomeViewModel.SETTLE_CAP_MS)
+        model.rowsSettled = true
     }
     PrefetchHomeArt(rows, model)
     SweepHomeExtras(rows, model)
