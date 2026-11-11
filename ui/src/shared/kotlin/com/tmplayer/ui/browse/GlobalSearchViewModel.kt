@@ -575,7 +575,10 @@ class GlobalSearchViewModel(
                     query,
                     s.sort,
                 )
-                GlobalSearch.merge(carried, local, query, s.sort, identity)
+                val merged = GlobalSearch.merge(carried, local, query, s.sort, identity)
+                // The local half lands while the search is still settling: the
+                // standing order rule of the Telegram pages applies here too.
+                if (s.busy) standingOrder(s.groups, merged) else merged
             }
             // The same words searched before: Telegram's pages from then, listed at once through
             // the kids lock and the added chats as they are now, and asked again only once stale.
@@ -639,6 +642,10 @@ class GlobalSearchViewModel(
                 _state.update { it.copy(endReached = next.cursor.done) }
             }
             _state.update { it.copy(stillSearching = false) }
+            // The run has settled: the chosen sort is applied whole, once, to
+            // the list that stood in its arrival order while the pages landed
+            // (owner, v1.0.32).
+            regroup { s -> GlobalSearch.order(s.groups, s.query, s.sort) }
             if (_state.value.groups.isNotEmpty()) {
                 rememberJob = viewModelScope.launch {
                     delay(rememberMs)
@@ -692,8 +699,32 @@ class GlobalSearchViewModel(
         regroup(chats = page.chats.associateBy { it.id }) { s ->
             val base = if (fresh) GlobalSearch.merge(emptyList(), local, s.query, s.sort, identity) else s.groups
             val merged = GlobalSearch.merge(base, kept, s.query, s.sort, identity)
-            if (keepShownIfEmpty && fresh && merged.isEmpty()) shownGroups.ifEmpty { s.groups } else merged
+            when {
+                keepShownIfEmpty && fresh && merged.isEmpty() -> shownGroups.ifEmpty { s.groups }
+                // While the search is still running the list stands in the order
+                // it already had (owner, v1.0.32): the merge re-sorts the whole
+                // list on every page, so rows traded places under the viewer's
+                // eye as copies landed elsewhere. The chosen sort is applied
+                // whole when the run settles (see [firstAnswer]'s last regroup).
+                s.busy || s.loadingMore -> standingOrder(s.groups, merged)
+                else -> merged
+            }
         }
+    }
+
+    /**
+     * [merged] re-ordered so the groups already standing keep their places, in
+     * their order, and the new ones join at the end in the merge's own order:
+     * what the results list does while a search is still arriving (owner,
+     * v1.0.32). A group the merge dropped falls away; a group in both keeps
+     * the merge's fresh copy of it, only its place is the standing one.
+     */
+    private fun standingOrder(shown: List<ResultGroup>, merged: List<ResultGroup>): List<ResultGroup> {
+        if (shown.isEmpty()) return merged
+        val byKey = merged.associateBy { it.key }
+        val kept = shown.mapNotNull { byKey[it.key] }
+        val keptKeys = kept.mapTo(HashSet()) { it.key }
+        return kept + merged.filter { it.key !in keptKeys }
     }
 
     /**

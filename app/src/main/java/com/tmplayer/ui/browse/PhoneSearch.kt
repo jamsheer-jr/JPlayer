@@ -665,9 +665,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.results(
                 fresh = remember(group) { showHasNewEpisodes(group) },
                 onPlay = { onPlayGroup(group) },
                 // Results fade in as they arrive and slide to their places when the order or a
-                // filter changes, rather than the list redrawing at once.
+                // filter changes, rather than the list redrawing at once. While the search
+                // itself is still running there is no placement animation at all (owner,
+                // v1.0.32): pages landing one after another had every row on the screen
+                // sliding about, which read as the list being restless rather than fast.
                 modifier = Modifier
-                    .then(if (shown.size <= ANIMATED_RESULTS_MAX && !com.tmplayer.ui.theme.Motion.reduced) Modifier.animateItem() else Modifier)
+                    .then(if (shown.size <= ANIMATED_RESULTS_MAX && !state.busy && !state.loadingMore && !com.tmplayer.ui.theme.Motion.reduced) Modifier.animateItem() else Modifier)
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { onOpenGroup(group) },
                 chatsLine = {
@@ -884,7 +887,7 @@ private const val CONTINUE_SHOWN = 3
 private const val PAGE_LEAD = 6
 
 /** The longest list of results that slides to a new order rather than being redrawn in it. */
-private const val ANIMATED_RESULTS_MAX = 300
+private const val ANIMATED_RESULTS_MAX = 40
 
 private val SKELETONS = List(5) { it }
 
