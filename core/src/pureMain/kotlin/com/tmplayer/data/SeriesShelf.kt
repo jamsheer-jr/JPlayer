@@ -237,6 +237,9 @@ object SeriesShelf {
     /** The plain title key inside a [showKeyOf] key: the key itself when it states no year. */
     fun plainKeyOf(showKey: String): String = showKey.substringBefore('|')
 
+    /** The year inside a [showKeyOf] key, or null when it states none. */
+    fun yearOf(showKey: String): Int? = showKey.substringAfter('|', "").toIntOrNull()
+
     private fun isWordChar(char: Char): Boolean = if (char < '\u0080') {
         char in 'a'..'z' || char in 'A'..'Z' || char in '0'..'9'
     } else when (char.category) {
@@ -342,20 +345,21 @@ object SeriesShelf {
             }
         }
         // A show is two episodes or more, not two files: three copies of one episode are one.
-        // A show's identity is its title and the year its name states, the pairing the
-        // downloads shelf groups by: the same title in another year is another show (a
-        // remake, an anime and its live action remake), and no year is its own group
-        // too, so a dated series never swallows the undated one or the other way
+        //
+        // A show's identity is its title and the years its seasons carry. One show's
+        // seasons are posted with the year each season aired ("Loki 2021 S01...",
+        // "Loki 2023 S02..."), so a title's year groups whose seasons continue one
+        // another, with no episode claimed by two of them, are one show. Year groups
+        // that both restart at season one are two shows, a remake and its original
         // (owner, 2026-11-11: the One Piece anime and the One Piece live action stood
-        // on one page). [showKeyOf] qualifies a key where a year is stated; the
-        // establishment and placement below work on the qualified keys, the name
-        // rules (aliasing, joining) on the plain titles.
-        val strictShowKeys = strict.filterNotNull()
+        // on one page), and no year is a group of its own too, the pairing the
+        // downloads shelf groups by, so a dated series never swallows the undated
+        // one. Establishment works on the year-qualified keys ([showKeyOf]); the
+        // name rules (aliasing, joining) run on the plain titles, and their answers
+        // resolve back to a show of the file's own years before they count.
+        val strictGroups = strict.filterNotNull()
             .groupBy { showKeyOf(it.key, it.name.year) }
             .filterValues { files -> files.distinctBy { (it.name.season ?: 1) to it.episode }.size >= MIN_EPISODES }
-            .keys
-        // The plain titles of the established strict shows, for the name rules.
-        val plainShowKeys = strictShowKeys.mapTo(HashSet()) { plainKeyOf(it) }
 
         // Files the strict parse left alone, read the lenient way once, so the answer serves
         // both the establishment below and the second look that follows it. A file the viewer
@@ -371,14 +375,72 @@ object SeriesShelf {
         // under one title and one year. Grouped by the title key and the year together, so a
         // remake of the same title stays apart. The loose parse leaves the season unwritten,
         // and the grouping in [series] defaults a seasonless episode to season one.
-        val looseShowKeys = looseFound.filterNotNull()
+        val looseGroups = looseFound.filterNotNull()
             .groupBy { showKeyOf(it.key, it.name.year) }
             .filterValues { files -> files.distinctBy { (it.name.season ?: 1) to it.episode }.size >= MIN_EPISODES }
-            .keys
+
+        // Which established group stands as which show. A title's year groups that
+        // continue one another (see above) share one show, named by the title's plain
+        // key unless a group of the title that stands alone already holds it, in which
+        // case the cluster's earliest year names it. A group that stands alone keeps
+        // its qualified key, so the two halves of a remade title stay apart.
+        val showOfGroup = HashMap<String, String>()
+        run {
+            val established = strictGroups.keys + looseGroups.keys
+            val filesOf = HashMap<String, List<Found>>()
+            for (group in established) filesOf[group] = strictGroups[group].orEmpty() + looseGroups[group].orEmpty()
+            for ((plain, groups) in established.groupBy { plainKeyOf(it) }) {
+                // Dated groups first, by year; the undated group last, read on its
+                // seasons like any other.
+                val ordered = groups.sortedWith(compareBy<String> { yearOf(it) ?: Int.MAX_VALUE }.thenBy { it })
+                val clusters = ArrayList<MutableList<String>>()
+                val clusterPairs = ArrayList<MutableSet<Pair<Int, Int>>>()
+                for (group in ordered) {
+                    val pairs = filesOf.getValue(group).mapTo(HashSet()) { (it.name.season ?: 1) to it.episode }
+                    val home = clusters.indices.firstOrNull { index ->
+                        val held = clusterPairs[index]
+                        pairs.none { it in held } &&
+                            (pairs.minOf { it.first } > held.maxOf { it.first } || pairs.maxOf { it.first } < held.minOf { it.first })
+                    }
+                    if (home != null) {
+                        clusters[home] += group
+                        clusterPairs[home] += pairs
+                    } else {
+                        clusters += mutableListOf(group)
+                        clusterPairs += pairs.toMutableSet()
+                    }
+                }
+                val claimed = HashSet<String>()
+                // Groups that stand alone claim their own key first, so a merged show
+                // takes the plain key only when nothing of the title already holds it.
+                for (cluster in clusters) if (cluster.size == 1) claimed += cluster.single()
+                for (cluster in clusters) {
+                    val showKey = when {
+                        cluster.size == 1 -> cluster.single()
+                        plain !in claimed -> plain
+                        else -> cluster.first()
+                    }
+                    claimed += showKey
+                    for (group in cluster) showOfGroup[group] = showKey
+                }
+            }
+        }
+        val strictShowKeys = strictGroups.keys.mapNotNull { showOfGroup[it] }.toSet()
+        val looseShowKeys = looseGroups.keys.mapNotNull { showOfGroup[it] }.toSet()
         val showKeys = strictShowKeys + looseShowKeys
-        // The plain titles of every established show, strict or loose.
+        // The plain titles of the established shows, for the name rules.
+        val plainShowKeys = strictShowKeys.mapTo(HashSet()) { plainKeyOf(it) }
         val loosePlainKeys = looseShowKeys.mapTo(HashSet()) { plainKeyOf(it) }
         val plainKeys = plainShowKeys + loosePlainKeys
+
+        // The established show a plain title and a year resolve to: the show of that
+        // title's own year group, or the title's merged show (its plain key), or, for
+        // a file that states no year, the title's one show when it has only one. A
+        // file that states a year is never resolved into another year's show.
+        fun showFor(plain: String, year: Int?): String? =
+            showOfGroup[showKeyOf(plain, year)]
+                ?: plain.takeIf { it in showKeys }
+                ?: if (year == null) showKeys.filter { plainKeyOf(it) == plain }.singleOrNull() else null
 
         // The same season uploaded twice under two names, "Kerala Crime Files" and "Kerala Crime
         // Files Shiju Parayil Veedu Neendakara", is one show: the longer name joins the shorter
@@ -414,29 +476,30 @@ object SeriesShelf {
 
         // Everything else gets a second look, now that the chat has said which shows it holds. A
         // file the viewer renamed, or one that is a trailer, is read only as it now reads. A
-        // bare episode whose title a show established only for another year does not join
+        // bare episode whose title a show established only for other years does not join
         // that show: its own title and year have to be the established ones, in the strict
-        // reading or the loose one, or a shortened name joins a show of its own year. The
-        // name rules run on the plain titles and their answer is qualified with the file's
-        // own year before it counts, so a remake is never joined by name alone either.
+        // reading or the loose one, or a shortened name joins a show of its own years. The
+        // name rules run on the plain titles and their answer resolves to a show of the
+        // file's own years before it counts, so a remake is never joined by name alone.
         val placedUnder = items.indices.map { index ->
             val found = strict[index] ?: looseFound[index]?.takeIf { candidate ->
                 val own = showKeyOf(candidate.key, candidate.name.year)
-                val paired = own in looseShowKeys
-                val strictHit = own in strictShowKeys
+                val paired = own in looseGroups
+                val strictHit = own in strictGroups
                 val looseOnlyHit = !paired && !strictHit && candidate.key in plainKeys
                 paired || strictHit || (!looseOnlyHit && joining(candidate, plainKeys) != null)
             }
             when {
                 found == null -> null
                 else -> {
-                    val year = found.name.year
-                    val own = showKeyOf(found.key, year)
+                    val own = showOfGroup[showKeyOf(found.key, found.name.year)]
                     val target = when {
-                        own in showKeys ->
-                            showKeyOf(alias.getValue(found.key), year).takeIf { it in showKeys } ?: own
+                        own != null -> {
+                            val aliasedTo = alias.getValue(found.key)
+                            if (aliasedTo == found.key) own else showFor(aliasedTo, found.name.year) ?: own
+                        }
                         else -> joining(found, plainKeys)?.let { joined ->
-                            showKeyOf(alias.getValue(joined), year).takeIf { it in showKeys }
+                            showFor(alias.getValue(joined), found.name.year)
                         }
                     }
                     target?.let { key ->
@@ -462,15 +525,10 @@ object SeriesShelf {
             val name = names[index]
             if (name.season == null || name.episode != null || name.extra != null) return@forEach
             if (corrections[items[index].id]?.title != null) return@forEach
-            val own = showKeyOf(name.titleKey, name.year)
-            val aliasedKey = alias[name.titleKey]?.let { showKeyOf(it, name.year) }
-            val showKey = when {
-                own in shows -> own
-                aliasedKey != null && aliasedKey in shows -> aliasedKey
-                else -> suffixKin(name.titleKey, plainKeys)?.let { kin ->
-                    showKeyOf(alias[kin] ?: kin, name.year).takeIf { it in shows }
-                } ?: return@forEach
-            }
+            val showKey = showFor(name.titleKey, name.year)?.takeIf { it in shows }
+                ?: alias[name.titleKey]?.let { showFor(it, name.year) }?.takeIf { it in shows }
+                ?: suffixKin(name.titleKey, plainKeys)?.let { kin -> showFor(alias[kin] ?: kin, name.year) }?.takeIf { it in shows }
+                ?: return@forEach
             packGroups.getOrPut(showKey to name.season) { ArrayList() } += index
         }
         val packsByShow = HashMap<String, MutableList<SeriesPack>>()

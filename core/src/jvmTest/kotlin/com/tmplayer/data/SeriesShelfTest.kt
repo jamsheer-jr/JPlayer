@@ -479,6 +479,37 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `one show whose seasons carry their own years stays one show`() {
+        val entries = SeriesShelf.arrange(
+            listOf(
+                video("Harbour Notes 2019 S01E01.mkv"),
+                video("Harbour Notes 2019 S01E02.mkv"),
+                video("Harbour Notes 2024 S02E01.mkv"),
+                video("Harbour Notes 2024 S02E02.mkv"),
+            ),
+        )
+        val show = shows(entries).single()
+        assertEquals(listOf(1, 2), show.seasons.map { it.number })
+        assertEquals(listOf(1, 2, 1, 2), show.episodes.map { it.episode })
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
+    fun `an undated first season and a dated second are one show`() {
+        val entries = SeriesShelf.arrange(
+            listOf(
+                video("Harbour Notes S01E01.mkv"),
+                video("Harbour Notes S01E02.mkv"),
+                video("Harbour Notes 2024 S02E01.mkv"),
+                video("Harbour Notes 2024 S02E02.mkv"),
+            ),
+        )
+        val show = shows(entries).single()
+        assertEquals(listOf(1, 2), show.seasons.map { it.number })
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
     fun `a lone episode stays a file, and so does a season pack`() {
         val items = listOf(
             video("Studio.Sessions.S01E01.mkv"),
