@@ -202,7 +202,7 @@ class GlobalSearchTest {
             ),
             q("kgf"),
         )
-        val byCopies = groups.associate { group -> group.copies.map { it.messageId }.toSet() }
+        val byCopies = groups.map { group -> group.copies.map { it.messageId }.toSet() }.toSet()
         // Two films under their eight spellings, and the nameless part marker apart:
         // nothing in "Chapter 2" says which film it is, so it is not guessed into one.
         assertEquals(3, groups.size)
