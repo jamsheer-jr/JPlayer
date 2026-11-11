@@ -631,10 +631,17 @@ class HomeViewModel(
             val age = System.currentTimeMillis() - snapshot.savedAt
             if (age in 0 until STALE_MS) {
                 refreshedAt = clock() - age
-                snapshot.loaded.keys.forEach { fetches.answered("chat:$it") }
-                snapshot.catalog.keys.forEach { fetches.answered("catalog:$it") }
-                if (snapshot.recent != null) fetches.answered("recent")
             }
+            // A snapshot of any age settles the first paint (owner, v1.0.32): its
+            // answers stand as answered, so Home drawn from the cache is settled
+            // as drawn instead of waiting on a full re-ask of every chat it
+            // holds. The freshness a long absence needs does not come from that
+            // wait: a stale snapshot leaves [refreshedAt] unmarked above, so the
+            // resume path's [refreshIfStale] re-asks everything in place behind
+            // the standing rows, as a refresh always has.
+            snapshot.loaded.keys.forEach { fetches.answered("chat:$it") }
+            snapshot.catalog.keys.forEach { fetches.answered("catalog:$it") }
+            if (snapshot.recent != null) fetches.answered("recent")
         }
         viewModelScope.launch {
             combine(

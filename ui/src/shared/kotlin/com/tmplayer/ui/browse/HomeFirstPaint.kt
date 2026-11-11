@@ -22,6 +22,13 @@ object HomeFirstPaint {
         if (!ready) ready = true
     }
 
-    /** The longest the loader waits for Home after Telegram is reached. */
-    const val HOLD_MAX_MS = 6_000L
+    /**
+     * The longest the loader waits for Home after Telegram is reached. Six seconds
+     * was too short on a large account (owner, v1.0.32): the hold gave way while
+     * the first build was still running, and the light skeleton page that stood
+     * under it read as a blank white loading page on every reopen. The branded
+     * loader now covers the build for as long as a build can honestly take; the
+     * bound still stands, so a Home that never settles gives way all the same.
+     */
+    const val HOLD_MAX_MS = 20_000L
 }
