@@ -279,7 +279,7 @@ private class MediaListViewModelFactory(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MediaGridScreen(
+internal fun MediaGridScreen(
     chatId: Long,
     chatTitle: String,
     chatPhotoFileId: Int,
