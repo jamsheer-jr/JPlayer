@@ -119,6 +119,23 @@ class GlobalSearchTest {
     }
 
     @Test
+    fun `only a grown last word narrows the search before it`() {
+        // Owner, v1.0.33: each letter searched as it is typed, over the answer the
+        // letters before it found.
+        assertTrue(GlobalSearch.narrows(q("thallu"), q("thallumaala")))
+        assertTrue(GlobalSearch.narrows(q("harbour no"), q("harbour notes")))
+        // The same words are a re-run, not a narrowing.
+        assertTrue(!GlobalSearch.narrows(q("thallu"), q("thallu")))
+        // A word taken away or changed, a new word begun, a quality appearing: the
+        // whole pool is scanned again.
+        assertTrue(!GlobalSearch.narrows(q("thallumaala"), q("thallu")))
+        assertTrue(!GlobalSearch.narrows(q("thallu"), q("thallumaala 2022")))
+        assertTrue(!GlobalSearch.narrows(q("harbour"), q("harbour notes")))
+        assertTrue(!GlobalSearch.narrows(q("thallu"), q("thallumaala 1080p")))
+        assertTrue(!GlobalSearch.narrows(q("harbour notes"), q("harbour days")))
+    }
+
+    @Test
     fun `a superseded local scan stops instead of finishing`() {
         // Owner, 2026-11-10: the scan is checked as it goes, so a newer keystroke
         // ends the old scan by cancellation instead of stacking another whole

@@ -60,6 +60,18 @@ object Fuzzy {
             total += best
         }
 
+        // A lone word can be a title's initials (owner, v1.0.33): "kgf" for "Kolar Gold
+        // Fields", the way titles are actually spoken of and searched by. Only a word that
+        // landed nothing earns it, and only as the initials' opening, so it stands below
+        // every word that truly matched and never lifts a title that merely shares letters.
+        if (matched == 0 && queryTokens.size == 1 && queryTokens[0].length >= 2) {
+            val initials = candidateTokens.mapNotNull { it.firstOrNull() }.joinToString("")
+            if (initials.startsWith(queryTokens[0])) {
+                matched = 1
+                total += SUBSTRING
+            }
+        }
+
         // Half the words, rounded up. Typing five words and getting one wrong should still find
         // the thing; typing five and getting four wrong is a different search.
         val required = (queryTokens.size + 1) / 2

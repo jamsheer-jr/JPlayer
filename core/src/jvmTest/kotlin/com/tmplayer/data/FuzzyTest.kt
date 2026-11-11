@@ -45,6 +45,19 @@ class FuzzyTest {
     }
 
     @Test
+    fun `a title's initials find it, and only as the initials' opening`() {
+        // Owner, v1.0.33: titles are searched by their initials.
+        assertTrue(Fuzzy.score("Kolar Gold Fields Chapter 2", "kgf") > 0)
+        assertTrue(Fuzzy.score("Kolar Gold Fields Chapter 2", "kg") > 0)
+        // The initials' middle is not an opening, and a word that truly matches a title
+        // word still stands: initials never lift an unrelated title.
+        assertEquals(0, Fuzzy.score("Kolar Gold Fields Chapter 2", "gf"))
+        assertEquals(0, Fuzzy.score("Some Other Film Entirely", "kgf"))
+        // A real word match outranks an initials match.
+        assertTrue(Fuzzy.score("Kgf Dreams", "kgf") > Fuzzy.score("Kolar Gold Fields Chapter 2", "kgf"))
+    }
+
+    @Test
     fun `a blank query returns everything, in the order it arrived`() {
         val items = listOf("b", "a", "c")
         assertEquals(items, Fuzzy.rank(items, "   ") { it })

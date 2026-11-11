@@ -306,6 +306,9 @@ class GlobalSearchViewModel(
     /** What the app already knew that answers the query on screen: the local half of [start]. */
     private var localNow: List<MediaItem> = emptyList()
 
+    /** The query [localNow] answers, for the narrowing in [GlobalSearch.narrows]. */
+    private var localQuery: SearchQuery? = null
+
     init {
         // The kids lock coming on, or a chat removed in the picker, while results are listed
         // takes its chats out of them at once.
@@ -493,6 +496,13 @@ class GlobalSearchViewModel(
         // the re-run's start, already screened by the gate as it stood then, the same
         // staleness start already accepts for [allowed] below.
         val shownGroups = if (keepShown) now.groups else emptyList()
+        // The local answer as it stands, taken before this start resets it: where the new
+        // words only grow the last word of the old (a letter typed onto a word), the new
+        // local answer is searched inside this one instead of the whole pool (owner,
+        // v1.0.33: each letter searched as it is typed, and a shrinking answer is a
+        // shrinking scan, so a letter costs less than the one before it).
+        val previousLocal = localNow
+        val previousQuery = localQuery
         // The kids lock and the added chats (HX27): search lists videos from the added chats alone.
         // Global Search off (owner, v1.0.16) closes the Telegram ask (see [searchAsk]),
         // and off confines the local half to the same pick (owner, v1.0.20: see
@@ -507,14 +517,13 @@ class GlobalSearchViewModel(
             _state.update { it.copy(query = query) }
             localJob?.cancel()
             localJob = viewModelScope.launch {
-                // The same short quiet as the typing path below: a letter still being typed
-                // never starts its scan at all (owner, v1.0.33).
-                delay(LOCAL_SETTLE_MS)
                 val here = currentCoroutineContext()
                 val local = withContext(work) {
-                    GlobalSearch.localVideos(localPool(), query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
+                    val pool = if (previousQuery != null && GlobalSearch.narrows(previousQuery, query)) previousLocal else localPool()
+                    GlobalSearch.localVideos(pool, query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
                 }
                 localNow = local
+                localQuery = query
                 regroup { s -> GlobalSearch.merge(GlobalSearch.order(s.groups, query, s.sort), local, query, s.sort, identity) }
             }
             return
@@ -528,10 +537,12 @@ class GlobalSearchViewModel(
             // Cleared, or down to one letter: whatever was waiting to be asked is dropped, and the
             // screen goes back to its recent searches.
             localNow = emptyList()
+            localQuery = null
             _state.value = GlobalSearchState(query = query, filters = now.filters, sort = now.sort, hideCamCopies = now.hideCamCopies, hideShortVideos = now.hideShortVideos, globalSearch = now.globalSearch, scopePicked = now.scopePicked, scopeAnswered = now.scopeAnswered, scopeEmpty = now.scopeEmpty)
             return
         }
         localNow = emptyList()
+        localQuery = null
         // The new words and what is going on at once; the cards stay as they were for the moment
         // the local half takes, so the list never flashes empty between one letter and the next.
         _state.value = GlobalSearchState(
@@ -556,24 +567,20 @@ class GlobalSearchViewModel(
             asked = query.server
         }
         job = viewModelScope.launch {
-            // A short quiet before the local half while the words are still settling: every
-            // letter used to start a full scan of everything the app knows at once, and on a
-            // large pool the scans and their merges piled onto the same threads the results
-            // themselves build on, so typing and the incoming pages fought and the search
-            // read as lag (owner, v1.0.33). A newer keystroke cancels this job inside the
-            // wait, so letters still being typed never scan at all; the cards on screen stay
-            // up meanwhile, as they always have. A search asked outright (no settle) scans
-            // at once, as before.
-            if (settle > 0) delay(LOCAL_SETTLE_MS)
-            // The local half, off the main thread: no connection needed. What was
+            // The local half, off the main thread: no connection needed and no wait. What was
             // listed and still answers the new words stays up until Telegram's answer takes its
             // place. A newer keystroke cancels this job, and the scan reads that as it
-            // goes, so it stops instead of finishing under the next one.
+            // goes, so it stops instead of finishing under the next one. Where the new
+            // words only grow the last word of the old, the scan runs over the previous
+            // answer instead of the whole pool (see the capture in [start]): each letter
+            // is then searched as it is typed, at a cost that shrinks as the answer does.
             val here = currentCoroutineContext()
             val local = withContext(work) {
-                GlobalSearch.localVideos(localPool(), query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
+                val pool = if (previousQuery != null && GlobalSearch.narrows(previousQuery, query)) previousLocal else localPool()
+                GlobalSearch.localVideos(pool, query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
             }
             localNow = local
+            localQuery = query
             regroup { s ->
                 // On a re-run of the words on screen, the whole of what is shown is carried,
                 // not only the cards the local half can match again: a card Telegram found
@@ -755,14 +762,6 @@ class GlobalSearchViewModel(
     companion object {
         /** Long enough that each letter typed on a phone is not a round trip to Telegram: see [com.tmplayer.data.SearchSettle]. */
         const val SETTLE_MS = com.tmplayer.data.SearchSettle.MS
-
-        /**
-         * The short quiet before the local half scans while words are still being typed
-         * (owner, v1.0.33): under the typing settle, long enough that a letter followed
-         * at once by another never starts a scan, short enough that the local answer
-         * still lands before Telegram's.
-         */
-        const val LOCAL_SETTLE_MS = 150L
 
         /** A query that has sat with results this long was read, and is kept as a recent search. */
         const val REMEMBER_MS = 2_000L

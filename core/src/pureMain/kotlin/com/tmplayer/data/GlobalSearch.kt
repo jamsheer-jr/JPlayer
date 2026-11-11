@@ -713,6 +713,28 @@ object GlobalSearch {
     }
 
     /**
+     * Whether [next] only narrows what [previous] matched, so the videos [previous] found
+     * are the only ones [next] can find: the same words in the same count, every word but
+     * the last the same, and the last word grown by letters typed onto its end (owner,
+     * v1.0.33: each letter searched as it is typed). Word for word the longer word's
+     * matches are the shorter's: a word a title answers exactly, by its opening or by
+     * containing it still answers the grown word the same way, so a scan of the previous
+     * answer with the new words finds everything a scan of the whole pool would. A year
+     * or a quality word appearing or changing breaks the narrowing, as does any other
+     * edit: those scan the pool whole.
+     */
+    fun narrows(previous: SearchQuery, next: SearchQuery): Boolean {
+        if (previous.year != next.year || previous.quality != next.quality) return false
+        val before = previous.titleWords
+        val after = next.titleWords
+        if (before.isEmpty() || before.size != after.size) return false
+        for (index in 0 until before.size - 1) if (before[index] != after[index]) return false
+        val last = before.last()
+        val grown = after.last()
+        return grown.length > last.length && grown.startsWith(last)
+    }
+
+    /**
      * The videos the app already knows of that answer [query], as cards, before Telegram has said
      * anything and whatever it says: what chat listings loaded, Continue watching, downloads.
      * Found without a connection, and merged with Telegram's pages by message id, so a file

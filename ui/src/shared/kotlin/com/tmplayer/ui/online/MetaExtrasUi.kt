@@ -805,7 +805,10 @@ private fun creditHit(entry: FilmographyEntry, items: List<MediaItem>): MediaIte
     val credit = entry.credit
     val wanted = com.tmplayer.data.Fuzzy.tokens(credit.ref.title.trim()).toSet()
     return items.firstOrNull { item ->
-        val parsed = com.tmplayer.data.MediaName.parse(item.fileName, item.caption)
+        // The item's own kept parse, not a fresh one (owner, v1.0.33): a fill asks this of
+        // the whole pool once per credit, and parsing every file name again for every
+        // credit was the fill's heaviest work, slowing the upgrades it exists to make.
+        val parsed = item.parsedName
         val yearsOk = credit.year == null || parsed.year == null || credit.year == parsed.year
         yearsOk && com.tmplayer.data.Fuzzy.tokens(parsed.title).toSet() == wanted
     }
