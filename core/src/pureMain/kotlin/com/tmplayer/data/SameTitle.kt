@@ -135,16 +135,34 @@ object SameTitle {
             if (bare != null && bare in 1..MAX_BARE_PART) plain = false
         }
         if (plain) return Canon(titleKey, year, null)
-        var tokens = raw.filter { it !in TITLE_NOISE }
-        if (tokens.isEmpty()) return null
-        tokens = joinInitials(tokens)
+        // The readings, in as few lists as the cold start's budget allows: the
+        // site words dropped and the spaced initials joined in one pass (a
+        // dropped word does not break a run of initials, as when the filter
+        // ran first), then the part read off what is left.
+        val joined = ArrayList<String>(raw.size)
+        val run = StringBuilder()
+        fun flush() {
+            if (run.isNotEmpty()) {
+                joined += run.toString()
+                run.clear()
+            }
+        }
+        for (token in raw) {
+            if (token in TITLE_NOISE) continue
+            if (token.length == 1 && token[0].isLetter()) run.append(token) else {
+                flush()
+                joined += token
+            }
+        }
+        flush()
+        if (joined.isEmpty()) return null
         var part: Int? = null
-        val kept = ArrayList<String>(tokens.size)
+        val kept = ArrayList<String>(joined.size)
         var index = 0
-        while (index < tokens.size) {
-            val token = tokens[index]
+        while (index < joined.size) {
+            val token = joined[index]
             if (token in PART_WORDS) {
-                val number = tokens.getOrNull(index + 1)?.let(::partNumber)
+                val number = joined.getOrNull(index + 1)?.let(::partNumber)
                 if (number != null) {
                     part = number
                     index += 2
@@ -157,43 +175,31 @@ object SameTitle {
             kept += token
             index += 1
         }
-        tokens = kept
-        if (part == null && tokens.size > 1) {
-            val bare = tokens.last().takeIf { it.all { char -> char.isDigit() } }?.toIntOrNull()
+        if (part == null && kept.size > 1) {
+            val bare = kept.last().takeIf { it.all { char -> char.isDigit() } }?.toIntOrNull()
             if (bare != null && bare in 1..MAX_BARE_PART) {
                 part = bare
-                tokens = tokens.dropLast(1)
+                kept.removeAt(kept.lastIndex)
             }
         }
-        if (part != null && tokens.size > 1) {
+        if (part != null && kept.size > 1) {
             // The part stated twice in one name ("Chapter 2 ... 2") is stated once.
-            val last = tokens.last()
-            if (last.all { it.isDigit() } && last.toIntOrNull() == part) tokens = tokens.dropLast(1)
+            val last = kept.last()
+            if (last.all { it.isDigit() } && last.toIntOrNull() == part) kept.removeAt(kept.lastIndex)
         }
-        // A title word written twice in one name is the title written once.
-        val title = tokens.distinct().joinToString(" ")
+        // A title word written twice in one name is the title written once; the
+        // copy for that is made only when a word does repeat.
+        var repeated = false
+        for (i in kept.indices) {
+            for (j in i + 1 until kept.size) if (kept[j] == kept[i]) {
+                repeated = true
+                break
+            }
+            if (repeated) break
+        }
+        val title = (if (repeated) kept.distinct() else kept).joinToString(" ")
         if (title.isEmpty()) return null
         return Canon(title, year, part)
-    }
-
-    /** Runs of single letters joined into the word they spell: "k g f" reads "kgf". */
-    private fun joinInitials(tokens: List<String>): List<String> {
-        val out = ArrayList<String>(tokens.size)
-        val run = StringBuilder()
-        fun flush() {
-            if (run.isNotEmpty()) {
-                out += run.toString()
-                run.clear()
-            }
-        }
-        for (token in tokens) {
-            if (token.length == 1 && token[0].isLetter()) run.append(token) else {
-                flush()
-                out += token
-            }
-        }
-        flush()
-        return out
     }
 
     /** A part's number as written after its word: digits, or a number word ("Chapter One"). */
