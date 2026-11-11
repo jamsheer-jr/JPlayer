@@ -652,7 +652,7 @@ internal fun rememberTouchExploration(): Boolean {
  * buttons in the same order, top to bottom, with the highlight sliding down rather than across.
  */
 @Composable
-private fun FloatingBar(
+internal fun FloatingBar(
     current: TouchDestination?,
     inProfile: Boolean,
     position: (() -> Float)?,

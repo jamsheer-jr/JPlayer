@@ -455,6 +455,9 @@ internal fun BrowseScreen(
     LaunchedEffect(searchConnected) { if (searchConnected) search.reconnected() }
     val panelScope = rememberCoroutineScope()
     val panelContext = LocalContext.current
+    // The bar's shared book, for the detail page's own footer to ask for the search page
+    // the way the bar's magnifier does (owner, v1.0.33).
+    val touchChrome = LocalTouchChrome.current
     // A hold, the info key or a right click: the quick menu, which leads to the page by Details.
     var held by remember { mutableStateOf<Pair<MediaItem, String>?>(null) }
     val holdMedia: (MediaItem, String) -> Unit = { item, title -> held = item to title }
@@ -1029,6 +1032,17 @@ internal fun BrowseScreen(
                 onTurnTo = { other -> details.turn(titled(other)) },
                 onBack = if (details.canGoBack) ({ details.back() }) else null,
                 returnTo = entry.returnTo,
+                // The page's own footer (owner, v1.0.33): the app's bar cannot stand on the
+                // page's window, so the page carries it, going where the bar goes. Search is
+                // the bar's own ask, which the browser answers by opening its search page.
+                footerNav = DetailFooterNav(
+                    account = (state as? UiState.Content)?.value?.account ?: account,
+                    onHome = { onPickTab(BrowseSection.of(BrowseTab.Home)) },
+                    onChats = { onPickTab(BrowseSection.of(BrowseTab.Chats)) },
+                    onSearch = { touchChrome?.searchAsked = true },
+                    onSettings = onOpenSettings,
+                    onProfile = onOpenProfile,
+                ),
             )
         }
     }

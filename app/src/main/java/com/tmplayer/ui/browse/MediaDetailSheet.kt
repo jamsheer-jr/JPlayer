@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tmplayer.data.Account
 import com.tmplayer.data.AndroidPaths
 import com.tmplayer.data.Bookmark
 import com.tmplayer.data.BookmarkJump
@@ -52,10 +53,27 @@ import com.tmplayer.ui.components.ignoreStrayRelease
 import com.tmplayer.ui.components.isTouch
 import com.tmplayer.ui.i18n.LocalStrings
 import com.tmplayer.ui.icons.TmIcons
+import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.Tv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * Where the detail page's own footer bar goes (owner, v1.0.33): the page is a window of its
+ * own over the app's floating bar, so the bar's buttons (Home, Chats, Search, the profile
+ * picture) can never stand on a movie's or a series' page. A host that has them (the browse
+ * screens) hands them over and the page carries the same bar inside its window, at its foot.
+ * A press leaves the page first, then goes where it says.
+ */
+internal class DetailFooterNav(
+    val account: Account?,
+    val onHome: () -> Unit,
+    val onChats: () -> Unit,
+    val onSearch: () -> Unit,
+    val onSettings: () -> Unit,
+    val onProfile: () -> Unit,
+)
 
 /**
  * A video's actions on Android, wherever its tile is: a chat's grid, Home's rows, the all-chats
@@ -105,6 +123,8 @@ internal fun MediaDetailOpened(
     onTurnTo: ((MediaItem) -> Unit)? = onOpenItem,
     onBack: (() -> Unit)? = null,
     returnTo: DetailReturn? = null,
+    /** The page's own footer bar, where the host has one to give (see [DetailFooterNav]). */
+    footerNav: DetailFooterNav? = null,
 ) {
     // Done with this page: back to the one under it, or closed when there is none.
     val leave: () -> Unit = onBack ?: onDismiss
@@ -551,6 +571,17 @@ internal fun MediaDetailOpened(
             // A copy goes only on the viewer's own tap here (item 8b, v1.0.15), the same rule
             // as the bookmark above; Settings, Playback brings them all back.
             onHideCopy = { copy -> scope.launch { runCatching { settings.hideCopy(copy) } } },
+            // The page's footer (owner, v1.0.33): a press leaves the page first, then goes.
+            footerNav = footerNav?.let { nav ->
+                DetailFooterNav(
+                    account = nav.account,
+                    onHome = { onDismiss(); nav.onHome() },
+                    onChats = { onDismiss(); nav.onChats() },
+                    onSearch = { onDismiss(); nav.onSearch() },
+                    onSettings = { onDismiss(); nav.onSettings() },
+                    onProfile = { onDismiss(); nav.onProfile() },
+                )
+            },
         )
     }
 }
@@ -644,6 +675,8 @@ private fun DetailScreen(
     onDeleteBookmark: ((Bookmark) -> Unit)? = null,
     hiddenCopies: Set<String> = emptySet(),
     onHideCopy: ((MediaItem) -> Unit)? = null,
+    /** The page's own footer bar, where the host gave one (see [DetailFooterNav]). */
+    footerNav: DetailFooterNav? = null,
 ) {
     val touch = isTouch()
     val first = remember { FocusRequester() }
@@ -695,24 +728,50 @@ private fun DetailScreen(
                 }
             }
         }
-        // A phone page can be pulled down to ask again (owner, v1.0.20); a
-        // television has no pull, and its page re-reads behind itself as always.
-        if (touch) {
-            TouchPullRefresh(
-                isRefreshing = refreshing,
-                onRefresh = {
-                    if (!refreshing) {
-                        refreshing = true
-                        refreshScope.launch {
-                            runCatching { com.tmplayer.ui.browse.TitleMediaLoad.refresh(item) }
-                            refreshing = false
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            ) { page() }
-        } else {
-            page()
+        androidx.compose.foundation.layout.Column(
+            Modifier.fillMaxSize().androidx.compose.foundation.background(Tone.background),
+        ) {
+            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                // A phone page can be pulled down to ask again (owner, v1.0.20); a
+                // television has no pull, and its page re-reads behind itself as always.
+                if (touch) {
+                    TouchPullRefresh(
+                        isRefreshing = refreshing,
+                        onRefresh = {
+                            if (!refreshing) {
+                                refreshing = true
+                                refreshScope.launch {
+                                    runCatching { com.tmplayer.ui.browse.TitleMediaLoad.refresh(item) }
+                                    refreshing = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    ) { page() }
+                } else {
+                    page()
+                }
+            }
+            // The page's own footer (owner, v1.0.33): the app's floating bar stands in the
+            // activity's window, under this page's own window, so it can never stand on a
+            // movie's or a series' page; the page carries the same bar at its own foot
+            // instead, on a phone, over the page's ground.
+            if (touch && footerNav != null) {
+                FloatingBar(
+                    current = null,
+                    inProfile = false,
+                    position = null,
+                    account = footerNav.account,
+                    badged = false,
+                    onHome = footerNav.onHome,
+                    onChats = footerNav.onChats,
+                    onSearch = footerNav.onSearch,
+                    onSettings = footerNav.onSettings,
+                    onProfile = footerNav.onProfile,
+                    searchShared = Modifier,
+                    vertical = false,
+                )
+            }
         }
         // Over the page, which is a window of its own above the app's.
         TopMessageHost()
