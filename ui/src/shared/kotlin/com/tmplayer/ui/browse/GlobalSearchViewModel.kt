@@ -507,6 +507,9 @@ class GlobalSearchViewModel(
             _state.update { it.copy(query = query) }
             localJob?.cancel()
             localJob = viewModelScope.launch {
+                // The same short quiet as the typing path below: a letter still being typed
+                // never starts its scan at all (owner, v1.0.33).
+                delay(LOCAL_SETTLE_MS)
                 val here = currentCoroutineContext()
                 val local = withContext(work) {
                     GlobalSearch.localVideos(localPool(), query, allowed, cancelled = { !here.isActive }, names = ::onlineNames)
@@ -553,7 +556,16 @@ class GlobalSearchViewModel(
             asked = query.server
         }
         job = viewModelScope.launch {
-            // The local half, off the main thread: no connection needed and no wait. What was
+            // A short quiet before the local half while the words are still settling: every
+            // letter used to start a full scan of everything the app knows at once, and on a
+            // large pool the scans and their merges piled onto the same threads the results
+            // themselves build on, so typing and the incoming pages fought and the search
+            // read as lag (owner, v1.0.33). A newer keystroke cancels this job inside the
+            // wait, so letters still being typed never scan at all; the cards on screen stay
+            // up meanwhile, as they always have. A search asked outright (no settle) scans
+            // at once, as before.
+            if (settle > 0) delay(LOCAL_SETTLE_MS)
+            // The local half, off the main thread: no connection needed. What was
             // listed and still answers the new words stays up until Telegram's answer takes its
             // place. A newer keystroke cancels this job, and the scan reads that as it
             // goes, so it stops instead of finishing under the next one.
@@ -689,6 +701,22 @@ class GlobalSearchViewModel(
         // page fills from them, instead of every page asking the chats again.
         if (kept.isNotEmpty()) KnownMedia.note(kept)
         val local = localNow
+        // A page that brings nothing the cards do not already hold (a revalidation page, a
+        // chat a wider ask already covered) leaves the cards exactly as they are: merging
+        // everything again for it is the search's heaviest work, and doing it page after
+        // page is what made a long search churn and read as stuck (owner, v1.0.33). The
+        // page's chat briefs still land. A fresh page never skips: it rebuilds from the
+        // local half.
+        if (!fresh) {
+            val held = _state.value.groups.flatMapTo(HashSet()) { group -> group.copies.map { it.id } }
+            if (kept.all { it.id in held }) {
+                if (page.chats.isNotEmpty()) {
+                    val briefs = page.chats.associateBy { it.id }
+                    _state.update { it.copy(chats = it.chats + briefs) }
+                }
+                return
+            }
+        }
         regroup(chats = page.chats.associateBy { it.id }) { s ->
             val base = if (fresh) GlobalSearch.merge(emptyList(), local, s.query, s.sort, identity) else s.groups
             val merged = GlobalSearch.merge(base, kept, s.query, s.sort, identity)
@@ -727,6 +755,14 @@ class GlobalSearchViewModel(
     companion object {
         /** Long enough that each letter typed on a phone is not a round trip to Telegram: see [com.tmplayer.data.SearchSettle]. */
         const val SETTLE_MS = com.tmplayer.data.SearchSettle.MS
+
+        /**
+         * The short quiet before the local half scans while words are still being typed
+         * (owner, v1.0.33): under the typing settle, long enough that a letter followed
+         * at once by another never starts a scan, short enough that the local answer
+         * still lands before Telegram's.
+         */
+        const val LOCAL_SETTLE_MS = 150L
 
         /** A query that has sat with results this long was read, and is kept as a recent search. */
         const val REMEMBER_MS = 2_000L
