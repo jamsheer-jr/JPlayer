@@ -130,6 +130,7 @@ data class MediaItem(
     @Volatile private var genericNameRead: Int = 0
     @Volatile private var filmKeyRead: Any? = null
     @Volatile private var copyKeyRead: Any? = null
+    @Volatile private var canonRead: Any? = null
     @Volatile private var alternateKeysRead: List<String>? = null
     @Volatile private var looseHintRead: Int = 0
     @Volatile private var progressKeyRead: String? = null
@@ -161,6 +162,7 @@ data class MediaItem(
         if (extra == from.extra && pieces.isEmpty() == from.pieces.isEmpty()) {
             filmKeyRead = from.filmKeyRead
             copyKeyRead = from.copyKeyRead
+            canonRead = from.canonRead
         }
         return this
     }
@@ -310,6 +312,10 @@ data class MediaItem(
      */
     internal val uncorrectedFilmKey: String?
         get() = read(filmKeyRead) { SameTitle.filmKeyOf(this, null).also { filmKeyRead = it ?: NotFound } }
+
+    /** [SameTitle.canonOf] with no correction of the viewer's on this video, kept the same way. */
+    internal val canon: SameTitle.Canon?
+        get() = read(canonRead) { SameTitle.canonOf(this, null).also { canonRead = it ?: NotFound } }
 
     /** [SeriesShelf.sameVideoKey] with no correction of the viewer's on this video, kept the same way. */
     internal val uncorrectedCopyKey: String?

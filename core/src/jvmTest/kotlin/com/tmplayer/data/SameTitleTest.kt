@@ -236,6 +236,8 @@ class SameTitleTest {
         // No part stated reads as the first part, and no year stated still matches.
         assertTrue(first.matches(SameTitle.canonOf("kgf", 2018)!!))
         assertTrue(first.matches(SameTitle.canonOf("kgf chapter 1", null)!!))
+        // But no year on either side is no evidence: two lectures sharing a name stay two.
+        assertTrue(!SameTitle.canonOf("lecture", null)!!.matches(SameTitle.canonOf("lecture", null)!!))
         val second = SameTitle.Canon("kgf", 2022, 2)
         assertEquals(second, SameTitle.canonOf("kgf chapter 2", 2022))
         assertEquals(second, SameTitle.canonOf("k g f chapter 2 kgf 2", 2022))

@@ -76,22 +76,32 @@ object SameTitle {
     data class Canon(val title: String, val year: Int?, val part: Int?) {
 
         /**
-         * Whether two readings can be one film: the same canonical title, no year against
-         * another (a remake is another film), and the same part, where a name that states
+         * Whether two readings can be one film: the same canonical title, years that do
+         * not disagree (a stated year against a different stated year is a remake, and
+         * no year on either side is no evidence at all: two lectures that happen to
+         * share a name are two videos), and the same part, where a name that states
          * no part reads as the first part it usually is. Length is the caller's check
          * ([sameLength]), as with the name and year fold.
          */
         fun matches(other: Canon): Boolean =
             title == other.title &&
+                (year != null || other.year != null) &&
                 (year == null || other.year == null || year == other.year) &&
                 (part == other.part || (part == null && other.part == 1) || (other.part == null && part == 1))
     }
 
     /** [Canon] for [item], read off the same name [filmKey] reads; null for anything else. */
     fun canonOf(item: MediaItem): Canon? {
-        if (item.extra != null) return null
         val corrections = VideoCorrections.current
-        val correction = if (corrections.isEmpty()) null else corrections[item.id]
+        // The common case (no corrections standing) is kept on the item, like its
+        // other keys: Home's keys and search's folds ask for it on every build.
+        if (corrections.isEmpty()) return item.canon
+        return canonOf(item, corrections[item.id])
+    }
+
+    /** [canonOf] with the viewer's correction on this video given (null for none). */
+    internal fun canonOf(item: MediaItem, correction: VideoCorrection?): Canon? {
+        if (item.extra != null) return null
         if (correction?.separate == true) return null
         val renamed = correction?.title
         if (renamed == null && item.fileName.isBlank() && item.caption.isBlank()) return null
@@ -106,9 +116,6 @@ object SameTitle {
         // item is, and its name keys with no part, so it reads here as any whole copy.
         if (name.part != null && item.pieces.isEmpty()) return null
         val year = name.year ?: if (renamed == null) captionYear(item.caption, name.titleKey) else null
-        // No year, no reading: two lectures that happen to share a name are two
-        // videos, the discipline the name and year fold already keeps.
-        if (year == null) return null
         return canonOf(name.titleKey, year)
     }
 
