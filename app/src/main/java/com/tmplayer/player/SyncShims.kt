@@ -70,8 +70,15 @@ class TranslatingTextOutput(
         if (cacheFile != null) LiveTranslationCache.install(cacheFile, scope)
     }
 
-    /** Lines a request is out for, so a line on screen is not asked for twice. */
+    /** Lines queued for a request or out in one, so a line on screen is not asked for twice. */
     private val asked = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    /** Lines waiting for the next request, in the order they reached the screen. */
+    private val queueLock = Any()
+    private val queue = ArrayDeque<Triple<String, String, String>>()
+
+    /** Whether the drain below is running; guarded by [queueLock]. */
+    private var draining = false
 
     /** The lines on screen now, so an answer that lands can be put up in place of the original. */
     @Volatile
@@ -121,26 +128,67 @@ class TranslatingTextOutput(
     }
 
     private fun askFor(cues: List<Cue>, language: String) {
-        // The whole group goes up in one call, so the engine sees the run of dialogue whole.
         // Media3 hands a text output only the lines current at each moment: there is no seam
         // here that names a line before its time, so lines cannot be fetched ahead of their
-        // display from this place. The persistent cache is the answer to the second showing:
-        // a line met again, on a seek back or a later watching, is translated from its first
-        // moment and never asked for twice.
+        // display from this place. What can be shaped is the asking itself (owner, v1.0.32):
+        // one call per group, each started cold at the line's first moment, made the free
+        // service's busy moments land on whole lines (a refusal was final for that showing,
+        // so the original stood and the translation never came), and kept a call in flight
+        // per line of dialogue. The lines now queue and one drain sends them in batches:
+        // the first batch goes at once, the lines that arrive while it is out ride the next
+        // one together, and a batch the service answers with nothing is asked once more
+        // after a short pause before its lines are given back. The persistent cache is the
+        // answer to the second showing: a line met again, on a seek back or a later
+        // watching, is translated from its first moment and never asked for twice.
         val missing = cues.mapNotNull(::wordsOf).distinct()
             .filter { LiveTranslationCache.get(key(language, it)) == null && asked.add(key(language, it)) }
         if (missing.isEmpty()) return
-        scope.launch {
-            val answers = runCatching { SubtitleTranslator().translateLines(missing, language) }.getOrNull()
+        val start = synchronized(queueLock) {
+            missing.forEach { words -> queue.addLast(Triple(language, words, key(language, words))) }
+            if (draining) false else {
+                draining = true
+                true
+            }
+        }
+        if (start) scope.launch { drain() }
+    }
+
+    /** Sends the queued lines batch by batch until none are left, then stands down. */
+    private suspend fun drain() {
+        while (true) {
+            val batch = synchronized(queueLock) {
+                if (queue.isEmpty()) {
+                    draining = false
+                    return
+                }
+                val language = queue.first().first
+                val taken = mutableListOf<Triple<String, String, String>>()
+                val rest = ArrayDeque<Triple<String, String, String>>()
+                for (entry in queue) {
+                    if (entry.first == language && taken.size < BATCH_MAX) taken += entry else rest += entry
+                }
+                queue.clear()
+                queue.addAll(rest)
+                taken
+            }
+            val words = batch.map { it.second }
+            var answers = runCatching { SubtitleTranslator().translateLines(words, batch.first().first) }.getOrNull()
+            if (answers == null || answers.all { it == null }) {
+                // The service busy or refusing is a moment, not a verdict: one more
+                // ask after a breath, then the lines go back to being askable.
+                kotlinx.coroutines.delay(RETRY_WAIT_MS)
+                answers = runCatching { SubtitleTranslator().translateLines(words, batch.first().first) }.getOrNull()
+            }
             var landed = false
-            missing.forEachIndexed { index, words ->
-                asked.remove(key(language, words))
+            batch.forEachIndexed { index, entry ->
+                asked.remove(entry.third)
                 val answer = answers?.getOrNull(index)
                 if (answer != null) {
-                    LiveTranslationCache.put(key(language, words), answer)
+                    LiveTranslationCache.put(entry.third, answer)
                     landed = true
                 }
             }
+            val language = batch.first().first
             if (landed && target() == language) {
                 poster.post {
                     val group = showingGroup
@@ -155,6 +203,14 @@ class TranslatingTextOutput(
     }
 
     private fun key(language: String, words: String) = "$language\u0001$words"
+
+    private companion object {
+        /** Lines per translation call from the queue: a run of dialogue, not one line at a time. */
+        const val BATCH_MAX = 24
+
+        /** The pause before a batch the service answered with nothing is asked once more. */
+        const val RETRY_WAIT_MS = 1_500L
+    }
 }
 
 /**
