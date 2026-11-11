@@ -45,6 +45,20 @@ data class MediaFacts(
      * v1.0.16). See [isCam].
      */
     val cleanAudio: Boolean = false,
+    /**
+     * The name carries an "HC" subtitle tag ("HC Sub", "HC-Esub", "Hardcoded Subs"):
+     * subtitles burned into the picture itself, which no subtitle switch can turn
+     * off. The tag alone stands the copy in the hidden family, whatever source the
+     * name otherwise reads (owner, v1.0.35). See [isCam].
+     */
+    val hcSubs: Boolean = false,
+    /**
+     * The name carries the "line audio" tag: sound taken from a theatre's line
+     * out, the mark of a theatre capture however clean it sounds. The tag alone
+     * stands the copy in the hidden family, whatever source the name otherwise
+     * reads (owner, v1.0.35). See [isCam].
+     */
+    val lineAudio: Boolean = false,
     /** "MKV", "MP4": the extension, upper case. */
     val container: String? = null,
     /**
@@ -92,6 +106,8 @@ data class MediaFacts(
                 tracks = TRACKS.filter { (_, pattern) -> pattern.containsMatchIn(name) }.map { it.first },
                 source = first(name, SOURCES),
                 cleanAudio = CLEAN_AUDIO.containsMatchIn(name),
+                hcSubs = HC_SUBS.containsMatchIn(name),
+                lineAudio = LINE_AUDIO.containsMatchIn(name),
                 container = containerOf(base),
                 languages = MediaName.languages(base),
             )
@@ -297,12 +313,22 @@ data class MediaFacts(
         /** The "clean audio" tag, standing on its own as tags do: see [MediaFacts.cleanAudio]. */
         private val CLEAN_AUDIO = word("""clean[ ._-]?audio""")
 
+        /** The "HC" subtitle tag, in its spellings: see [MediaFacts.hcSubs]. */
+        private val HC_SUBS = word("""hc[ ._-]?e?[ ._-]?subs?|hard[ ._-]?coded[ ._-]?e?[ ._-]?subs?|hard[ ._-]?subs?""")
+
+        /** The "line audio" tag, standing on its own as tags do: see [MediaFacts.lineAudio]. */
+        private val LINE_AUDIO = word("""line[ ._-]?audio""")
+
         /**
-         * Whether [facts] mark a cam family copy: a cam source, or the "clean audio" tag
-         * on any source. Read from the file name's own tags, so a copy counts even where
-         * a surface never shows its name.
+         * Whether [facts] mark a copy the owner's hide stands over: a cam source,
+         * or one of the tags that mark a theatre copy on any source: "clean audio",
+         * the "HC" subtitle tag and "line audio" (the last two joined in v1.0.35,
+         * from the owner's channel searches: whole pages of HDRip copies carrying
+         * nothing but the HC tag stood unhidden). Read from the file name's own
+         * tags, so a copy counts even where a surface never shows its name.
          */
-        fun isCam(facts: MediaFacts): Boolean = isCamSource(facts.source) || facts.cleanAudio
+        fun isCam(facts: MediaFacts): Boolean =
+            isCamSource(facts.source) || facts.cleanAudio || facts.hcSubs || facts.lineAudio
 
         /**
          * Whether [item] is a cam family copy, by its raw file name (the title only where
@@ -316,7 +342,7 @@ data class MediaFacts(
          */
         fun isCam(item: MediaItem): Boolean {
             val named = read(item.fileName.ifBlank { item.title }, item.width, item.height)
-            if (named.source != null || named.cleanAudio) return isCam(named)
+            if (named.source != null || named.cleanAudio || named.hcSubs || named.lineAudio) return isCam(named)
             if (item.caption.isBlank()) return false
             return isCam(read(item.caption, item.width, item.height))
         }

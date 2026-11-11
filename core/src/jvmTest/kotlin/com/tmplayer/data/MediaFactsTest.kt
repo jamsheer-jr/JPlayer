@@ -280,6 +280,25 @@ class MediaFactsTest {
     }
 
     @Test
+    fun `the HC subtitle and line audio tags stand a copy in the hidden family`() {
+        // The owner's channel searches (2026-11-11): whole pages of copies whose
+        // names carry nothing but the HC tag stood unhidden beside the copies he
+        // wanted, most of them plain HDRip, which is never hidden for its source.
+        val jailer = MediaFacts.read("Jailer 2 (2026) Tamil HQ HDRip - x264 - AAC - 250MB - HC-Esub.mkv")
+        assertEquals("HDRip", jailer.source)
+        assertTrue(jailer.hcSubs)
+        assertTrue(MediaFacts.isCam(jailer))
+        assertTrue(MediaFacts.read("Anecdotes of Ape Mountain (2026) HQ HDRip - x264 - [Tamil + Hindi] - (AAC 2.0) - 300MB - HC-Sub.mkv").hcSubs)
+        assertTrue(MediaFacts.read("Maargan (2025) [Tamil - HQ HDTS - x264 - AAC - 250MB - HC Esub - HQ Line Audio].mkv").hcSubs)
+        assertTrue(MediaFacts.read("Film (2026) 1080p WEB-DL x264 Hardcoded Subs.mkv").hcSubs)
+        assertTrue(MediaFacts.isCam(MediaFacts.read("Film (2026) HQ WEB-DL - x264 - AAC - 1.6GB - HQ Line Audio.mkv")))
+        // Not the tags: a plain ESub is a subtitle track half a library carries,
+        // and a name with no tag at all stands as it always did.
+        assertFalse(MediaFacts.isCam(MediaFacts.read("Film (2026) 1080p WEB-DL x264 ESub.mkv")))
+        assertFalse(MediaFacts.isCam(MediaFacts.read("Film (2026) 1080p WEB-DL x264.mkv")))
+    }
+
+    @Test
     fun `a clean audio tag marks any copy as cam family`() {
         val tagged = MediaFacts.read("Film.2026.HDTS.Clean.Audio.x264.mkv")
         assertTrue(tagged.cleanAudio)
