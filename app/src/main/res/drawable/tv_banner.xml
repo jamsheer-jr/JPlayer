@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Android TV launcher banner, 320x180: the J Player mark on its yellow, edge to edge
-  (owner, v1.0.35: the yellow mark everywhere), the white play triangle centred with a
-  clear margin on every side, so a launcher that crops a few percent for its focus
-  animation still cannot touch it. A banner carries no words: the launcher writes the
-  app's name under it itself.
+  (owner, v1.0.36: his refined mark), the white play triangle with the navy J inside
+  it and the mark's line under it, centred with a clear margin on every side, so a
+  launcher that crops a few percent for its focus animation still cannot touch it.
+  A banner carries no words: the launcher writes the app's name under it itself.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp"
@@ -16,9 +16,24 @@
         android:pathData="M0 0h320v180H0z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M128,48 L197,90 L128,132 Z"
+        android:pathData="M120,24 L201,73 L120,122 Z"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
+        android:strokeWidth="8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#050C1C"
+        android:pathData="M147.0,101.1 Q139.6,101.1 135.6,97.9 Q131.7,94.7 130.4,87.5 L140.2,86.1 Q140.8,89.7 142.5,91.5 Q144.1,93.3 147.0,93.3 Q150.0,93.3 151.5,91.3 Q153.1,89.3 153.1,85.6 L153.1,60.7 L143.6,60.7 L143.6,52.9 L163.0,52.9 L163.0,85.4 Q163.0,92.8 158.8,96.9 Q154.5,101.1 147.0,101.1 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M112,153 L195,153"
+        android:strokeColor="#8F6B00"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M112,153 L153,153"
+        android:strokeColor="#050C1C"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
 </vector>

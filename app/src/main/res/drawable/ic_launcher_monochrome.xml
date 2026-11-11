@@ -5,16 +5,16 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <!--
-      The J Player mark: the same filled white play triangle as
-      ic_launcher_foreground, in one colour: Android throws the colours away and
-      refills the layer with one wallpaper tint, using the drawn shape as the mask,
-      so the themed and coloured icons sit identically.
+      The J Player mark in one colour: the same play triangle as
+      ic_launcher_foreground with the J cut out of it (the two subpaths read
+      together under evenOdd, so the letter is a hole). Android throws the
+      colours away and refills the layer with one wallpaper tint, using the
+      drawn shape as the mask, so the themed and coloured icons sit identically.
+      Where evenOdd is not read, the letter simply fills in and the plain
+      triangle stands, the mark the themed icon carried before v1.0.36.
     -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M40,32 L77,54 L40,76 Z"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        android:fillType="evenOdd"
+        android:pathData="M34,30 L74,54 L34,78 Z M47.6,67.8 Q44.0,67.8 42.0,66.2 Q40.1,64.7 39.5,61.2 L44.3,60.5 Q44.6,62.3 45.4,63.1 Q46.2,64.0 47.6,64.0 Q49.1,64.0 49.8,63.0 Q50.6,62.0 50.6,60.2 L50.6,48.0 L46.0,48.0 L46.0,44.2 L55.5,44.2 L55.5,60.1 Q55.5,63.8 53.4,65.8 Q51.3,67.8 47.6,67.8 Z" />
 </vector>

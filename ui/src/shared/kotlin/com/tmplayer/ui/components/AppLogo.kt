@@ -28,8 +28,9 @@ import com.tmplayer.ui.theme.Tone
 
 /**
  * The player mark as a vector, in its own colours: the same shapes as Android's
- * `res/drawable/ic_logo.xml` (the yellow tile, one big white play triangle on it), for the
- * places that have no Android resources (the desktop's window icon and its sign in pane).
+ * `res/drawable/ic_logo.xml` (the yellow tile, one big white play triangle on it with the
+ * navy J inside it, and the mark's line under it at rest), for the places that have no
+ * Android resources (the desktop's window icon and its sign in pane).
  * Drawn with `Image`, never `Icon`, which would tint it flat.
  */
 object AppLogo {
@@ -44,6 +45,9 @@ object AppLogo {
         ).apply {
             layer(0xFFFFD400, TILE)
             play(PLAY)
+            layer(0xFF050C1C, LETTER)
+            bar(TRACK_LINE, 0xFF8F6B00)
+            bar(PLAYED_LINE, 0xFF050C1C)
         }.build()
     }
 
@@ -63,11 +67,32 @@ object AppLogo {
         )
     }
 
+    /** One part of the mark's line under the glyph: [data] stroked in its colour, nothing filled. */
+    private fun ImageVector.Builder.bar(data: String, argb: Long) {
+        addPath(
+            PathParser().parsePathString(data).toNodes(),
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color(argb)),
+            strokeLineWidth = 30f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+    }
+
     private const val TILE =
         "M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 " +
             "42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 " +
             "42.666667 0 0 1-42.666667 42.666667z"
-    private const val PLAY = "M380 300 L730 512 L380 724 Z"
+    private const val PLAY = "M340 185 L750 432 L340 680 Z"
+
+    /** The navy J inside the play triangle, a bold sans letterform drawn as a path. */
+    private const val LETTER =
+        "M479.0 575.0Q441.7 575.0 421.7 558.8Q401.6 542.6 395.0 506.5L444.9 499.1Q448.0 517.7 " +
+            "456.4 526.7Q464.7 535.6 479.4 535.6Q494.4 535.6 502.1 525.6Q509.9 515.5 509.9 496.8V370.8H462.0V331.4H560.0V495.6Q560.0 " +
+            "533.1 538.7 554.0Q517.4 575.0 479.0 575.0Z"
+
+    /** The mark's line at rest: its amber track, then its played half in navy over it. */
+    private const val TRACK_LINE = "M300 838 L724 838"
+    private const val PLAYED_LINE = "M300 838 L512 838"
 }
 
 /**
