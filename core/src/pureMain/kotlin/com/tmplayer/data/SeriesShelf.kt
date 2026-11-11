@@ -225,6 +225,18 @@ object SeriesShelf {
         return out.toString()
     }
 
+    /**
+     * A show's key: its title key, qualified by the year its name states when it states one
+     * ("harbour notes|2019"). The year is part of a show's identity, the pairing
+     * [DownloadShelf] groups by: the same title in another year is another show, and no
+     * year is its own group too. A title key never holds a '|', since [keyOf] keeps only
+     * word characters and spaces.
+     */
+    fun showKeyOf(key: String, year: Int?): String = if (year == null) key else "$key|$year"
+
+    /** The plain title key inside a [showKeyOf] key: the key itself when it states no year. */
+    fun plainKeyOf(showKey: String): String = showKey.substringBefore('|')
+
     private fun isWordChar(char: Char): Boolean = if (char < '\u0080') {
         char in 'a'..'z' || char in 'A'..'Z' || char in '0'..'9'
     } else when (char.category) {
@@ -330,10 +342,20 @@ object SeriesShelf {
             }
         }
         // A show is two episodes or more, not two files: three copies of one episode are one.
+        // A show's identity is its title and the year its name states, the pairing the
+        // downloads shelf groups by: the same title in another year is another show (a
+        // remake, an anime and its live action remake), and no year is its own group
+        // too, so a dated series never swallows the undated one or the other way
+        // (owner, 2026-11-11: the One Piece anime and the One Piece live action stood
+        // on one page). [showKeyOf] qualifies a key where a year is stated; the
+        // establishment and placement below work on the qualified keys, the name
+        // rules (aliasing, joining) on the plain titles.
         val strictShowKeys = strict.filterNotNull()
-            .groupBy { it.key }
+            .groupBy { showKeyOf(it.key, it.name.year) }
             .filterValues { files -> files.distinctBy { (it.name.season ?: 1) to it.episode }.size >= MIN_EPISODES }
             .keys
+        // The plain titles of the established strict shows, for the name rules.
+        val plainShowKeys = strictShowKeys.mapTo(HashSet()) { plainKeyOf(it) }
 
         // Files the strict parse left alone, read the lenient way once, so the answer serves
         // both the establishment below and the second look that follows it. A file the viewer
@@ -349,11 +371,14 @@ object SeriesShelf {
         // under one title and one year. Grouped by the title key and the year together, so a
         // remake of the same title stays apart. The loose parse leaves the season unwritten,
         // and the grouping in [series] defaults a seasonless episode to season one.
-        val looseShowPairs = looseFound.filterNotNull()
-            .groupBy { it.key to it.name.year }
+        val looseShowKeys = looseFound.filterNotNull()
+            .groupBy { showKeyOf(it.key, it.name.year) }
             .filterValues { files -> files.distinctBy { (it.name.season ?: 1) to it.episode }.size >= MIN_EPISODES }
             .keys
-        val showKeys = strictShowKeys + looseShowPairs.map { it.first }
+        val showKeys = strictShowKeys + looseShowKeys
+        // The plain titles of every established show, strict or loose.
+        val loosePlainKeys = looseShowKeys.mapTo(HashSet()) { plainKeyOf(it) }
+        val plainKeys = plainShowKeys + loosePlainKeys
 
         // The same season uploaded twice under two names, "Kerala Crime Files" and "Kerala Crime
         // Files Shiju Parayil Veedu Neendakara", is one show: the longer name joins the shorter
@@ -361,9 +386,9 @@ object SeriesShelf {
         // sequel under a longer name has episodes of its own and stays apart.
         val numbersOf = strict.filterNotNull().groupBy { it.key }
             .mapValues { (_, files) -> files.mapTo(HashSet()) { (it.name.season ?: 1) to it.episode } }
-        val strictAlias = strictShowKeys.associateWith { key ->
+        val strictAlias = plainShowKeys.associateWith { key ->
             val mine = numbersOf[key].orEmpty()
-            strictShowKeys.filter { other -> other != key && key.startsWith("$other ") && other.split(' ').size >= 2 }
+            plainShowKeys.filter { other -> other != key && key.startsWith("$other ") && other.split(' ').size >= 2 }
                 .maxByOrNull { it.length }
                 ?.takeIf { other -> mine.count { it in numbersOf[other].orEmpty() } * 2 >= mine.size }
                 ?: key
@@ -373,38 +398,51 @@ object SeriesShelf {
         // its key joins the bare key it ends with, under the same guard as the
         // starts with rule above, and only where the word before the name reads
         // as a brand tag, so a title word never folds a show into another.
-        val aliased = strictShowKeys.associateWith { key ->
+        val aliased = plainShowKeys.associateWith { key ->
             val own = strictAlias.getValue(key)
             if (own != key) return@associateWith own
             val first = strict.filterNotNull().firstOrNull { it.key == key }?.name?.title
                 ?.trim()?.split(' ')?.firstOrNull().orEmpty()
             if (!brandWord(first)) return@associateWith key
             val mine = numbersOf[key].orEmpty()
-            brandTarget(key, strictShowKeys)
+            brandTarget(key, plainShowKeys)
                 ?.takeIf { other -> mine.count { it in numbersOf[other].orEmpty() } * 2 >= mine.size }
                 ?: key
         }
         // A show established by bare episodes alone is known by its own name as it stands.
-        val alias = aliased + (showKeys - strictShowKeys).associateWith { it }
+        val alias = aliased + (plainKeys - plainShowKeys).associateWith { it }
 
         // Everything else gets a second look, now that the chat has said which shows it holds. A
         // file the viewer renamed, or one that is a trailer, is read only as it now reads. A
-        // bare episode whose title a loose show established only for another year does not join
-        // that show: its own title and year pair has to be the established one, unless a strict
-        // show takes it as before, or a shortened name joins a show as before.
+        // bare episode whose title a show established only for another year does not join
+        // that show: its own title and year have to be the established ones, in the strict
+        // reading or the loose one, or a shortened name joins a show of its own year. The
+        // name rules run on the plain titles and their answer is qualified with the file's
+        // own year before it counts, so a remake is never joined by name alone either.
         val placedUnder = items.indices.map { index ->
             val found = strict[index] ?: looseFound[index]?.takeIf { candidate ->
-                val paired = (candidate.key to candidate.name.year) in looseShowPairs
-                val strictHit = candidate.key in strictShowKeys
-                val looseOnlyHit = !paired && !strictHit && candidate.key in showKeys
-                paired || strictHit || (!looseOnlyHit && joining(candidate, showKeys) != null)
+                val own = showKeyOf(candidate.key, candidate.name.year)
+                val paired = own in looseShowKeys
+                val strictHit = own in strictShowKeys
+                val looseOnlyHit = !paired && !strictHit && candidate.key in plainKeys
+                paired || strictHit || (!looseOnlyHit && joining(candidate, plainKeys) != null)
             }
             when {
                 found == null -> null
-                found.key in showKeys -> alias.getValue(found.key).let { key ->
-                    if (key == found.key) found else Found(found.item, key, found.name, found.episode, emptyList())
+                else -> {
+                    val year = found.name.year
+                    val own = showKeyOf(found.key, year)
+                    val target = when {
+                        own in showKeys ->
+                            showKeyOf(alias.getValue(found.key), year).takeIf { it in showKeys } ?: own
+                        else -> joining(found, plainKeys)?.let { joined ->
+                            showKeyOf(alias.getValue(joined), year).takeIf { it in showKeys }
+                        }
+                    }
+                    target?.let { key ->
+                        if (key == found.key) found else Found(found.item, key, found.name, found.episode, emptyList())
+                    }
                 }
-                else -> joining(found, showKeys)?.let { key -> Found(found.item, alias.getValue(key), found.name, found.episode, emptyList()) }
             }
         }
         val shows = placedUnder.filterNotNull()
@@ -424,10 +462,14 @@ object SeriesShelf {
             val name = names[index]
             if (name.season == null || name.episode != null || name.extra != null) return@forEach
             if (corrections[items[index].id]?.title != null) return@forEach
+            val own = showKeyOf(name.titleKey, name.year)
+            val aliasedKey = alias[name.titleKey]?.let { showKeyOf(it, name.year) }
             val showKey = when {
-                name.titleKey in shows -> name.titleKey
-                alias[name.titleKey] in shows -> alias.getValue(name.titleKey)
-                else -> suffixKin(name.titleKey, shows.keys) ?: return@forEach
+                own in shows -> own
+                aliasedKey != null && aliasedKey in shows -> aliasedKey
+                else -> suffixKin(name.titleKey, plainKeys)?.let { kin ->
+                    showKeyOf(alias[kin] ?: kin, name.year).takeIf { it in shows }
+                } ?: return@forEach
             }
             packGroups.getOrPut(showKey to name.season) { ArrayList() } += index
         }
@@ -824,7 +866,7 @@ object SeriesShelf {
         // "harbour_notes_720p" is the same show as "Harbour.Notes", but the second is how to write it.
         // A file that joined under another name is a last resort for the title.
         // Each title keyed once, not once per comparison of a sort.
-        val (own, joined) = files.map { it.name.title }.partition { keyOf(it) == key }
+        val (own, joined) = files.map { it.name.title }.partition { keyOf(it) == plainKeyOf(key) }
         val title = own.firstOrNull { it != it.lowercase() }
             ?: own.firstOrNull()
             ?: joined.first()

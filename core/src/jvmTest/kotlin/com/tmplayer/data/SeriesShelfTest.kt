@@ -415,6 +415,70 @@ class SeriesShelfTest {
     }
 
     @Test
+    fun `same title strict files of different years are two shows`() {
+        val entries = SeriesShelf.arrange(
+            listOf(
+                video("Harbour Notes 2019 S01E01.mkv"),
+                video("Harbour Notes 2019 S01E02.mkv"),
+                video("Harbour Notes 2024 S01E01.mkv"),
+                video("Harbour Notes 2024 S01E02.mkv"),
+            ),
+        )
+        assertEquals(
+            setOf(
+                setOf("Harbour Notes 2019 S01E01.mkv", "Harbour Notes 2019 S01E02.mkv"),
+                setOf("Harbour Notes 2024 S01E01.mkv", "Harbour Notes 2024 S01E02.mkv"),
+            ),
+            shows(entries).map { show -> show.episodes.flatMap { it.copies }.map { it.fileName }.toSet() }.toSet(),
+        )
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
+    fun `episodes with no year of their own stand apart from a dated series of the same title`() {
+        val entries = SeriesShelf.arrange(
+            listOf(
+                video("Harbour Notes S01E01.mkv"),
+                video("Harbour Notes S01E02.mkv"),
+                video("Harbour Notes 2024 S01E01.mkv"),
+                video("Harbour Notes 2024 S01E02.mkv"),
+            ),
+        )
+        assertEquals(2, shows(entries).size)
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
+    fun `bare episodes do not join a dated strict show of the same title`() {
+        val entries = SeriesShelf.arrange(
+            listOf(
+                video("Sea King 2023 S01E01.mkv"),
+                video("Sea King 2023 S01E02.mkv"),
+                video("Sea King - 1001.mkv"),
+                video("Sea King - 1002.mkv"),
+            ),
+        )
+        assertEquals(
+            setOf(listOf(1, 2), listOf(1001, 1002)),
+            shows(entries).map { show -> show.episodes.map { it.episode } }.toSet(),
+        )
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
+    fun `one show in one year under two name styles stays one show`() {
+        val entries = SeriesShelf.arrange(
+            listOf(
+                video("Harbour Notes 2023 S01E01.mkv"),
+                video("Harbour Notes (2023) S01E02.mkv"),
+            ),
+        )
+        val show = shows(entries).single()
+        assertEquals(listOf(1, 2), show.episodes.map { it.episode })
+        assertTrue(files(entries).isEmpty())
+    }
+
+    @Test
     fun `a lone episode stays a file, and so does a season pack`() {
         val items = listOf(
             video("Studio.Sessions.S01E01.mkv"),
