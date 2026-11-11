@@ -773,11 +773,19 @@ private suspend fun personSearchFill(
     val missing = entries.filter { !it.playable && it.credit.ref.title.trim().length >= 3 }
     if (missing.isEmpty()) return entries
     val found = HashMap<String, MediaItem>()
+    val startedAt = System.currentTimeMillis()
     kotlinx.coroutines.coroutineScope {
         val slots = kotlinx.coroutines.sync.Semaphore(PERSON_SEARCH_AT_ONCE)
         missing.map { entry ->
             async {
                 slots.withPermit {
+                    // A whole filmography of missing credits is not asked to the
+                    // last one (owner, v1.0.32): a long page of twenty second
+                    // asks, three at a time, kept a prolific person's page
+                    // "filling" for many minutes. Past the budget no new ask
+                    // starts; the rows left keep the page's pool watch and
+                    // their own press, which asks for the one title at once.
+                    if (System.currentTimeMillis() - startedAt > PERSON_FILL_BUDGET_MS) return@withPermit
                     val hit = personCreditAsk(entry) ?: return@withPermit
                     synchronized(found) { found[entry.credit.ref.matchKey] = hit }
                     onFound(entry.credit.ref.matchKey, hit)
@@ -816,9 +824,23 @@ private const val PERSON_ASK_MS = 20_000L
 /** Pages of search answers one credit's ask reads before it gives up. */
 private const val PERSON_ASK_PAGES = 3
 
+/** How long a fill keeps starting new credit asks before the rest are left to their own press. */
+private const val PERSON_FILL_BUDGET_MS = 45_000L
+
+/** How long one credit's chat by chat fallback ask may run before it reads as no find. */
+private const val PERSON_CHAT_ASK_MS = 15_000L
+
+/** Chats asked at once by one credit's fallback ask, the title load's own handful. */
+private const val PERSON_CHAT_AT_ONCE = 6
+
 private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
     val title = entry.credit.ref.title.trim()
     if (title.length < 3) return null
+    // The pool first (owner, v1.0.32): a copy another page's fill already noted
+    // is an answer with no asking at all, and the cast page's own marking,
+    // which matches a person by name, can miss a held copy this title match
+    // catches, so a title the chats plainly hold stood as not held here.
+    creditHit(entry, com.tmplayer.online.KnownMedia.all())?.let { return it }
     // Bounded (owner, 2026-11-10): the ask was the one unbounded wait on the
     // page, a slow account-wide search held its row at "Loading..." for as
     // long as it ran and held the whole fill behind it. A timeout reads as
@@ -826,7 +848,7 @@ private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
     // can ask again. More than the first page is read (owner, v1.0.29): a
     // title the chats hold can sit past the first page of its own search,
     // and one page read as not held however long the page stood.
-    return try {
+    val viaSearch = try {
         kotlinx.coroutines.withTimeoutOrNull(PERSON_ASK_MS) {
             var cursor = com.tmplayer.data.AllChatsCursor()
             var hit: MediaItem? = null
@@ -846,6 +868,58 @@ private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
                 cursor = page.cursor
             }
             hit
+        }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        null
+    }
+    return viaSearch ?: personCreditAskInChats(entry, title)
+}
+
+/**
+ * One credit asked chat by chat over the browsing gate's scope (owner, v1.0.32):
+ * the search ask follows the search screen's own scope (the added chats, or the
+ * whole account with Global Search on), so a title held in a chat the viewer
+ * browses but never added stood as not held however long its profile span,
+ * while the title's own page, which asks under the gate, found it at once.
+ * This is that page's ask aimed at one credit: the scope's chats a few at a
+ * time, each answer checked as it lands and noted into the pool by the search
+ * itself, the whole bounded shorter than the search ask. A gate nobody has
+ * read yet asks nothing here: a guessed scope is worse than the search ask's
+ * answer standing.
+ */
+private suspend fun personCreditAskInChats(entry: FilmographyEntry, title: String): MediaItem? {
+    val (gate, gateKnown) = com.tmplayer.ui.browse.BrowsingGate.read()
+    val scope = when {
+        gate != null -> gate
+        gateKnown -> com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()
+        else -> return null
+    }
+    if (scope.isEmpty()) return null
+    val session = com.tmplayer.data.Td.awaitConnectedSessionOrNull() ?: return null
+    val repo = com.tmplayer.data.ChatRepository(session.client)
+    return try {
+        kotlinx.coroutines.withTimeoutOrNull(PERSON_CHAT_ASK_MS) {
+            val hit = java.util.concurrent.atomic.AtomicReference<MediaItem?>(null)
+            kotlinx.coroutines.coroutineScope {
+                val slots = kotlinx.coroutines.sync.Semaphore(PERSON_CHAT_AT_ONCE)
+                scope.map { chatId ->
+                    async {
+                        slots.withPermit {
+                            if (hit.get() != null) return@withPermit
+                            com.tmplayer.ui.browse.TitleMediaLoad.search(
+                                { id, query, cursors -> repo.mediaPage(id, cursors, query = query, pageSize = com.tmplayer.data.SeriesFill.PAGE) },
+                                chatId,
+                                title,
+                            ) { pageItems ->
+                                if (hit.get() == null) creditHit(entry, pageItems)?.let { hit.compareAndSet(null, it) }
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+            hit.get()
         }
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
         throw cancelled
