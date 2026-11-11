@@ -60,7 +60,7 @@ class GlobalSearchViewModelTest {
             query != "harbour" -> AllChatsPage(emptyList(), done)
             cursor.videoOffset.isEmpty() -> AllChatsPage(listOf(video(1, "Harbour.Lights.2019.1080p.mkv")), AllChatsCursor(videoOffset = "2", documentDone = true))
             cursor.videoOffset == "2" -> AllChatsPage(listOf(video(2, "Harbour.Rain.2020.720p.mkv")), AllChatsCursor(videoOffset = "3", documentDone = true))
-            else -> AllChatsPage(listOf(video(3, "Harbour.Wind.2021.2160p.mkv")), AllChatsCursor(videoOffset = "4", documentDone = true))
+            else -> AllChatsPage(listOf(video(3, "Harbour.Wind.2021.2160p.mkv")), AllChatsCursor(videoDone = true, documentDone = true))
         }
     }
 
@@ -136,7 +136,7 @@ class GlobalSearchViewModelTest {
     }
 
     @Test
-    fun `a thin first answer keeps asking, three pages at most`() = runTest(dispatcher) {
+    fun `a thin first answer keeps asking until every chat has been asked`() = runTest(dispatcher) {
         val model = GlobalSearchViewModel(source, known = { emptyList() }, work = dispatcher, settleMs = 0)
         model.type("harbour")
         advanceUntilIdle()

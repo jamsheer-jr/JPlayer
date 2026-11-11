@@ -1070,6 +1070,12 @@ fun SeriesPanel(
     val heights = remember(series) {
         series.episodes.flatMap { it.copies }.mapNotNull(VideoCopies::heightOf).distinct().sortedDescending()
     }
+    // Every file the show stands in, episodes' copies and season packs together (owner,
+    // v1.0.35): the facts line says it as one figure, the way a video's page counts its
+    // versions. This page counted seasons and episodes only, so the total was nowhere.
+    val copiesTotal = remember(series) {
+        series.episodes.sumOf { it.copies.size } + series.packs.size
+    }
     var pickedHeight by rememberSaveable(series.key) { mutableStateOf<Int?>(null) }
     // A season download being confirmed (item 11d, v1.0.15): which of the two downloads the
     // viewer pressed, while the confirm step shows its total and takes one quality for all.
@@ -1340,6 +1346,7 @@ fun SeriesPanel(
                         // genres line, in its held place, so the facts never re-wrap.
                         meta?.year?.takeIf { yearInFacts }?.let { Fact(it.toString()) },
                         Fact(seriesSummary(series)),
+                        if (copiesTotal > 0) Fact(s.searchCopies(copiesTotal)) else null,
                         seriesProgressLine(progress)?.let { Fact(it, accent = true) },
                         chatTitle?.takeIf { it.isNotBlank() }?.let { Fact(it) },
                     ),

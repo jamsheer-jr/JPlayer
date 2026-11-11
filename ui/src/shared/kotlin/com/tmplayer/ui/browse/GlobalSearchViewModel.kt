@@ -657,6 +657,25 @@ class GlobalSearchViewModel(
                 absorb(next, keepTo = query)
                 _state.update { it.copy(endReached = next.cursor.done) }
             }
+            // The first answer stands, and the asking goes on behind it until every chat
+            // in scope has been asked (owner, v1.0.35: some channels never appeared in
+            // search at all). The first rush above stops once the first cards stand, and
+            // until now every later chat waited for a scroll to the end of the list: a
+            // channel late in the order was never asked in a short search, however many
+            // copies it held. The asking keeps the same pages and the same rate, with a
+            // breath between them, and stops at the same caps the list itself keeps;
+            // past them the scroll takes over as it always did. A new query cancels this
+            // with the rest of the search.
+            while (!cursor.done && pages < MAX_AUTO_PAGES && _state.value.groups.size < GlobalSearch.MAX_GROUPS) {
+                _state.update { it.copy(stillSearching = true) }
+                delay(AUTO_PAGE_PAUSE_MS)
+                val next = source.page(serverQuery, cursor, filters)
+                pages++
+                cursor = next.cursor
+                keepNext(query, filters, next)
+                absorb(next, keepTo = query)
+                _state.update { it.copy(endReached = next.cursor.done) }
+            }
             _state.update { it.copy(stillSearching = false) }
             if (_state.value.groups.isNotEmpty()) {
                 rememberJob = viewModelScope.launch {
@@ -771,5 +790,16 @@ class GlobalSearchViewModel(
 
         /** Flood waits a search waits out by itself before it says it failed. */
         const val MAX_FLOOD_RETRIES = 2
+
+        /**
+         * The most pages one search asks for by itself, the first rush and the continued
+         * asking behind it together: enough for every chat in any scope the picker
+         * offers, few enough that a word every chat answers cannot run away with the
+         * connection. Past it, the viewer's scroll asks for more, as before.
+         */
+        const val MAX_AUTO_PAGES = 40
+
+        /** The breath between the pages asked behind a standing answer (v1.0.35). */
+        const val AUTO_PAGE_PAUSE_MS = 750L
     }
 }

@@ -172,10 +172,15 @@ fun SearchResultCard(
 @Composable
 fun ResultPoster(item: MediaItem, modifier: Modifier = Modifier, fraction: Float? = null) {
     val meta = rememberMeta(item)
+    // A title matched online stands in search by its poster, not by the file's own
+    // cover (owner, v1.0.35: "Dp maatt"): the covers uploaders set are branded with
+    // a channel logo, so a row wearing one reads as the channel's page rather than
+    // the film's. An unmatched result keeps the file's own picture, as everywhere.
+    val matched = meta?.posterUrl != null
     Box(modifier.aspectRatio(2f / 3f).clip(RoundedCornerShape(Corner.Small))) {
         PosterArt(
-            miniThumbnail = item.miniThumbnail,
-            thumbnailFileId = item.thumbnailFileId,
+            miniThumbnail = if (matched) null else item.miniThumbnail,
+            thumbnailFileId = if (matched) 0 else item.thumbnailFileId,
             cover = rememberCover(item),
             posterUrl = meta?.posterUrl,
             modifier = Modifier.fillMaxSize(),
