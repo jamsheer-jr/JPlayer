@@ -269,7 +269,11 @@ object SameTitle {
     }
 
     /** Every key [entry] is known by: its online match, its film name and year, its show's name. */
-    fun keysOf(entry: ShelfEntry, online: (MediaItem) -> String? = ::onlineKey): List<String> = when (entry) {
+    fun keysOf(
+        entry: ShelfEntry,
+        online: (MediaItem) -> String? = ::onlineKey,
+        canon: Boolean = true,
+    ): List<String> = when (entry) {
         is ShelfEntry.Show -> listOfNotNull(
             "show:" + SeriesShelf.keyOf(entry.series.title),
             online(entry.series.cover)?.let { "online:$it" },
@@ -287,7 +291,9 @@ object SameTitle {
                     // The canonical reading (owner, v1.0.35), stated with its year and
                     // part (no part read as the first): the spellings of one film are
                     // one tile on the shelves too, not only in search and on its page.
-                    canonShelfKey(item),
+                    // [dedupe] asks without it in its first pass and reads it after,
+                    // over the tiles that stand.
+                    if (canon) canonShelfKey(item) else null,
                     SeriesShelf.sameVideoKey(item)?.let { "copy:$it" },
                 )
             }
@@ -304,7 +310,7 @@ object SameTitle {
         val out = ArrayList<ShelfEntry?>(entries.size)
         val at = HashMap<String, Int>()
         for (entry in entries) {
-            val keys = keysOf(entry, online)
+            val keys = keysOf(entry, online, canon = false)
             val index = keys.firstNotNullOfOrNull { at[it] }
             if (index == null) {
                 keys.forEach { at[it] = out.size }
@@ -320,7 +326,26 @@ object SameTitle {
             }
             keys.forEach { at.getOrPut(it) { index } }
         }
-        return out.filterNotNull()
+        // The canonical reading's own pass, over the tiles that stand: only a
+        // standing tile can meet its other spellings, so the reading is worked
+        // out for those, not for every copy a chat handed over. A cold start
+        // keys thousands of copies; the copies that folded away in the pass
+        // above would have paid for readings nothing could use.
+        val tiles = out
+        val byCanon = HashMap<String, Int>()
+        for (index in tiles.indices) {
+            val entry = tiles[index] as? ShelfEntry.File ?: continue
+            val key = canonShelfKey(entry.item) ?: continue
+            val first = byCanon[key]
+            if (first == null) {
+                byCanon[key] = index
+                continue
+            }
+            val held = tiles[first] as? ShelfEntry.File ?: continue
+            tiles[first] = ShelfEntry.File(fold(held.item, entry.item))
+            tiles[index] = null
+        }
+        return tiles.filterNotNull()
     }
 
     /** Two tiles of one film as one: every copy, the best leading ([GlobalSearch.copyOrder]). */
