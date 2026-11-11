@@ -292,10 +292,9 @@ class GlobalSearchViewModel(
     private var localJob: Job? = null
     private var rememberJob: Job? = null
 
-    /** Later pages' finds held for one regroup, and the flush that lands them: see [queueRegroup]. */
+    /** Later pages held for one flush, in the order they arrived: see [queueRegroup]. */
     private val pendingLock = Any()
-    private val pendingItems = mutableListOf<MediaItem>()
-    private val pendingChats = mutableMapOf<Long, ChatBrief>()
+    private val pendingPages = mutableListOf<Pair<List<MediaItem>, Map<Long, ChatBrief>>>()
     private var pendingQuery: SearchQuery? = null
     private var pendingJob: Job? = null
     private var cursor = AllChatsCursor()
@@ -766,22 +765,26 @@ class GlobalSearchViewModel(
     }
 
     /**
-     * A later page's finds, held for a regroup rather than merged on the spot (owner,
-     * v1.0.36: searching must run smooth). Since the asking went on behind the first
-     * answer (v1.0.35), a busy word lands a page every breath, and every page re-merged
-     * the whole answer and re-set the list: the churn read as a search that stuttered
-     * under the finger. The pages now gather for [REGROUP_QUIET_MS] of quiet and merge
-     * once, so the list settles between merges instead of being rebuilt page by page.
-     * The finds are in the pool already ([absorb] notes them), so a page opened from
-     * the results loses nothing by the wait. A fresh page drops what is held: it
-     * belongs to the run that page replaces. [flushPending] lands what is held at
-     * once, when the asking ends.
+     * A later page, held for a flush rather than merged on the spot (owner, v1.0.36:
+     * searching must run smooth). Since the asking went on behind the first answer
+     * (v1.0.35), a busy word lands a page every breath, and every page re-merged the
+     * whole answer and re-set the list: the churn read as a search that stuttered
+     * under the finger. The pages now gather for [REGROUP_QUIET_MS] of quiet and land
+     * together in one flush, so the list settles between flushes instead of being
+     * rebuilt page by page. The finds are in the pool already ([absorb] notes them),
+     * so a page opened from the results loses nothing by the wait. A fresh page drops
+     * what is held: it belongs to the run that page replaces. [flushPending] lands
+     * what is held at once, when the asking ends.
+     *
+     * The held pages land in the order they arrived, one merge each: the order of the
+     * cards is the order the chats answered in, and one merge of the whole burst
+     * would rank the burst's new cards among themselves instead and shuffle the list
+     * (the search tests pin the answered order).
      */
     private fun queueRegroup(items: List<MediaItem>, briefs: Map<Long, ChatBrief>) {
         synchronized(pendingLock) {
-            if (pendingItems.isEmpty()) pendingQuery = _state.value.query
-            pendingItems += items
-            pendingChats += briefs
+            if (pendingPages.isEmpty()) pendingQuery = _state.value.query
+            pendingPages += items to briefs
             pendingJob?.cancel()
             pendingJob = viewModelScope.launch {
                 delay(REGROUP_QUIET_MS)
@@ -790,20 +793,25 @@ class GlobalSearchViewModel(
         }
     }
 
-    /** Merges what [queueRegroup] is holding, once, if the query it belongs to still stands. */
+    /** Lands what [queueRegroup] is holding, page by page in arrival order, if the query it belongs to still stands. */
     private suspend fun flushPending() {
         val held = synchronized(pendingLock) {
             pendingJob?.cancel()
             pendingJob = null
-            val out = Triple(pendingItems.toList(), pendingChats.toMap(), pendingQuery)
-            pendingItems.clear()
-            pendingChats.clear()
+            val out = pendingPages.toList() to pendingQuery
+            pendingPages.clear()
             pendingQuery = null
             out
         }
-        val (items, briefs, query) = held
-        if (items.isEmpty() || query == null || query != _state.value.query) return
-        regroup(chats = briefs) { s -> GlobalSearch.merge(s.groups, items, s.query, s.sort, identity) }
+        val (pages, query) = held
+        if (pages.isEmpty() || query == null || query != _state.value.query) return
+        for ((items, briefs) in pages) {
+            if (items.isEmpty()) {
+                if (briefs.isNotEmpty()) _state.update { it.copy(chats = it.chats + briefs) }
+                continue
+            }
+            regroup(chats = briefs) { s -> GlobalSearch.merge(s.groups, items, s.query, s.sort, identity) }
+        }
     }
 
     /** Drops what [queueRegroup] is holding: a new run replaces it, unmerged. */
@@ -811,8 +819,7 @@ class GlobalSearchViewModel(
         synchronized(pendingLock) {
             pendingJob?.cancel()
             pendingJob = null
-            pendingItems.clear()
-            pendingChats.clear()
+            pendingPages.clear()
             pendingQuery = null
         }
     }
