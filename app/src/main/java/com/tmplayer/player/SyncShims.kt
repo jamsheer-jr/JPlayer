@@ -77,8 +77,8 @@ class TranslatingTextOutput(
     private val queueLock = Any()
     private val queue = ArrayDeque<Triple<String, String, String>>()
 
-    /** Whether the drain below is running; guarded by [queueLock]. */
-    private var draining = false
+    /** How many drains are running; guarded by [queueLock]. */
+    private var drains = 0
 
     /** The lines on screen now, so an answer that lands can be put up in place of the original. */
     @Volatile
@@ -142,23 +142,25 @@ class TranslatingTextOutput(
         // one call per group, each started cold at the line's first moment, made the free
         // service's busy moments land on whole lines (a refusal was final for that showing,
         // so the line stood untranslated for good), and kept a call in flight
-        // per line of dialogue. The lines now queue and one drain sends them in batches:
+        // per line of dialogue. The lines now queue and the drains send them in batches:
         // the first batch goes at once, the lines that arrive while it is out ride the next
         // one together, and a batch the service answers with nothing is asked once more
-        // after a short pause before its lines are given back. The persistent cache is the
-        // answer to the second showing: a line met again, on a seek back or a later
-        // watching, is translated from its first moment and never asked for twice.
+        // after a short pause before its lines are given back. Two drains run side by side
+        // (v1.0.36): one call's wait no longer holds every later line hostage, which is what
+        // let whole runs of dialogue go by untranslated on a slow answer. The persistent
+        // cache is the answer to the second showing: a line met again, on a seek back or a
+        // later watching, is translated from its first moment and never asked for twice.
         val missing = cues.mapNotNull(::wordsOf).distinct()
             .filter { LiveTranslationCache.get(key(language, it)) == null && asked.add(key(language, it)) }
         if (missing.isEmpty()) return
         val start = synchronized(queueLock) {
             missing.forEach { words -> queue.addLast(Triple(language, words, key(language, words))) }
-            if (draining) false else {
-                draining = true
-                true
-            }
+            var toStart = 0
+            while (drains + toStart < MAX_DRAINS && queue.isNotEmpty()) toStart++
+            drains += toStart
+            toStart
         }
-        if (start) scope.launch { drain() }
+        repeat(start) { scope.launch { drain() } }
     }
 
     /** Sends the queued lines batch by batch until none are left, then stands down. */
@@ -166,7 +168,7 @@ class TranslatingTextOutput(
         while (true) {
             val batch = synchronized(queueLock) {
                 if (queue.isEmpty()) {
-                    draining = false
+                    drains--
                     return
                 }
                 val language = queue.first().first
@@ -215,6 +217,9 @@ class TranslatingTextOutput(
     private companion object {
         /** Lines per translation call from the queue: a run of dialogue, not one line at a time. */
         const val BATCH_MAX = 24
+
+        /** Drains sending batches side by side (v1.0.36): see [askFor]. */
+        const val MAX_DRAINS = 2
 
         /** The pause before a batch the service answered with nothing is asked once more. */
         const val RETRY_WAIT_MS = 1_500L

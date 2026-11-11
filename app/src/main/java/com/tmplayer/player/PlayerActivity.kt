@@ -6426,7 +6426,12 @@ class PlayerActivity : FragmentActivity(), TrackPickerHost {
         val py = y - origin[1]
         if (px < left || px > left + view.width) return false
         val lineHeight = 1.25f * subtitleTextFraction() * view.height
-        val textTop = top + view.height * (1f - subtitleBottomFraction()) - shownCues.size * lineHeight
+        // A translated line wraps taller than the line it replaces (v1.0.36): the view
+        // stacks the wrapped lines upward from the same foot, so while a translation
+        // stands the band counts every cue as two lines, and a finger on the visible
+        // words is on the lines for the drag, as it is without one.
+        val lines = if (liveSubtitleTarget() != null) shownCues.size * 2 else shownCues.size
+        val textTop = top + view.height * (1f - subtitleBottomFraction()) - lines * lineHeight
         val slack = 16f * resources.displayMetrics.density
         return py >= textTop - slack && py <= top + view.height
     }

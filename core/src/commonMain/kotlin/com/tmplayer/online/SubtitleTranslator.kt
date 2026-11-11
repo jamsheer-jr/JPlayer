@@ -57,10 +57,16 @@ class SubtitleTranslator(private val http: HttpTransport = UrlConnectionTranspor
      * what a player showing a track built into the video has, since that track never exists as
      * a file anywhere. The lines go up together, so the engine sees the run of them whole; a
      * line it drops or mangles answers null, and that line keeps its own words.
+     *
+     * The live path takes no per-line fallback (v1.0.36): when a joined batch's answer cannot
+     * be read back line by line, a file can afford a call per line, but a line on screen
+     * cannot wait for a call per line of its batch (the owner's missed lines: whole runs of
+     * dialogue went by while one batch walked its lines one call at a time). The batch
+     * answers nulls instead, and the caller's one retry of the batch is the second chance.
      */
     suspend fun translateLines(lines: List<String>, target: String): List<String?> {
         if (lines.isEmpty()) return emptyList()
-        return translateCues(lines, target)
+        return translateCues(lines, target, perLineFallback = false)
     }
 
     /** One cue's place in the file: [words] is what is sent, [write] puts the answer back. */
@@ -162,7 +168,7 @@ class SubtitleTranslator(private val http: HttpTransport = UrlConnectionTranspor
      * the first batch yields nothing at all, the service is taken to be unreachable and the rest
      * are not asked: a feature length file would otherwise be a thousand refused requests.
      */
-    private suspend fun translateCues(texts: List<String>, target: String): List<String?> {
+    private suspend fun translateCues(texts: List<String>, target: String, perLineFallback: Boolean = true): List<String?> {
         val out = arrayOfNulls<String>(texts.size)
         var at = 0
         var batches = 0
@@ -185,10 +191,11 @@ class SubtitleTranslator(private val http: HttpTransport = UrlConnectionTranspor
                     batch.indices.forEach { i -> out[at + i] = byMarker[i] }
                 lines != null && lines.size == batch.size ->
                     batch.indices.forEach { i -> out[at + i] = lines[i].trim().takeIf { it.isNotEmpty() } }
-                else -> batch.indices.forEach { i ->
+                perLineFallback -> batch.indices.forEach { i ->
                     out[at + i] = translateJoined(batch[i], target)
                         ?.replace('\n', ' ')?.trim()?.takeIf { it.isNotEmpty() }
                 }
+                else -> Unit
             }
             batches++
             if (batches == 1 && out.all { it == null }) return out.toList()
