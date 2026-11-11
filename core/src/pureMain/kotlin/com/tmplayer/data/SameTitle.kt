@@ -383,8 +383,12 @@ object SameTitle {
      * since a shelf folds on shared keys alone, with no length to check a yearless
      * reading against.
      */
-    private fun canonShelfKey(item: MediaItem): String? {
-        val canon = canonOf(item) ?: return null
+    private fun canonShelfKey(item: MediaItem): String? =
+        if (VideoCorrections.current.isEmpty()) item.canonKey else canonKeyOf(canonOf(item))
+
+    /** The shelf key [canonShelfKey] speaks of, from a reading already worked out. */
+    internal fun canonKeyOf(canon: Canon?): String? {
+        canon ?: return null
         val year = canon.year ?: return null
         return "canon:${canon.title}|$year|${canon.part ?: 1}"
     }

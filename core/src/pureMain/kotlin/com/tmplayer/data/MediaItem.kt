@@ -131,6 +131,7 @@ data class MediaItem(
     @Volatile private var filmKeyRead: Any? = null
     @Volatile private var copyKeyRead: Any? = null
     @Volatile private var canonRead: Any? = null
+    @Volatile private var canonKeyRead: Any? = null
     @Volatile private var alternateKeysRead: List<String>? = null
     @Volatile private var looseHintRead: Int = 0
     @Volatile private var progressKeyRead: String? = null
@@ -163,6 +164,7 @@ data class MediaItem(
             filmKeyRead = from.filmKeyRead
             copyKeyRead = from.copyKeyRead
             canonRead = from.canonRead
+            canonKeyRead = from.canonKeyRead
         }
         return this
     }
@@ -316,6 +318,10 @@ data class MediaItem(
     /** [SameTitle.canonOf] with no correction of the viewer's on this video, kept the same way. */
     internal val canon: SameTitle.Canon?
         get() = read(canonRead) { SameTitle.canonOf(this, null).also { canonRead = it ?: NotFound } }
+
+    /** The canonical reading's shelf key, kept with it: Home's keys ask for it on every build. */
+    internal val canonKey: String?
+        get() = read(canonKeyRead) { SameTitle.canonKeyOf(canon).also { canonKeyRead = it ?: NotFound } }
 
     /** [SeriesShelf.sameVideoKey] with no correction of the viewer's on this video, kept the same way. */
     internal val uncorrectedCopyKey: String?
