@@ -93,6 +93,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -833,6 +834,9 @@ private const val PERSON_FILL_BUDGET_MS = 45_000L
 /** How long one credit's chat by chat fallback ask may run before it reads as no find. */
 private const val PERSON_CHAT_ASK_MS = 15_000L
 
+/** The quiet in the pool's growth a cast page's re-mark waits out (v1.0.34). */
+private const val PERSON_REMARK_QUIET_MS = 300L
+
 /** Chats asked at once by one credit's fallback ask, the title load's own handful. */
 private const val PERSON_CHAT_AT_ONCE = 6
 
@@ -996,7 +1000,10 @@ fun PersonTitlesDialog(person: MetaPerson, onDismiss: () -> Unit, onOpenItem: (M
         if (standing != null && filmsNow != null && filmsNow.any { !it.playable }) {
             var current: List<FilmographyEntry> = filmsNow
             var extraNow = standing.extraHeld
-            com.tmplayer.online.KnownMedia.version.collect {
+            com.tmplayer.online.KnownMedia.version.collectLatest {
+                // A burst of pool growth re-marks once, after a short quiet, not once
+                // per landed page: each re-mark walks the whole pool (owner, v1.0.34).
+                delay(PERSON_REMARK_QUIET_MS)
                 val heldNow = withContext(Dispatchers.Default) { personTitles(person.name) }
                 val remarked = withContext(Dispatchers.Default) {
                     val fresh = markCredits(current.map { it.credit }, heldNow)

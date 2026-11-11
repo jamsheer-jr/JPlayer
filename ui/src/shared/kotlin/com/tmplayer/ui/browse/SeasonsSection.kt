@@ -70,6 +70,7 @@ import com.tmplayer.ui.theme.Corner
 import com.tmplayer.ui.theme.Tone
 import com.tmplayer.ui.theme.focusRing
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
@@ -79,6 +80,9 @@ import java.time.ZoneId
  * opens the page provides it; without one the list shows no progress.
  */
 val LocalSeriesWatch = compositionLocalOf { SeriesWatch.None }
+
+/** The quiet in the pool's growth a standing seasons guide's re-derivation waits out (v1.0.34). */
+private const val GUIDE_QUIET_MS = 300L
 
 /**
  * A show's episodes on its detail page: how many seasons it has and what airs next, the seasons as
@@ -109,6 +113,11 @@ fun SeasonsSection(
     // page rather than arriving under it; worked out again behind, from what is known now.
     val seriesKey = com.tmplayer.data.QueryKey.SeriesOf(item.id)
     val series by produceState(com.tmplayer.data.PageQueries.cache.data<Series>(seriesKey), item.id, known) {
+        // A standing guide waits out a short quiet in the pool's growth before it is
+        // derived again, so a fill landing page after page re-derives it once, not
+        // once per landed page (owner, v1.0.34: title pages lagged while their
+        // fills ran). A page with nothing standing yet derives at once.
+        if (value != null) delay(GUIDE_QUIET_MS)
         val found = withContext(Dispatchers.Default) { EpisodeGuide.seriesOf(item, KnownMedia.all()) }
         if (found != null) com.tmplayer.data.PageQueries.cache.put(seriesKey, found) else com.tmplayer.data.PageQueries.cache.remove { it == seriesKey }
         value = found

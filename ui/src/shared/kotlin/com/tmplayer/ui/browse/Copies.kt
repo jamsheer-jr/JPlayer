@@ -2,6 +2,10 @@ package com.tmplayer.ui.browse
 
 import com.tmplayer.ui.theme.collectIsFocusVisibleAsState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.graphicsLayer
 import com.tmplayer.ui.components.riseIn
 import androidx.compose.animation.AnimatedVisibility
@@ -28,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -198,10 +203,22 @@ internal fun Versions(
     // The pool's version is watched, so the widening is worked out again as the open
     // itself brings more of the title in ([rememberTitleMediaLoad] asks the chats, and
     // each chat's finds are noted as they land), instead of standing at what the pool
-    // held on the first frame.
-    val known by com.tmplayer.online.KnownMedia.version.collectAsState()
-    val full = remember(item.id, item.versions, known) {
-        com.tmplayer.data.SameTitle.withPoolCopies(item, com.tmplayer.online.KnownMedia.all())
+    // held on the first frame. The scan walks the whole pool, so it runs off the
+    // page's thread, and a re-scan waits out a short quiet in the pool's growth
+    // first (owner, v1.0.34: on titles with many copies the page lagged for as long
+    // as its fill ran, because every landed page re-ran the whole scan on the UI
+    // thread). The page stands on the last widening while a re-scan runs.
+    val full by produceState(item, item.id, item.versions) {
+        value = withContext(Dispatchers.Default) {
+            com.tmplayer.data.SameTitle.withPoolCopies(item, com.tmplayer.online.KnownMedia.all())
+        }
+        com.tmplayer.online.KnownMedia.version.collectLatest {
+            delay(WIDEN_QUIET_MS)
+            val widened = withContext(Dispatchers.Default) {
+                com.tmplayer.data.SameTitle.withPoolCopies(item, com.tmplayer.online.KnownMedia.all())
+            }
+            if (widened != value) value = widened
+        }
     }
     // While the open's own fill is still asking and only the opened copy is
     // known, the section says so instead of standing absent (owner, v1.0.23:
@@ -236,13 +253,19 @@ internal fun Versions(
                 HiddenCopies.hides(hiddenCopies, lead)
         }
     }
-    val camHidden = if (hideCamCopies) allFiles.count { isCamCopy(it.first) } else 0
-    val shortHidden = if (hideShortVideos) allFiles.count { !isCamCopy(it.first) && isShortCopy(it.first) } else 0
+    val camHidden = remember(allFiles, hideCamCopies) {
+        if (hideCamCopies) allFiles.count { isCamCopy(it.first) } else 0
+    }
+    val shortHidden = remember(allFiles, hideCamCopies, hideShortVideos) {
+        if (hideShortVideos) allFiles.count { !isCamCopy(it.first) && isShortCopy(it.first) } else 0
+    }
     // The viewer's own hides, counted apart from the two rules above: a copy hidden by both a
     // rule and the viewer is the rule's, as a cam copy is for the pair above.
-    val ownHidden = allFiles.count { (lead, _) ->
-        HiddenCopies.hides(hiddenCopies, lead) &&
-            !(hideCamCopies && isCamCopy(lead)) && !(hideShortVideos && isShortCopy(lead))
+    val ownHidden = remember(allFiles, hideCamCopies, hideShortVideos, hiddenCopies) {
+        allFiles.count { (lead, _) ->
+            HiddenCopies.hides(hiddenCopies, lead) &&
+                !(hideCamCopies && isCamCopy(lead)) && !(hideShortVideos && isShortCopy(lead))
+        }
     }
     if (files.isEmpty()) {
         Column {
@@ -798,6 +821,9 @@ private fun RadioMark(chosen: Boolean, focused: Boolean, modifier: Modifier = Mo
 
 /** How long a copy picked by a finger shows as chosen before the sheet closes. */
 private const val CHOICE_SHOWN_MS = 220L
+
+/** The quiet in the pool's growth a detail page's versions re-scan waits out (v1.0.34). */
+private const val WIDEN_QUIET_MS = 300L
 
 /**
  * For a file posted more than once: "in 2 chats" where the posts are in different chats, else

@@ -185,7 +185,8 @@ object SameTitle {
         for (candidate in pool) {
             if (candidate.id in held || candidate.extra != null) continue
             val match = if (film != null) {
-                (filmKey(candidate) == film || (matchedOnline != null && online(candidate) == matchedOnline)) &&
+                (filmKey(candidate) == film ||
+                    (matchedOnline != null && candidate.metaQuery != null && online(candidate) == matchedOnline)) &&
                     sameLength(candidate, item)
             } else {
                 SeriesShelf.sameVideoKey(candidate) == copyKey
