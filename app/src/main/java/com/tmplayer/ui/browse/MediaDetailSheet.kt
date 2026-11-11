@@ -4,6 +4,7 @@ import com.tmplayer.ui.components.TopMessageHost
 import com.tmplayer.ui.components.TouchPullRefresh
 import android.widget.Toast
 import com.tmplayer.App
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -729,7 +730,7 @@ private fun DetailScreen(
             }
         }
         androidx.compose.foundation.layout.Column(
-            Modifier.fillMaxSize().androidx.compose.foundation.background(Tone.background),
+            Modifier.fillMaxSize().background(Tone.background),
         ) {
             androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                 // A phone page can be pulled down to ask again (owner, v1.0.20); a
