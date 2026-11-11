@@ -225,9 +225,22 @@ internal object BrowsingGate {
     @Volatile
     private var keptAt: Long = 0L
 
+    /** What the kept answer was read under: the lock's set, the added chats and whether they are read. */
+    @Volatile
+    private var keptUnder: Triple<Set<Long>?, Set<Long>?, Boolean>? = null
+
+    /**
+     * The inputs the gate's answer is worked out from, as they stand now. The
+     * answer is a pure working of these, so a kept answer stands exactly while
+     * they do: any change to the lock or the added chats, in the app or in a
+     * test that sets them directly, reads the gate again at once.
+     */
+    private fun inputs(): Triple<Set<Long>?, Set<Long>?, Boolean> =
+        Triple(ChatGate.allowed.value, com.tmplayer.data.AddedChats.ids.value, com.tmplayer.data.AddedChats.loaded.value)
+
     suspend fun read(): Pair<Set<Long>?, Boolean> {
         val now = System.currentTimeMillis()
-        kept?.let { if (now - keptAt in 0 until KEEP_MS) return it }
+        kept?.let { if (now - keptAt in 0 until KEEP_MS && keptUnder == inputs()) return it }
         val answer = kotlinx.coroutines.coroutineScope {
             val gate = async { withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsing() } }
             val known = async { withTimeoutOrNull(GATE_WAIT_MS) { ChatGate.awaitBrowsingKnown() } ?: false }
@@ -237,6 +250,7 @@ internal object BrowsingGate {
             synchronized(this) {
                 kept = answer
                 keptAt = System.currentTimeMillis()
+                keptUnder = inputs()
             }
         }
         return answer
