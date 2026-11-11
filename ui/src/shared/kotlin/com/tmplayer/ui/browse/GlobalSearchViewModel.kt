@@ -291,6 +291,13 @@ class GlobalSearchViewModel(
     private var job: Job? = null
     private var localJob: Job? = null
     private var rememberJob: Job? = null
+
+    /** Later pages' finds held for one regroup, and the flush that lands them: see [queueRegroup]. */
+    private val pendingLock = Any()
+    private val pendingItems = mutableListOf<MediaItem>()
+    private val pendingChats = mutableMapOf<Long, ChatBrief>()
+    private var pendingQuery: SearchQuery? = null
+    private var pendingJob: Job? = null
     private var cursor = AllChatsCursor()
 
     /** What Telegram is being asked: the query, or the spelling of it that found something. */
@@ -531,6 +538,7 @@ class GlobalSearchViewModel(
         job?.cancel()
         localJob?.cancel()
         rememberJob?.cancel()
+        dropPending()
         cursor = AllChatsCursor()
         asked = ""
         if (query.isEmpty) {
@@ -676,6 +684,7 @@ class GlobalSearchViewModel(
                 absorb(next, keepTo = query)
                 _state.update { it.copy(endReached = next.cursor.done) }
             }
+            flushPending()
             _state.update { it.copy(stillSearching = false) }
             if (_state.value.groups.isNotEmpty()) {
                 rememberJob = viewModelScope.launch {
@@ -743,10 +752,68 @@ class GlobalSearchViewModel(
                 return
             }
         }
-        regroup(chats = page.chats.associateBy { it.id }) { s ->
-            val base = if (fresh) GlobalSearch.merge(emptyList(), local, s.query, s.sort, identity) else s.groups
+        val briefs = page.chats.associateBy { it.id }
+        if (!fresh) {
+            queueRegroup(kept, briefs)
+            return
+        }
+        dropPending()
+        regroup(chats = briefs) { s ->
+            val base = GlobalSearch.merge(emptyList(), local, s.query, s.sort, identity)
             val merged = GlobalSearch.merge(base, kept, s.query, s.sort, identity)
-            if (keepShownIfEmpty && fresh && merged.isEmpty()) shownGroups.ifEmpty { s.groups } else merged
+            if (keepShownIfEmpty && merged.isEmpty()) shownGroups.ifEmpty { s.groups } else merged
+        }
+    }
+
+    /**
+     * A later page's finds, held for a regroup rather than merged on the spot (owner,
+     * v1.0.36: searching must run smooth). Since the asking went on behind the first
+     * answer (v1.0.35), a busy word lands a page every breath, and every page re-merged
+     * the whole answer and re-set the list: the churn read as a search that stuttered
+     * under the finger. The pages now gather for [REGROUP_QUIET_MS] of quiet and merge
+     * once, so the list settles between merges instead of being rebuilt page by page.
+     * The finds are in the pool already ([absorb] notes them), so a page opened from
+     * the results loses nothing by the wait. A fresh page drops what is held: it
+     * belongs to the run that page replaces. [flushPending] lands what is held at
+     * once, when the asking ends.
+     */
+    private fun queueRegroup(items: List<MediaItem>, briefs: Map<Long, ChatBrief>) {
+        synchronized(pendingLock) {
+            if (pendingItems.isEmpty()) pendingQuery = _state.value.query
+            pendingItems += items
+            pendingChats += briefs
+            pendingJob?.cancel()
+            pendingJob = viewModelScope.launch {
+                delay(REGROUP_QUIET_MS)
+                flushPending()
+            }
+        }
+    }
+
+    /** Merges what [queueRegroup] is holding, once, if the query it belongs to still stands. */
+    private suspend fun flushPending() {
+        val held = synchronized(pendingLock) {
+            pendingJob?.cancel()
+            pendingJob = null
+            val out = Triple(pendingItems.toList(), pendingChats.toMap(), pendingQuery)
+            pendingItems.clear()
+            pendingChats.clear()
+            pendingQuery = null
+            out
+        }
+        val (items, briefs, query) = held
+        if (items.isEmpty() || query == null || query != _state.value.query) return
+        regroup(chats = briefs) { s -> GlobalSearch.merge(s.groups, items, s.query, s.sort, identity) }
+    }
+
+    /** Drops what [queueRegroup] is holding: a new run replaces it, unmerged. */
+    private fun dropPending() {
+        synchronized(pendingLock) {
+            pendingJob?.cancel()
+            pendingJob = null
+            pendingItems.clear()
+            pendingChats.clear()
+            pendingQuery = null
         }
     }
 
@@ -784,6 +851,13 @@ class GlobalSearchViewModel(
 
         /** A query that has sat with results this long was read, and is kept as a recent search. */
         const val REMEMBER_MS = 2_000L
+
+        /**
+         * The quiet later pages gather over before they merge into the answer (v1.0.36):
+         * see [GlobalSearchViewModel.queueRegroup]. Short beside the breath the asking
+         * already takes between pages, long enough to fold a burst of pages into one merge.
+         */
+        const val REGROUP_QUIET_MS = 500L
 
         /** A longer wait than this is not counted down on screen: it is a failure to report. */
         const val MAX_FLOOD_WAIT = 120
