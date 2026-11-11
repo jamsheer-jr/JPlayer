@@ -106,12 +106,29 @@ object SameTitle {
         // item is, and its name keys with no part, so it reads here as any whole copy.
         if (name.part != null && item.pieces.isEmpty()) return null
         val year = name.year ?: if (renamed == null) captionYear(item.caption, name.titleKey) else null
+        // No year, no reading: two lectures that happen to share a name are two
+        // videos, the discipline the name and year fold already keeps.
+        if (year == null) return null
         return canonOf(name.titleKey, year)
     }
 
     /** The canonical reading of one parsed title key, with the year the name stated. */
     internal fun canonOf(titleKey: String, year: Int?): Canon? {
-        var tokens = titleKey.split(' ').filter { it.isNotEmpty() && it !in TITLE_NOISE }
+        val raw = titleKey.split(' ').filter { it.isNotEmpty() }
+        if (raw.isEmpty()) return null
+        // The plain case first, in one scan: a title needing none of the readings
+        // below (no site word, no part word, no spaced initials, no bare part
+        // number at the end, no word written twice) is its own canonical title.
+        // Home builds read every film this way, so the common case stays cheap.
+        var plain = raw.none { it in TITLE_NOISE || it in PART_WORDS } &&
+            (raw.size == 1 || raw.none { it.length == 1 }) &&
+            raw.indices.none { index -> (index + 1 until raw.size).any { raw[it] == raw[index] } }
+        if (plain && raw.size > 1) {
+            val bare = raw.last().takeIf { it.all { char -> char.isDigit() } }?.toIntOrNull()
+            if (bare != null && bare in 1..MAX_BARE_PART) plain = false
+        }
+        if (plain) return Canon(titleKey, year, null)
+        var tokens = raw.filter { it !in TITLE_NOISE }
         if (tokens.isEmpty()) return null
         tokens = joinInitials(tokens)
         var part: Int? = null
