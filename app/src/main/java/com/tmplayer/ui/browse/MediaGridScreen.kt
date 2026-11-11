@@ -308,6 +308,8 @@ fun MediaGridScreen(
     offline: Boolean,
     onOfflineAction: (String) -> Unit,
     connectionNotice: ConnectionNotice,
+    /** The detail page's own footer bar, handed over by the host (owner, v1.0.36). */
+    footerNav: DetailFooterNav? = null,
 ) {
     val s = LocalStrings.current
     val context = LocalContext.current
@@ -988,6 +990,7 @@ fun MediaGridScreen(
                             onTurnTo = { details.turn(it) },
                             onBack = if (details.canGoBack) ({ details.back() }) else null,
                             returnTo = entry.returnTo,
+                            footerNav = footerNav,
                         )
                     }
                 }

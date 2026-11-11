@@ -106,6 +106,7 @@ import com.tmplayer.ui.browse.LiveRefresh
 import com.tmplayer.ui.browse.TouchChrome
 import com.tmplayer.ui.browse.onChatsPage
 import com.tmplayer.ui.browse.ProfilePage
+import com.tmplayer.ui.browse.DetailFooterNav
 import com.tmplayer.ui.browse.TouchNav
 import com.tmplayer.ui.browse.TouchNavHost
 import com.tmplayer.ui.browse.TouchPage
@@ -2057,6 +2058,13 @@ private fun Root() {
                 // reselect the bar missed still reaches Home's handlers.
                 if (screen is Screen.Chats && (pickedTab == null || pickedTab.isHome)) {
                     touchChrome.reselected.tryEmit(com.tmplayer.ui.browse.TouchDestination.Home)
+                    // The same press read fresh here as well (owner, v1.0.36: every
+                    // Home press on Home refreshes): the emission is Home's own to
+                    // answer for its scroll and its open pages, and this call is the
+                    // shell's guarantee that the refresh itself runs on every press,
+                    // even one whose emission lands while no collector is listening.
+                    homeViewModel.refreshInPlace()
+                    LiveRefresh.ask(forced = true)
                 }
                 browseCameFromProfile = false
                 browseTo(BrowseSection.of(BrowseTab.Home))
@@ -2267,6 +2275,17 @@ private fun Root() {
                     offline = networkStatus == NetworkStatus.Offline && !telegramConnected,
                     onOfflineAction = toast,
                     connectionNotice = connectionNotice,
+                    // A chat's detail pages carry the app's bar at their foot too
+                    // (owner, v1.0.36): the bar the browser's pages have had since
+                    // v1.0.33, now on a movie's or a series' page wherever it opens.
+                    footerNav = DetailFooterNav(
+                        account = accountHeader,
+                        onHome = touchNav.onHome,
+                        onChats = touchNav.onChats,
+                        onSearch = touchNav.onSearch,
+                        onSettings = touchNav.onSettings,
+                        onProfile = touchNav.onProfile,
+                    ),
                 )
             }
 
@@ -2358,6 +2377,16 @@ private fun Root() {
                     onPlayItem = { item, title -> play(item, chatTitle = title) },
                     onSetWatched = { item, title, watched -> setWatched(item, title, watched) },
                     onMessage = toast,
+                    // The Profile page's detail pages carry the app's bar too
+                    // (owner, v1.0.36), as a chat's pages now do.
+                    footerNav = DetailFooterNav(
+                        account = accountHeader,
+                        onHome = touchNav.onHome,
+                        onChats = touchNav.onChats,
+                        onSearch = touchNav.onSearch,
+                        onSettings = touchNav.onSettings,
+                        onProfile = touchNav.onProfile,
+                    ),
                 )
             }
 

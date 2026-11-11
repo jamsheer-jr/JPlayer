@@ -131,6 +131,8 @@ internal fun ProfilePage(
     onPlayItem: (MediaItem, String) -> Unit,
     onSetWatched: (MediaItem, String, Boolean) -> Unit,
     onMessage: (String) -> Unit,
+    /** The detail page's own footer bar, handed over by the host (owner, v1.0.36). */
+    footerNav: DetailFooterNav? = null,
 ) {
     TouchPage(TouchPageSpec(current = null, inProfile = true))
     val s = LocalStrings.current
@@ -580,6 +582,7 @@ internal fun ProfilePage(
             },
             onBack = if (details.canGoBack) ({ details.back() }) else null,
             returnTo = entry.returnTo,
+            footerNav = footerNav,
         )
     }
 
