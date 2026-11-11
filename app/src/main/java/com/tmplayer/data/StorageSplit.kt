@@ -25,8 +25,7 @@ data class StorageSplit(
     /** Thumbnails, previews, the database: everything that is not a video. */
     val otherBytes: Long,
     /** What TDLib says the whole of it comes to, which is the figure the device agrees with. */
-    val totalBytes: Long,
-    /**
+    val totalBytes: Long,    /**
      * The video files on the disk that no record names, counted in [cachedBytes]: listed on their
      * own in the Cached tab, so space the device reports is never space nothing on screen owns.
      */
@@ -40,6 +39,14 @@ data class StorageSplit(
     val unfinishedCount: Int = 0,
     /** The online posters and backdrops, beside TDLib's own pictures. Counted in [totalBytes]. */
     val posterBytes: Long = 0,
+    /**
+     * TDLib's pictures measured where they lie, in allocated bytes: its photo, thumbnail,
+     * profile photo, sticker and audio folders under every account's files. What [otherBytes]
+     * holds beyond them (the database, what no record names) is not a picture.
+     */
+    val allPictureBytes: Long = 0,
+    /** The signed in account's share of [allPictureBytes]: the part a clearing can take. */
+    val accountPictureBytes: Long = 0,
 ) {
     /**
      * The unmatched files' share of [cachedBytes], in allocated bytes: what deleting them
@@ -49,8 +56,17 @@ data class StorageSplit(
      */
     val strayBytes: Long get() = strays.sumOf { it.allocatedBytes }
 
-    /** Every picture: TDLib's thumbnails and previews with the online posters. */
-    val pictureBytes: Long get() = otherBytes + posterBytes
+    /**
+     * Every picture: TDLib's thumbnails and previews measured in their folders, with the
+     * online posters. The remainder ([otherBytes]) is never quoted as pictures: it holds
+     * the database and whatever no record names beside the pictures, and quoting it here
+     * is how a free up once promised gigabytes for "pictures and posters" and freed
+     * megabytes (owner's device, 2026-11-11).
+     */
+    val pictureBytes: Long get() = allPictureBytes + posterBytes
+
+    /** What clearing pictures can actually free: this account's picture folders and the posters. */
+    val clearablePictureBytes: Long get() = accountPictureBytes + posterBytes
 
     /** The chart's figures, against a disk of [disk]. */
     fun chart(disk: DiskInfo): StorageChart.Figures = StorageChart.Figures(
@@ -162,6 +178,11 @@ data class StorageSplit(
 
             val unfinishedBytes = unfinished.sumOf { it.downloadedBytes }
             val posters = runCatching { com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L }.getOrDefault(0L)
+            // The pictures measured where they lie, not as what is left over: every
+            // account's picture folders for the chart, the signed in account's own for
+            // what a clearing can promise (see [pictureBytes]).
+            val allPictures = pictureBytesOnDisk(tdRoots(context))
+            val accountPictures = pictureBytesOnDisk(listOf(AndroidPaths(context).filesDir))
 
             StorageSplit(
                 downloadBytes = downloads,
@@ -175,24 +196,31 @@ data class StorageSplit(
                 unfinishedBytes = unfinishedBytes,
                 unfinishedCount = unfinished.size,
                 posterBytes = posters,
+                allPictureBytes = allPictures,
+                accountPictureBytes = accountPictures,
             )
         }
 
         /** Within half a megabyte: a whole file on the disk against the size Telegram gives for it. */
         private fun sameSize(onDisk: Long, told: Long): Boolean = kotlin.math.abs(onDisk - told) <= 512 * 1024
 
-        /**
-         * Every byte inside TDLib's files folders, all account slots, the old folder name counted
-         * once through its link. Listing only: lengths are read, nothing is opened.
-         */
-        private fun tdFilesOnDisk(context: Context): Long {
+        /** TDLib's files folders: the signed in account's own and every other slot's. */
+        private fun tdRoots(context: Context): List<java.io.File> {
             val app = context.applicationContext
-            val roots = buildList {
+            return buildList {
                 add(AndroidPaths.cacheDir(app))
                 app.filesDir.listFiles()?.forEach { child ->
                     if (child.isDirectory && (child.name.startsWith("cache-") || child.name == "tdlib-files")) add(child)
                 }
             }
+        }
+
+        /**
+         * Every byte inside TDLib's files folders, all account slots, the old folder name counted
+         * once through its link. Listing only: lengths are read, nothing is opened.
+         */
+        private fun tdFilesOnDisk(context: Context): Long {
+            val roots = tdRoots(context)
             val seen = mutableSetOf<String>()
             var bytes = 0L
             for (root in roots) {
@@ -200,6 +228,32 @@ data class StorageSplit(
                 if (!seen.add(key)) continue
                 runCatching {
                     root.walkTopDown().forEach { if (it.isFile) bytes += it.length() }
+                }
+            }
+            return bytes
+        }
+
+        /** The folders TDLib keeps what is not a video in, the same names under every account's files. */
+        private val PICTURE_DIRECTORIES = listOf("photos", "thumbnails", "profile_photos", "stickers", "audio")
+
+        /**
+         * What the picture folders under [roots] hold, in allocated bytes: what deleting
+         * them returns, the only figure a clearing of pictures may be promised against.
+         * A folder that is not there holds nothing, and a file that goes mid walk is
+         * skipped by the same guard the stray walk uses.
+         */
+        private fun pictureBytesOnDisk(roots: List<java.io.File>): Long {
+            val seen = mutableSetOf<String>()
+            var bytes = 0L
+            for (root in roots) {
+                val key = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
+                if (!seen.add(key)) continue
+                for (name in PICTURE_DIRECTORIES) {
+                    val dir = java.io.File(root, name)
+                    if (!dir.isDirectory) continue
+                    runCatching {
+                        dir.walkTopDown().forEach { if (it.isFile) bytes += WatchCache.allocatedBytesOf(it) }
+                    }
                 }
             }
             return bytes

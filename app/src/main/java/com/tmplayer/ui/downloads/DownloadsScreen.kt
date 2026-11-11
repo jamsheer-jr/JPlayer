@@ -689,7 +689,7 @@ fun DownloadsScreen(
                 // the file actually returns, and [freeUp] credits this same figure.
                 items = split.strays.map { FreeUpReview.Item(it.path, it.title, it.allocatedBytes) },
             ),
-            FreeUpReview.Section(FreeUpReview.Group.Pictures, split.pictureBytes),
+            FreeUpReview.Section(FreeUpReview.Group.Pictures, split.clearablePictureBytes),
             FreeUpReview.Section(
                 FreeUpReview.Group.Downloads,
                 kept.sumOf { it.bytes },
@@ -762,9 +762,9 @@ fun DownloadsScreen(
                                 if (runCatching { com.tmplayer.data.WatchCache.forget(context, stray) }.getOrDefault(false)) freed += item.bytes else skipped++
                             }
                             FreeUpReview.Group.Pictures -> if (FreeUpReview.wholePicked(picks, section)) {
-                                // Measured, not assumed: the section figure is a remainder (everything
-                                // TDLib holds that is not a video), so what this group freed is the
-                                // drop in TDLib's own total plus the posters, capped at the section.
+                                // Credited as measured, not as promised: the section figure is the
+                                // picture folders' own bytes, and what this group freed is the drop
+                                // in TDLib's own total plus the posters, capped at that figure.
                                 val tdBefore = runCatching { Td.storageUsedBytes() }.getOrDefault(0L)
                                 val postersBefore = runCatching {
                                     com.tmplayer.online.OnlineMetadata.current?.imageBytes() ?: 0L
