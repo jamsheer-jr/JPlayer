@@ -42,7 +42,9 @@ data class MediaFacts(
      * The name carries the "clean audio" tag: a cam family copy whose sound was replaced
      * or cleaned, named as its own tag by uploaders ("HDTS Clean Audio"). The tag alone
      * marks the copy as cam family, whatever source the name otherwise reads (owner,
-     * v1.0.16). See [isCam].
+     * v1.0.16). The short spelling "HQ Clean" is the same tag (owner, v1.0.37, from his
+     * Jailer 2 copies named "... - HQ Clean - AAC - ..."): the "HQ Clean" in a name
+     * is the uploaders' "HQ clean audio", not a quality badge. See [isCam].
      */
     val cleanAudio: Boolean = false,
     /**
@@ -313,7 +315,7 @@ data class MediaFacts(
         fun isCamSource(source: String?): Boolean = source != null && source in CAM_SOURCES
 
         /** The "clean audio" tag, standing on its own as tags do: see [MediaFacts.cleanAudio]. */
-        private val CLEAN_AUDIO = word("""clean[ ._-]?audio""")
+        private val CLEAN_AUDIO = word("""clean[ ._-]?audio|hq[ ._-]?clean""")
 
         /** The "HC" subtitle tag, in its spellings: see [MediaFacts.hcSubs]. */
         private val HC_SUBS = word("""hc[ ._-]?e?[ ._-]?subs?|hard[ ._-]?coded[ ._-]?e?[ ._-]?subs?|hard[ ._-]?subs?|hc""")
@@ -323,11 +325,12 @@ data class MediaFacts(
 
         /**
          * Whether [facts] mark a copy the owner's hide stands over: a cam source,
-         * or one of the tags that mark a theatre copy on any source: "clean audio",
-         * the "HC" subtitle tag and "line audio" (the last two joined in v1.0.35,
-         * from the owner's channel searches: whole pages of HDRip copies carrying
-         * nothing but the HC tag stood unhidden). Read from the file name's own
-         * tags, so a copy counts even where a surface never shows its name.
+         * or one of the tags that mark a theatre copy on any source: "clean audio"
+         * (and its short spelling "HQ clean"), the "HC" subtitle tag and "line
+         * audio" (the last two joined in v1.0.35, from the owner's channel searches:
+         * whole pages of HDRip copies carrying nothing but the HC tag stood unhidden).
+         * Read from the file name's own tags, so a copy counts even where a surface
+         * never shows its name.
          */
         fun isCam(facts: MediaFacts): Boolean =
             isCamSource(facts.source) || facts.cleanAudio || facts.hcSubs || facts.lineAudio

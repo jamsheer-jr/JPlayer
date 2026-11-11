@@ -313,6 +313,16 @@ class MediaFactsTest {
         assertEquals("WEB-DL", onWeb.source)
         assertTrue(onWeb.cleanAudio)
         assertTrue(MediaFacts.isCam(onWeb))
+        // The short spelling, from his Jailer 2 copies: "HQ Clean" is the same tag.
+        val hqClean = MediaFacts.read("Jailer 2 2026 Hindi HDRip x264 - HQ Clean - AAC - 700MB.mkv")
+        assertEquals("HDRip", hqClean.source)
+        assertTrue(hqClean.cleanAudio)
+        assertTrue(MediaFacts.isCam(hqClean))
+        assertTrue(MediaFacts.isCam(MediaFacts.read("Jailer 2 2026 Kannada HDRip x264 - HQ-Clean - AAC - 700M.mkv")))
+        assertTrue(MediaFacts.isCam(MediaFacts.read("Jailer 2 2026 Hindi HDRip x264 - HQ Clean Audio - AAC - 700MB.mkv")))
+        // A tagless HDRip stands, and "HQ" on its own is not the tag.
+        assertFalse(MediaFacts.isCam(MediaFacts.read("Jailer 2 2026 Telugu HDRip - x264 - AAC - 400MB.mkv")))
+        assertFalse(MediaFacts.read("Jailer 2 2026 HQ 1080p WEB-DL x264.mkv").cleanAudio)
         // A word that merely starts alike is not the tag.
         assertFalse(MediaFacts.read("Cleaning Day 2026 1080p.mkv").cleanAudio)
         assertFalse(MediaFacts.read("Film.2026.1080p.WEB-DL.DDP5.1.x265.mkv").cleanAudio)
