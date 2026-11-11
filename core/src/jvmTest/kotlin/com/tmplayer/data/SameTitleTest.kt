@@ -226,4 +226,44 @@ class SameTitleTest {
             BuiltInChannels.jMoviesChatId = null
         }
     }
+
+    @Test
+    fun `the canonical reading ties a film's many spellings together`() {
+        val first = SameTitle.Canon("kgf", 2018, 1)
+        assertEquals(first, SameTitle.canonOf("kgf chapter 1", 2018))
+        assertEquals(first, SameTitle.canonOf("kgf 1", 2018))
+        assertEquals(first, SameTitle.canonOf("tg kgf chapter 1", 2018))
+        // No part stated reads as the first part, and no year stated still matches.
+        assertTrue(first.matches(SameTitle.canonOf("kgf", 2018)!!))
+        assertTrue(first.matches(SameTitle.canonOf("kgf chapter 1", null)!!))
+        val second = SameTitle.Canon("kgf", 2022, 2)
+        assertEquals(second, SameTitle.canonOf("kgf chapter 2", 2022))
+        assertEquals(second, SameTitle.canonOf("k g f chapter 2 kgf 2", 2022))
+        assertEquals(second, SameTitle.canonOf("www 1tamilmv fans kgf 2", 2022))
+        // The parts are different films, and another year is a remake, not a copy.
+        assertTrue(!first.matches(second))
+        assertTrue(!first.matches(SameTitle.Canon("kgf", 2022, 1)))
+        // A name that is only a part marker names no film at all.
+        assertNull(SameTitle.canonOf("chapter 2", 2022))
+        // A title's own number is kept: "Apollo 13" is one film under its whole name.
+        assertEquals(SameTitle.Canon("apollo 13", 1995, null), SameTitle.canonOf("apollo 13", 1995))
+    }
+
+    @Test
+    fun `a detail page gathers a film's copies under every spelling`() {
+        val page = video(1, 1, "Animal (2023) Hindi 1080p.mkv", duration = 9_000)
+        val pool = listOf(
+            page,
+            video(2, 2, "Animal.2023.720p.WEB-DL.mkv", duration = 9_100),
+            video(3, 3, "Animal Hindi Dubbed (2023).mkv", duration = 8_900),
+            video(6, 6, "Animal Chapter 1 (2023).mkv", duration = 9_050),
+            video(7, 7, "www 1TamilMV fans Animal (2023).mkv", duration = 8_950),
+            video(4, 4, "Animal Part 2 (2023).mkv", duration = 9_000),
+            video(5, 5, "Animal (2019).mkv", duration = 9_000),
+        )
+        val widened = SameTitle.withPoolCopies(page, pool, noOnline)
+        // The dotted, dubbed, chapter spelled and site prefixed copies fold in; the
+        // sequel and the other year's namesake do not.
+        assertEquals(setOf(1L, 2L, 3L, 6L, 7L), widened.versions.map { it.messageId }.toSet())
+    }
 }

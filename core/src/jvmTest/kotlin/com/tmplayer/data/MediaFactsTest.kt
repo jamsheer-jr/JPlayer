@@ -8,6 +8,37 @@ import org.junit.Test
 
 class MediaFactsTest {
 
+    private fun item(fileName: String, caption: String = "") = MediaItem(
+        chatId = 1,
+        messageId = 1,
+        fileId = 1,
+        title = fileName,
+        sizeBytes = 1_000_000_000,
+        durationSec = 9_000,
+        mimeType = "video/x-matroska",
+        thumbnailFileId = 0,
+        miniThumbnail = null,
+        date = 1,
+        fileName = fileName,
+        caption = caption,
+    )
+
+    @Test
+    fun `languages stated only in the caption are the copy's languages`() {
+        // The owner's Jailer copies (v1.0.35): a bare release name says no language,
+        // the post's caption names the audio, and a copies list read the name alone.
+        val facts = MediaFacts.of(item(
+            "Jailer.2023.1080p.AMZN.WEB-DL.DD+5.1.Atmos.H.265-CPTN5DW.mkv",
+            caption = "Jailer (2023)\nAudio: Tamil | Hindi | Telugu",
+        ))
+        assertEquals(listOf("ta", "hi", "te"), facts.languages)
+        // The name's own languages stand first, the caption's join them.
+        val named = MediaFacts.of(item("Jailer 2023 Tamil.mkv", caption = "Audio: Hindi"))
+        assertEquals(listOf("ta", "hi"), named.languages)
+        // A name alone, as the facts have always read, is unchanged.
+        assertEquals(listOf("ta"), MediaFacts.read("Jailer 2023 Tamil.mkv").languages)
+    }
+
     @Test
     fun `a scene release names its codecs, audio and source`() {
         val facts = MediaFacts.read("Harbour.Notes.S01E04.1080p.WEB-DL.DDP5.1.x265-GROUP.mkv")

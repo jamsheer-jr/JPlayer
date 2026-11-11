@@ -333,6 +333,12 @@ object GlobalSearch {
         // what the file names alone do not tie together.
         val byOnline = HashMap<String, Building>()
         val byFilm = HashMap<String, Building>()
+        // One film by its canonical reading ([SameTitle.Canon], owner, v1.0.35): the many
+        // spellings of one film (a site's name in front, the part as a bare number, the
+        // initials spaced out), keyed by the canonical title and verified per copy. A
+        // list, not one card: one title's parts are several films ("Chapter 1" is not
+        // "Chapter 2"), and each part's spellings fold to their own.
+        val byCanon = HashMap<String, MutableList<Building>>()
         fun bucketOf(item: MediaItem, extra: Boolean) = identity.bucket(item)?.let { (if (extra) "x|" else "v|") + it }
         fun note(group: Building, item: MediaItem) {
             if (group.extra) return
@@ -343,6 +349,10 @@ object GlobalSearch {
             }
             val film = if (group.show == null) SameTitle.filmKey(item) else null
             if (film != null) byFilm.getOrPut(film) { group }
+            val canon = if (group.show == null) SameTitle.canonOf(item) else null
+            if (canon != null) byCanon.getOrPut(canon.title) { mutableListOf() }.let { groups ->
+                if (group !in groups) groups += group
+            }
         }
         building.filter { it.show == null }.forEach { group -> bucketOf(group.copies.first(), group.extra)?.let { buckets.getOrPut(it) { mutableListOf() } += group } }
         building.forEach { group -> group.copies.forEach { note(group, it) } }
@@ -373,6 +383,14 @@ object GlobalSearch {
                 val owner = showFor(item)
                     ?: identity.onlineKey(item)?.let { byOnline[it] }
                     ?: SameTitle.filmKey(item)?.let { byFilm[it] }?.takeIf { group -> group.copies.any { SameTitle.sameLength(it, item) } }
+                    ?: SameTitle.canonOf(item)?.let { itemCanon ->
+                        byCanon[itemCanon.title]?.firstOrNull { group ->
+                            group.copies.any { copy ->
+                                SameTitle.canonOf(copy)?.let { itemCanon.matches(it) } == true &&
+                                    SameTitle.sameLength(copy, item)
+                            }
+                        }
+                    }
                 if (owner != null) {
                     owner.copies += item
                     note(owner, item)

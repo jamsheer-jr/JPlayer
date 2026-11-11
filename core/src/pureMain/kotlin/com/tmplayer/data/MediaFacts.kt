@@ -57,7 +57,18 @@ data class MediaFacts(
     enum class Track { DualAudio, MultiAudio, Subtitles }
 
     companion object {
-        fun of(item: MediaItem): MediaFacts = read(item.fileName, item.width, item.height)
+        fun of(item: MediaItem): MediaFacts {
+            val facts = read(item.fileName, item.width, item.height)
+            // The languages a copy speaks are not always in its name: posts whose names
+            // are bare release strings ("...AMZN.WEB-DL.DD+5.1...") state them in the
+            // caption instead ("Audio: Tamil | Hindi"), and a copies list that read the
+            // name alone showed no language on exactly those copies (owner, v1.0.35).
+            // The caption's languages join the name's, in the name's order first.
+            if (item.caption.isBlank()) return facts
+            val spoken = MediaName.languages(item.caption)
+            if (spoken.isEmpty()) return facts
+            return facts.copy(languages = (facts.languages + spoken).distinct())
+        }
 
         fun read(fileName: String, width: Int = 0, height: Int = 0): MediaFacts {
             // A joined video stands under its first piece's name, and the piece suffix is

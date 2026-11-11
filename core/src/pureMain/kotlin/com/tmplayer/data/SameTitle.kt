@@ -62,6 +62,148 @@ object SameTitle {
     }
 
     /**
+     * One film's name read for identity, not for show (owner, v1.0.35: "common logic"): the
+     * canonical title, the year where the name or its caption states one, and the part where
+     * the name writes one. Uploaders write one film many ways ("KGF Chapter 1", "KGF 1",
+     * "Tg KGF Chapter 1", "K G F Chapter 2 KGF 2", a site's name worn in front), and the
+     * exact [filmKey] reads each spelling as its own film, so a search listed two KGF films
+     * as a dozen cards and a detail page gathered only the copies spelled as it was. The
+     * canonical reading drops the words that are never a title's (sites, fan tags), joins
+     * letter spaced initials into the word they spell, and reads a part however it is
+     * written, so every surface that folds copies (search, the detail page, the shelves)
+     * folds them by this one reading.
+     */
+    data class Canon(val title: String, val year: Int?, val part: Int?) {
+
+        /**
+         * Whether two readings can be one film: the same canonical title, no year against
+         * another (a remake is another film), and the same part, where a name that states
+         * no part reads as the first part it usually is. Length is the caller's check
+         * ([sameLength]), as with the name and year fold.
+         */
+        fun matches(other: Canon): Boolean =
+            title == other.title &&
+                (year == null || other.year == null || year == other.year) &&
+                (part == other.part || (part == null && other.part == 1) || (other.part == null && part == 1))
+    }
+
+    /** [Canon] for [item], read off the same name [filmKey] reads; null for anything else. */
+    fun canonOf(item: MediaItem): Canon? {
+        if (item.extra != null) return null
+        val corrections = VideoCorrections.current
+        val correction = if (corrections.isEmpty()) null else corrections[item.id]
+        if (correction?.separate == true) return null
+        val renamed = correction?.title
+        if (renamed == null && item.fileName.isBlank() && item.caption.isBlank()) return null
+        if (renamed == null && item.caption.isBlank() && item.genericFileName) return null
+        val name = when {
+            renamed != null -> MediaName.parse(renamed)
+            item.nameForParsing == item.fileName -> item.parsedName
+            else -> MediaName.parse(item.fileName, item.caption)
+        }
+        if (name.isSeries || name.extra != null) return null
+        // One piece of a split film is not the film (owner, v1.0.33's rule): the joined
+        // item is, and its name keys with no part, so it reads here as any whole copy.
+        if (name.part != null && item.pieces.isEmpty()) return null
+        val year = name.year ?: if (renamed == null) captionYear(item.caption, name.titleKey) else null
+        return canonOf(name.titleKey, year)
+    }
+
+    /** The canonical reading of one parsed title key, with the year the name stated. */
+    internal fun canonOf(titleKey: String, year: Int?): Canon? {
+        var tokens = titleKey.split(' ').filter { it.isNotEmpty() && it !in TITLE_NOISE }
+        if (tokens.isEmpty()) return null
+        tokens = joinInitials(tokens)
+        var part: Int? = null
+        val kept = ArrayList<String>(tokens.size)
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            if (token in PART_WORDS) {
+                val number = tokens.getOrNull(index + 1)?.let(::partNumber)
+                if (number != null) {
+                    part = number
+                    index += 2
+                } else {
+                    // A part word with no number after it ("KGF Chapter (2022)") says nothing.
+                    index += 1
+                }
+                continue
+            }
+            kept += token
+            index += 1
+        }
+        tokens = kept
+        if (part == null && tokens.size > 1) {
+            val bare = tokens.last().takeIf { it.all { char -> char.isDigit() } }?.toIntOrNull()
+            if (bare != null && bare in 1..MAX_BARE_PART) {
+                part = bare
+                tokens = tokens.dropLast(1)
+            }
+        }
+        if (part != null && tokens.size > 1) {
+            // The part stated twice in one name ("Chapter 2 ... 2") is stated once.
+            val last = tokens.last()
+            if (last.all { it.isDigit() } && last.toIntOrNull() == part) tokens = tokens.dropLast(1)
+        }
+        // A title word written twice in one name is the title written once.
+        val title = tokens.distinct().joinToString(" ")
+        if (title.isEmpty()) return null
+        return Canon(title, year, part)
+    }
+
+    /** Runs of single letters joined into the word they spell: "k g f" reads "kgf". */
+    private fun joinInitials(tokens: List<String>): List<String> {
+        val out = ArrayList<String>(tokens.size)
+        val run = StringBuilder()
+        fun flush() {
+            if (run.isNotEmpty()) {
+                out += run.toString()
+                run.clear()
+            }
+        }
+        for (token in tokens) {
+            if (token.length == 1 && token[0].isLetter()) run.append(token) else {
+                flush()
+                out += token
+            }
+        }
+        flush()
+        return out
+    }
+
+    /** A part's number as written after its word: digits, or a number word ("Chapter One"). */
+    private fun partNumber(token: String): Int? =
+        if (token.all { it.isDigit() }) token.toIntOrNull()?.takeIf { it in 1..MAX_PART }
+        else PART_NUMBER_WORDS[token]
+
+    /** Words that stand in a name without ever being a title's: sites and fan tags. */
+    private val TITLE_NOISE = setOf(
+        "www", "com", "net", "org", "http", "https", "fans", "tg", "telegram", "kc",
+        "1tamilmv", "tamilmv", "1tamilblaster", "tamilblaster", "ibomma", "movierulz",
+        "kuttymovies", "isaimini", "filmyzilla", "filmywap", "hdhub4u", "vegamovies",
+        "9xmovies", "moviesda", "tamilyogi", "madrasrockers", "jalshamoviez",
+        "extramovies", "mp4moviez", "pagalworld", "worldfree4u", "7starhd",
+        "downloadhub", "mkvcinemas", "moviesverse", "bolly4u", "skymovieshd",
+        "themovieflix", "uwatchfree", "gdflix", "hubcloud",
+    )
+
+    /** The words a sequel's part is written with. */
+    private val PART_WORDS = setOf("chapter", "part", "vol", "volume")
+
+    /** Number words a part is written with, the ones sequels are actually numbered in. */
+    private val PART_NUMBER_WORDS = mapOf(
+        "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5,
+        "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10,
+    )
+
+    /** The highest part a name is read as carrying; a bigger trailing number is a title's own. */
+    private const val MAX_PART = 99
+
+    /** The highest bare trailing number read as a part: "Apollo 13" keeps its number. */
+    private const val MAX_BARE_PART = 12
+
+    /**
      * Whether [a] and [b] run about as long, so one name and year is one film and not another cut of
      * it: within a sixth of the longer, or either length unknown.
      */
@@ -112,6 +254,10 @@ object SameTitle {
                     // An episode's online match is its show's: only a whole show is one with it.
                     if (episode) null else online(item)?.let { "online:$it" },
                     filmKey(item),
+                    // The canonical reading (owner, v1.0.35), stated with its year and
+                    // part (no part read as the first): the spellings of one film are
+                    // one tile on the shelves too, not only in search and on its page.
+                    canonShelfKey(item),
                     SeriesShelf.sameVideoKey(item)?.let { "copy:$it" },
                 )
             }
@@ -173,7 +319,12 @@ object SameTitle {
         if (pool.isEmpty()) return item
         val film = filmKey(item)
         val copyKey = if (film == null) SeriesShelf.sameVideoKey(item) else null
-        if (film == null && copyKey == null) return item
+        // The canonical reading stands beside the exact key (owner, v1.0.35): a copy
+        // spelled another way (a site's name in front, the part written as a bare
+        // number, the initials spaced out) is the same film when the canonical
+        // readings agree and the lengths do, the same evidence the search folds by.
+        val canon = canonOf(item)
+        if (film == null && copyKey == null && canon == null) return item
         // The same online tie the search folds by (owner, v1.0.33): a copy whose name carries
         // no year, or a year the film's other copies do not, still belongs to the film when
         // both stand matched to it online, so a detail page gathers what a search gathered.
@@ -184,12 +335,15 @@ object SameTitle {
         var widened = item
         for (candidate in pool) {
             if (candidate.id in held || candidate.extra != null) continue
+            val byCanon = canon != null && canonOf(candidate)?.let { canon.matches(it) } == true &&
+                sameLength(candidate, item)
             val match = if (film != null) {
                 (filmKey(candidate) == film ||
-                    (matchedOnline != null && candidate.metaQuery != null && online(candidate) == matchedOnline)) &&
+                    (matchedOnline != null && candidate.metaQuery != null && online(candidate) == matchedOnline) ||
+                    byCanon) &&
                     sameLength(candidate, item)
             } else {
-                SeriesShelf.sameVideoKey(candidate) == copyKey
+                SeriesShelf.sameVideoKey(candidate) == copyKey || byCanon
             }
             if (match) {
                 widened = fold(widened, candidate)
@@ -197,6 +351,18 @@ object SameTitle {
             }
         }
         return widened
+    }
+
+    /**
+     * [Canon] as a shelf key, with its year and part (a name stating no part keys as the
+     * first part, the fold [Canon.matches] allows): null when the film states no year,
+     * since a shelf folds on shared keys alone, with no length to check a yearless
+     * reading against.
+     */
+    private fun canonShelfKey(item: MediaItem): String? {
+        val canon = canonOf(item) ?: return null
+        val year = canon.year ?: return null
+        return "canon:${canon.title}|$year|${canon.part ?: 1}"
     }
 
     private fun copiesOf(item: MediaItem): List<MediaItem> = item.versions.ifEmpty { listOf(item) }

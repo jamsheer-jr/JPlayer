@@ -185,6 +185,32 @@ class GlobalSearchTest {
         assertEquals(2, again.single().copies.size)
     }
 
+    @Test
+    fun `a film's many spellings are one card per part`() {
+        val groups = GlobalSearch.merge(
+            emptyList(),
+            listOf(
+                video(1, 1, "KGF Chapter 1 (2018) 1080p.mkv", duration = 9_000),
+                video(2, 2, "KGF 1 (2018) 720p.mkv", duration = 9_100),
+                video(3, 3, "KGF (2018).mkv", duration = 8_900),
+                video(4, 4, "Tg KGF Chapter 1.mkv", duration = 9_050),
+                video(5, 5, "KGF Chapter 2 (2022) 1080p.mkv", duration = 9_300),
+                video(6, 6, "KGF 2 (2022).mkv", duration = 9_200),
+                video(7, 7, "K G F Chapter 2 KGF 2 (2022).mkv", duration = 9_400),
+                video(8, 8, "www 1TamilMV fans KGF 2 (2022).mkv", duration = 9_150),
+                video(9, 9, "Chapter 2 (2022).mkv", duration = 9_200),
+            ),
+            q("kgf"),
+        )
+        val byCopies = groups.associate { group -> group.copies.map { it.messageId }.toSet() }
+        // Two films under their eight spellings, and the nameless part marker apart:
+        // nothing in "Chapter 2" says which film it is, so it is not guessed into one.
+        assertEquals(3, groups.size)
+        assertTrue(setOf(1L, 2L, 3L, 4L) in byCopies)
+        assertTrue(setOf(5L, 6L, 7L, 8L) in byCopies)
+        assertTrue(setOf(9L) in byCopies)
+    }
+
     // ---- grouping and ranking -------------------------------------------------------------
 
     @Test

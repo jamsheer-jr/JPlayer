@@ -297,6 +297,7 @@ class GarbageInputTest {
             survive("PostStart.parse", text) { PostStart.parse(text) }
             survive("Decimal.parse", text) { Decimal.parse(text) }
             survive("MediaName.parse", text) { MediaName.parse(text); MediaName.parse(text, text) }
+            survive("SameTitle.canonOf", text) { SameTitle.canonOf(text, null); SameTitle.canonOf(text, 2026) }
             survive("MediaFacts.read", text) { MediaFacts.read(text); MediaFacts.read(text, -1, Int.MAX_VALUE); MediaFacts.isCamSource(text) }
             survive("ShortVideos.isShort", text) {
                 for (seconds in listOf(Int.MIN_VALUE, -1, 0, 1, 299, 300, Int.MAX_VALUE)) ShortVideos.isShort(seconds)
