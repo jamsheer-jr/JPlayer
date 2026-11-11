@@ -291,6 +291,11 @@ class MediaFactsTest {
         assertTrue(MediaFacts.read("Anecdotes of Ape Mountain (2026) HQ HDRip - x264 - [Tamil + Hindi] - (AAC 2.0) - 300MB - HC-Sub.mkv").hcSubs)
         assertTrue(MediaFacts.read("Maargan (2025) [Tamil - HQ HDTS - x264 - AAC - 250MB - HC Esub - HQ Line Audio].mkv").hcSubs)
         assertTrue(MediaFacts.read("Film (2026) 1080p WEB-DL x264 Hardcoded Subs.mkv").hcSubs)
+        // The bare tag his Jailer 2 copies end in (2026-11-11, after v1.0.35):
+        // no Sub after it at all, and those copies stood unhidden on his page.
+        val bare = MediaFacts.read("Jailer 2 (2026) Tamil HQ HDRip - x264 - AAC - 700MB - HC.mkv")
+        assertTrue(bare.hcSubs)
+        assertTrue(MediaFacts.isCam(bare))
         assertTrue(MediaFacts.isCam(MediaFacts.read("Film (2026) HQ WEB-DL - x264 - AAC - 1.6GB - HQ Line Audio.mkv")))
         // Not the tags: a plain ESub is a subtitle track half a library carries,
         // and a name with no tag at all stands as it always did.

@@ -46,10 +46,12 @@ data class MediaFacts(
      */
     val cleanAudio: Boolean = false,
     /**
-     * The name carries an "HC" subtitle tag ("HC Sub", "HC-Esub", "Hardcoded Subs"):
-     * subtitles burned into the picture itself, which no subtitle switch can turn
-     * off. The tag alone stands the copy in the hidden family, whatever source the
-     * name otherwise reads (owner, v1.0.35). See [isCam].
+     * The name carries an "HC" subtitle tag ("HC Sub", "HC-Esub", "Hardcoded Subs",
+     * or the bare "HC" a name ends in): subtitles burned into the picture itself,
+     * which no subtitle switch can turn off. The tag alone stands the copy in the
+     * hidden family, whatever source the name otherwise reads (owner, v1.0.35; the
+     * bare tag joined in v1.0.36, from his Jailer 2 copies named "...- HC.mkv").
+     * See [isCam].
      */
     val hcSubs: Boolean = false,
     /**
@@ -314,7 +316,7 @@ data class MediaFacts(
         private val CLEAN_AUDIO = word("""clean[ ._-]?audio""")
 
         /** The "HC" subtitle tag, in its spellings: see [MediaFacts.hcSubs]. */
-        private val HC_SUBS = word("""hc[ ._-]?e?[ ._-]?subs?|hard[ ._-]?coded[ ._-]?e?[ ._-]?subs?|hard[ ._-]?subs?""")
+        private val HC_SUBS = word("""hc[ ._-]?e?[ ._-]?subs?|hard[ ._-]?coded[ ._-]?e?[ ._-]?subs?|hard[ ._-]?subs?|hc""")
 
         /** The "line audio" tag, standing on its own as tags do: see [MediaFacts.lineAudio]. */
         private val LINE_AUDIO = word("""line[ ._-]?audio""")
