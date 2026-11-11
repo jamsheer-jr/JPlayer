@@ -50,8 +50,14 @@ object SameTitle {
         val title = name.titleKey.ifEmpty { return null }
         val year = name.year ?: if (renamed == null) captionYear(item.caption, title) else null
         if (year == null) return null
-        // As [SeriesShelf.episodeOf] reads it: the viewer's title where they gave one.
-        val part = if (correction == null) item.parsedName.part else SeriesShelf.episodeOf(item).part
+        // As [SeriesShelf.episodeOf] reads it: the viewer's title where they gave one. A video
+        // standing joined from its pieces is the whole film, not its first piece: its key
+        // carries no part, so the film's ordinary copies fold with it (owner, v1.0.33: a page
+        // opened on a joined copy stood at its own versions while Search, which folds the
+        // pieces into one card, counted the film's copies in the dozens).
+        val part = if (item.pieces.isNotEmpty()) null
+            else if (correction == null) item.parsedName.part
+            else SeriesShelf.episodeOf(item).part
         return "film:$title|$year" + if (part != null) "|part$part" else ""
     }
 
@@ -163,17 +169,24 @@ object SameTitle {
      * so the order and the lead are the settled ones, and the item comes back unchanged
      * when the pool holds nothing more.
      */
-    fun withPoolCopies(item: MediaItem, pool: List<MediaItem>): MediaItem {
+    fun withPoolCopies(item: MediaItem, pool: List<MediaItem>, online: (MediaItem) -> String? = ::onlineKey): MediaItem {
         if (pool.isEmpty()) return item
         val film = filmKey(item)
         val copyKey = if (film == null) SeriesShelf.sameVideoKey(item) else null
         if (film == null && copyKey == null) return item
+        // The same online tie the search folds by (owner, v1.0.33): a copy whose name carries
+        // no year, or a year the film's other copies do not, still belongs to the film when
+        // both stand matched to it online, so a detail page gathers what a search gathered.
+        // Films only: an episode's online match is its show's, which would tie every episode
+        // of one show together as copies of each other.
+        val matchedOnline = if (film != null) online(item) else null
         val held = copiesOf(item).mapTo(HashSet()) { it.id }
         var widened = item
         for (candidate in pool) {
             if (candidate.id in held || candidate.extra != null) continue
             val match = if (film != null) {
-                filmKey(candidate) == film && sameLength(candidate, item)
+                (filmKey(candidate) == film || (matchedOnline != null && online(candidate) == matchedOnline)) &&
+                    sameLength(candidate, item)
             } else {
                 SeriesShelf.sameVideoKey(candidate) == copyKey
             }

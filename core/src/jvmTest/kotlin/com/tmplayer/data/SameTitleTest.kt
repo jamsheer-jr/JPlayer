@@ -75,6 +75,44 @@ class SameTitleTest {
     }
 
     @Test
+    fun `a page opened on a joined copy gathers the film's ordinary copies`() {
+        // Owner, v1.0.33: the page stood at 2 versions while Search counted 93 copies. The
+        // joined copy keyed as its first piece, so the film's single-file copies never
+        // folded in, and its length was its first piece's, which the same-length test
+        // also refused against a whole copy.
+        val pieceOne = video(1, 40, "Thallumaala.2022.720p.part001.mkv", duration = 3_700)
+        val pieceTwo = video(1, 41, "Thallumaala.2022.720p.part002.mkv", duration = 3_700)
+        val joined = SplitPieces.joined(listOf(pieceOne, pieceTwo))
+        assertEquals("film:thallumaala|2022", SameTitle.filmKey(joined))
+        assertEquals(7_400, joined.durationSec)
+        val single = video(2, 42, "Thallumaala (2022) 1080p.mkv", duration = 7_440)
+        val widened = SameTitle.withPoolCopies(joined, listOf(single))
+        assertEquals(setOf(40L, 42L), widened.versions.map { it.messageId }.toSet())
+        // The other way round too: a page on the single file gathers the joined set.
+        val fromSingle = SameTitle.withPoolCopies(single, listOf(joined))
+        assertEquals(setOf(40L, 42L), fromSingle.versions.map { it.messageId }.toSet())
+        // A lone piece posted elsewhere is still no copy of the whole film.
+        val lonePiece = video(9, 49, "Thallumaala.2022.720p.part001.mkv", duration = 3_700)
+        assertEquals(joined, SameTitle.withPoolCopies(joined, listOf(lonePiece)))
+    }
+
+    @Test
+    fun `a detail page gathers a copy the names alone do not tie, by their online match`() {
+        // Owner, v1.0.33: a copy whose file name carries no year folds in Search by its
+        // online match; the detail page's widening asked the name alone and missed it.
+        val opened = video(1, 50, "Khalifa.2026.1080p.mkv")
+        val yearless = video(2, 51, "KLF_final_cut.mkv")
+        val matched: (MediaItem) -> String? = { "tmdb:film:42" }
+        val widened = SameTitle.withPoolCopies(opened, listOf(yearless), matched)
+        assertEquals(setOf(50L, 51L), widened.versions.map { it.messageId }.toSet())
+        // No online match known: the yearless name still does not fold.
+        assertEquals(opened, SameTitle.withPoolCopies(opened, listOf(yearless), noOnline))
+        // A different film matched elsewhere does not fold either.
+        val other: (MediaItem) -> String? = { item -> if (item.messageId == 51L) "tmdb:film:99" else "tmdb:film:42" }
+        assertEquals(opened, SameTitle.withPoolCopies(opened, listOf(yearless), other))
+    }
+
+    @Test
     fun `an episode gathers its other encodes across chats, and no other episode`() {
         val opened = video(1, 20, "Harbour.Notes.S01E02.720p.mkv")
         val encode = video(2, 21, "Harbour Notes S01E02 1080p.mkv")

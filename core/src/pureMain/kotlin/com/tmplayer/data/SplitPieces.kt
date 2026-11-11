@@ -143,7 +143,11 @@ object SplitPieces {
     /**
      * One item for [pieces] (one cut video's pieces, in order, see [ordered]): the first, with all
      * of them as its [MediaItem.pieces]. Its size is the sum, and it is on the device only when
-     * every piece is, and downloaded only when every piece is.
+     * every piece is, and downloaded only when every piece is. Its length is the pieces' sum
+     * where every piece reports one (owner, v1.0.33): the lead piece's own length is a part's
+     * length, and a joined video measured by it failed the same-length test against the film's
+     * whole copies, so they never folded together. A piece reporting no length (a raw byte
+     * piece) leaves the lead's reading standing, which that test already lets pass.
      */
     fun joined(pieces: List<MediaItem>): MediaItem {
         val lead = pieces.first()
@@ -155,6 +159,7 @@ object SplitPieces {
         return lead.copy(
             pieces = pieces,
             sizeBytes = pieces.sumOf { it.sizeBytes.coerceAtLeast(0) },
+            durationSec = if (pieces.all { it.durationSec > 0 }) pieces.sumOf { it.durationSec } else lead.durationSec,
             canBeSaved = pieces.all { it.canBeSaved },
         ).withLocality(locality)
     }
