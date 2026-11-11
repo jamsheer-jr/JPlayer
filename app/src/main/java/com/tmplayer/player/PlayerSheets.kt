@@ -62,7 +62,7 @@ import com.tmplayer.data.VideoCopies
 import com.tmplayer.data.copyQuality
 import com.tmplayer.ui.browse.copyFit
 import com.tmplayer.ui.browse.copyHeading
-import com.tmplayer.ui.browse.copySound
+import com.tmplayer.ui.browse.copyLanguages
 import com.tmplayer.ui.browse.isCamCopy
 import com.tmplayer.ui.browse.isShortCopy
 import com.tmplayer.i18n.Translator
@@ -1247,7 +1247,7 @@ internal fun CopiesSheet(
                         // and the chat it came from, then the file's own name, each on its
                         // own line under the first.
                         detail = listOfNotNull(
-                            listOfNotNull(facts.source, facts.videoCodec, facts.dynamicRange, copySound(copy)).joinToString("  ·  ").ifEmpty { null },
+                            listOfNotNull(facts.source, facts.videoCodec, facts.dynamicRange, facts.audio).joinToString("  ·  ").ifEmpty { null },
                             listOfNotNull(
                                 copyFit(copy, s, visible),
                                 copy.durationSec.takeIf { it > 0 }?.let { s.formatter.duration(it.toLong()) },
@@ -1271,18 +1271,37 @@ internal fun CopiesSheet(
                             else -> onPick(copy)
                         }
                     }
-                    // The Best badge (item 13, v1.0.16): a pill over the best standing
-                    // copy's row, the same badge the Versions chooser draws.
-                    if (copy.id == bestId) {
-                        Text(
-                            s.detailBestCopy,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                            color = Tone.onAccent,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 16.dp)
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
-                                .background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
-                        )
+                    // The badges over the row's head: the copy's languages as pills
+                    // like the Best badge (owner, v1.0.36: languages to show like
+                    // Best), then the Best badge itself (item 13, v1.0.16) on the
+                    // best standing copy, the same badges the Versions chooser draws.
+                    val languages = copyLanguages(copy)
+                    if (languages.isNotEmpty() || copy.id == bestId) {
+                        Row(
+                            Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            languages.forEach { language ->
+                                Text(
+                                    language,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                    color = Tone.onAccent,
+                                    modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
+                                        .background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
+                                )
+                            }
+                            if (copy.id == bestId) {
+                                Text(
+                                    s.detailBestCopy,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                    color = Tone.onAccent,
+                                    modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
+                                        .background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
+                                )
+                            }
+                        }
                     }
                     }
                     if (here) {

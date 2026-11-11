@@ -95,6 +95,18 @@ fun copySound(copy: MediaItem, locale: java.util.Locale = java.util.Locale.getDe
 }
 
 /**
+ * The copy's languages as the app's language names them ("Tamil", "Malayalam"), read from
+ * the copy's full facts ([MediaFacts.of]: the name's own languages and the ones its post's
+ * caption adds, v1.0.35). The copies lists draw them as badges beside the size, the way the
+ * Best badge is drawn, not as words in the facts line (owner, v1.0.36: languages to show
+ * like Best).
+ */
+fun copyLanguages(copy: MediaItem, locale: java.util.Locale = java.util.Locale.getDefault()): List<String> =
+    MediaFacts.of(copy).languages.map { code ->
+        java.util.Locale.forLanguageTag(code).getDisplayLanguage(locale).replaceFirstChar { it.titlecase(locale) }
+    }.filter { it.isNotBlank() }.distinct()
+
+/**
  * Whether [copy] is a cam family copy (the owner's full list: PreDVD, DVDcam, DVDScr,
  * HDTS, HDTC, HDcam, TS, CAM, and a "clean audio" tag on any source: see
  * [MediaFacts.CAM_SOURCES] and [MediaFacts.isCam]), the copies the Playback switch
@@ -681,8 +693,9 @@ private fun CopyChooser(
                         facts.source,
                         facts.videoCodec,
                         facts.dynamicRange,
-                        copySound(copy),
+                        facts.audio,
                     ).joinToString("  ·  "),
+                    languages = copyLanguages(copy),
                     facts = listOfNotNull(
                         copyFit(copy, s, rows.map { it.first }),
                         copy.durationSec.takeIf { it > 0 }?.let { s.formatter.duration(it.toLong()) },
@@ -720,6 +733,8 @@ private fun CopyOption(
     chosen: Boolean,
     /** The best copy standing (item 13, v1.0.16) carries the Best badge beside its size. */
     best: Boolean = false,
+    /** The copy's languages, each a badge beside its size like the Best badge (owner, v1.0.36). */
+    languages: List<String> = emptyList(),
     /** The file's own name, last and quiet on the row; null leaves the row as it was. */
     fileName: String? = null,
     onClick: () -> Unit,
@@ -763,14 +778,9 @@ private fun CopyOption(
                 if (best) {
                     // Drawn large since the owner missed the small one (2026-11-08): a badge
                     // nobody sees marks nothing.
-                    Text(
-                        s.detailBestCopy,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Tone.onAccent,
-                        modifier = Modifier.clip(RoundedCornerShape(percent = 50)).background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
-                    )
+                    CopyBadge(s.detailBestCopy)
                 }
+                languages.forEach { language -> CopyBadge(language) }
             }
             if (what.isNotEmpty()) Text(what, style = MaterialTheme.typography.bodySmall, color = if (focused) ink else Tone.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (facts.isNotEmpty()) Text(facts, style = MaterialTheme.typography.bodySmall, color = if (focused) ink.copy(alpha = 0.8f) else Tone.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -783,6 +793,18 @@ private fun CopyOption(
             }
         }
     }
+}
+
+/** A badge pill beside a copy's size: the Best badge's own shape, shared by the language badges. */
+@Composable
+private fun CopyBadge(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = Tone.onAccent,
+        modifier = Modifier.clip(RoundedCornerShape(percent = 50)).background(Tone.accent).padding(horizontal = 9.dp, vertical = 3.dp),
+    )
 }
 
 /** The round mark of a choice: a ring, filled at its centre on the chosen one. */
