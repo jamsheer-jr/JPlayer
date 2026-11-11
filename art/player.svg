@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="J Player">
   <title>J Player</title>
-  <path fill="#050C1C" d="M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 42.666667 0 0 1-42.666667 42.666667z" />
-  <path fill="none" stroke="#22E6FF" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" d="M350 290 L740 512 L350 734 Z" />
-  <path fill="none" stroke="#22E6FF" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" d="M462 398 L648 512 L462 626 Z" />
+  <path fill="#FFD400" d="M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 42.666667 0 0 1-42.666667 42.666667z" />
+  <path fill="#FFFFFF" stroke="#FFFFFF" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" d="M380 300 L730 512 L380 724 Z" />
 </svg>

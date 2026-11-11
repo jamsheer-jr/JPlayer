@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android TV launcher banner, 320x180: the J Player mark on its dark navy, edge to edge, the
-  neon play glyph centred with a clear margin on every side, so a launcher that crops a few
-  percent for its focus animation still cannot touch it. A banner carries no words: the
-  launcher writes the app's name under it itself.
+  Android TV launcher banner, 320x180: the J Player mark on its yellow, edge to edge
+  (owner, v1.0.35: the yellow mark everywhere), the white play triangle centred with a
+  clear margin on every side, so a launcher that crops a few percent for its focus
+  animation still cannot touch it. A banner carries no words: the launcher writes the
+  app's name under it itself.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp"
@@ -11,19 +12,12 @@
     android:viewportWidth="320"
     android:viewportHeight="180">
     <path
-        android:fillColor="#050C1C"
+        android:fillColor="#FFD400"
         android:pathData="M0 0h320v180H0z" />
     <path
-        android:fillColor="#00000000"
-        android:pathData="M118,42 L202,90 L118,138 Z"
-        android:strokeColor="#22E6FF"
-        android:strokeWidth="8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M140,62 L182,90 L140,118 Z"
-        android:strokeColor="#22E6FF"
+        android:fillColor="#FFFFFF"
+        android:pathData="M128,48 L197,90 L128,132 Z"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />

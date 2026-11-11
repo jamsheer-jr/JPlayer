@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The J Player mark, drawn as vectors: the dark navy tile, and on it the neon cyan play
-  glyph (an outer play triangle in outline, a smaller play inside it). Used by AppMark on
-  the settings and about surfaces. Full bleed: the tile carries its own rounded corners.
+  The J Player mark, drawn as vectors: the yellow tile, and on it one big white play
+  triangle, filled, its corners rounded (owner, v1.0.35: the yellow mark he supplied
+  stands everywhere, drawn as original vectors in that style). Used by AppMark on the
+  settings and about surfaces. Full bleed: the tile carries its own rounded corners.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="192dp"
@@ -10,20 +11,13 @@
     android:viewportWidth="1024"
     android:viewportHeight="1024">
     <path
-        android:fillColor="#050C1C"
+        android:fillColor="#FFD400"
         android:pathData="M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 42.666667 0 0 1-42.666667 42.666667z" />
     <path
-        android:fillColor="#00000000"
-        android:pathData="M350,290 L740,512 L350,734 Z"
-        android:strokeColor="#22E6FF"
-        android:strokeWidth="52"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M462,398 L648,512 L462,626 Z"
-        android:strokeColor="#22E6FF"
-        android:strokeWidth="34"
+        android:fillColor="#FFFFFF"
+        android:pathData="M380,300 L730,512 L380,724 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="40"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 </vector>

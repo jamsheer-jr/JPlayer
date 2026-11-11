@@ -28,9 +28,9 @@ import com.tmplayer.ui.theme.Tone
 
 /**
  * The player mark as a vector, in its own colours: the same shapes as Android's
- * `res/drawable/ic_logo.xml` (the navy tile, the neon play glyph stroked on it), for the places
- * that have no Android resources (the desktop's window icon and its sign in pane). Drawn with
- * `Image`, never `Icon`, which would tint it flat.
+ * `res/drawable/ic_logo.xml` (the yellow tile, one big white play triangle on it), for the
+ * places that have no Android resources (the desktop's window icon and its sign in pane).
+ * Drawn with `Image`, never `Icon`, which would tint it flat.
  */
 object AppLogo {
 
@@ -42,9 +42,8 @@ object AppLogo {
             viewportWidth = 1024f,
             viewportHeight = 1024f,
         ).apply {
-            layer(0xFF050C1C, TILE)
-            glyph(OUTER, 52f)
-            glyph(INNER, 34f)
+            layer(0xFFFFD400, TILE)
+            play(PLAY)
         }.build()
     }
 
@@ -52,12 +51,13 @@ object AppLogo {
         addPath(PathParser().parsePathString(data).toNodes(), fill = SolidColor(Color(argb)))
     }
 
-    /** One triangle of the neon glyph: no fill, a round joined cyan stroke. */
-    private fun ImageVector.Builder.glyph(data: String, width: Float) {
+    /** The one white play triangle: filled, with a round joined stroke of its own colour over the edge, so its corners read round. */
+    private fun ImageVector.Builder.play(data: String) {
         addPath(
             PathParser().parsePathString(data).toNodes(),
-            stroke = SolidColor(Color(0xFF22E6FF)),
-            strokeLineWidth = width,
+            fill = SolidColor(Color(0xFFFFFFFF)),
+            stroke = SolidColor(Color(0xFFFFFFFF)),
+            strokeLineWidth = 40f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
             strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
         )
@@ -67,8 +67,7 @@ object AppLogo {
         "M960 1002.666667H64a42.666667 42.666667 0 0 1-42.666667-42.666667V64a42.666667 42.666667 0 0 1 " +
             "42.666667-42.666667h896a42.666667 42.666667 0 0 1 42.666667 42.666667v896a42.666667 " +
             "42.666667 0 0 1-42.666667 42.666667z"
-    private const val OUTER = "M350 290 L740 512 L350 734 Z"
-    private const val INNER = "M462 398 L648 512 L462 626 Z"
+    private const val PLAY = "M380 300 L730 512 L380 724 Z"
 }
 
 /**
