@@ -961,15 +961,14 @@ class HomeViewModel(
         if (!recentWanted) return
         fetches.ask("recent", fresh = fresh, minGapMs = minGapMs, before = if (fresh) ::untilIdle else null) {
             recentFailed = false
-            // Global Search off with no pick made (owner, v1.0.38): the account wide ask
-            // would read every chat, and the gate it is screened by narrows nothing with
-            // no pick, so nothing is asked at all. An empty answer, so Home stops waiting
-            // for it, as the failure path below answers; a later fresh ask runs again
-            // once the choice is made.
-            if (!VideoSearchSource.globalSearch && com.tmplayer.data.AddedChats.awaitReady() == null) {
-                if (_recent.value == null) _recent.value = emptyList()
-                return@ask HomeFetches.Outcome.Done
-            }
+            // No skip for a missing pick here: the row is already gated on the pick where
+            // it is read ([ChatRepository.recentMedia] screens by the browsing gate), so
+            // with a pick only the picked chats reach it. Skipping the ask instead emptied
+            // the row for every viewer who chose to keep all their chats, and for installs
+            // that predate the picker, whose library must not shrink on an update; and
+            // Telegram's account wide search only ever returns chats the account is in,
+            // so no unjoined chat can reach this row the way one reached the search's
+            // local half (owner, v1.0.38 fix).
             val items = try {
                 kotlinx.coroutines.withTimeoutOrNull(ROW_TIMEOUT_MS) { source.recentMedia() }
                     ?: throw java.io.IOException("Recent row timed out")

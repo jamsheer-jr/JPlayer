@@ -173,20 +173,22 @@ class TitleMediaLoadScopeTest {
     @Test
     fun `with Global Search off, a later load asks nothing across the pool`() = runTest {
         // Owner, v1.0.38: the switch off means off here too, even on a keep-everything
-        // answer; the load stays in the title's own chat.
+        // answer; the load stays in the title's own chat. The item is not the switch-on
+        // test's: the load remembers the chats it asked per item id for the run, and the
+        // same item would read as already asked.
         VideoSearchSource.globalSearch = false
         try {
             com.tmplayer.online.KnownMedia.clear()
             ChatGate.set(null)
             AddedChats.set(AddedChoice(AddedMode.All, emptyList()))
-            val item = video(chatId = 61, messageId = 6161, name = "Harbour Lights 2019")
+            val item = video(chatId = 71, messageId = 7171, name = "Harbour Lights 2019")
             val first = mutableListOf<Long>()
             TitleMediaLoad.load(item) { chatId, _, _ ->
                 first += chatId
                 null
             }
-            assertEquals(listOf(61L), first)
-            com.tmplayer.online.KnownMedia.note(listOf(video(chatId = 62, messageId = 6262, name = "Other Film 2021")))
+            assertEquals(listOf(71L), first)
+            com.tmplayer.online.KnownMedia.note(listOf(video(chatId = 72, messageId = 7272, name = "Other Film 2021")))
             val second = mutableListOf<Long>()
             TitleMediaLoad.load(item) { chatId, _, _ ->
                 second += chatId

@@ -438,13 +438,16 @@ class GlobalSearchViewModelTest {
     fun `with Global Search off and no chats picked, nothing local shows`() = runTest(dispatcher) {
         // Owner, v1.0.38: the local half drew on the whole pool with no pick, so chats
         // never joined showed in the results. Off with no pick, the pool is empty, and
-        // the nowhere-to-look notice is the only content.
+        // the nowhere-to-look notice is the only content. The words are ones Telegram's
+        // fixture cannot answer: the view model retries the longest word alone, and the
+        // fixture answers "harbour", so harbour words would stand in through the
+        // Telegram half for the local half this test is about.
         AddedChats.set(AddedChoice(AddedMode.All, emptyList()))
-        val local = video(40, "Harbour_Notes_2024.mkv")
+        val local = video(40, "Marina_Notes_2024.mkv")
         val model = GlobalSearchViewModel(source, known = { listOf(local) }, work = dispatcher, settleMs = 100)
         model.setGlobalSearch(false)
         model.setScopeChoice(picked = false, answered = true, empty = false)
-        model.type("harbour notes")
+        model.type("marina notes")
         advanceUntilIdle()
         assertTrue(model.state.value.scopeMissing)
         assertTrue(model.state.value.groups.isEmpty())
