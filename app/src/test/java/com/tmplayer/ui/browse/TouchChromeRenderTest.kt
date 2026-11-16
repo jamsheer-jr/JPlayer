@@ -53,8 +53,10 @@ class TouchChromeRenderTest {
         favoriteCount = 3,
         downloadCount = 1,
         updateVersion = null,
-        onHome = {}, onChats = {}, onSearch = {}, onSettings = {}, onFavourites = {},
+        onHome = {}, onTrending = {}, onChats = {}, onSearch = {}, onSettings = {}, onFavourites = {},
         onDownloads = {}, onHistory = {}, onUpdate = {},
+        // The fixture keeps the Chats button shown, as the bar was before v1.0.38.
+        showChats = true,
     )
 
     private fun render(out: String, chrome: TouchChrome, pageKey: String, page: @androidx.compose.runtime.Composable () -> Unit) {

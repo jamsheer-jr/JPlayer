@@ -2294,7 +2294,9 @@ private fun Root() {
                     footerNav = DetailFooterNav(
                         account = accountHeader,
                         onHome = touchNav.onHome,
+                        onTrending = touchNav.onTrending,
                         onChats = touchNav.onChats,
+                        showChats = showChats,
                         onSearch = touchNav.onSearch,
                         onSettings = touchNav.onSettings,
                         onProfile = touchNav.onProfile,
@@ -2395,7 +2397,9 @@ private fun Root() {
                     footerNav = DetailFooterNav(
                         account = accountHeader,
                         onHome = touchNav.onHome,
+                        onTrending = touchNav.onTrending,
                         onChats = touchNav.onChats,
+                        showChats = showChats,
                         onSearch = touchNav.onSearch,
                         onSettings = touchNav.onSettings,
                         onProfile = touchNav.onProfile,

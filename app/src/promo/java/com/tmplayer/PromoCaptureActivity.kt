@@ -1121,7 +1121,10 @@ private fun cinemaAvatar(): ByteArray? =
 internal fun promoTvNav(
     account: Account = Account("Demo", "demo", null, 0),
     onHome: () -> Unit = {},
+    onTrending: () -> Unit = {},
     onChats: () -> Unit = {},
+    // The demo library shows the whole bar, Chats included.
+    showChats: Boolean = true,
     onSettings: () -> Unit = {},
     onDownloads: () -> Unit = {},
     onFavourites: () -> Unit = {},
@@ -1132,7 +1135,9 @@ internal fun promoTvNav(
     downloadCount = 0,
     updateVersion = null,
     onHome = onHome,
+    onTrending = onTrending,
     onChats = onChats,
+    showChats = showChats,
     onSearch = {},
     onSettings = onSettings,
     onFavourites = onFavourites,
@@ -1176,6 +1181,7 @@ private fun PromoTvBar(
                 inProfile = inProfile,
                 searchOpen = false,
                 onHome = nav.onHome,
+                onTrending = nav.onTrending,
                 onChats = nav.onChats,
                 onSearch = { go("chats") },
                 onRefresh = null,

@@ -580,7 +580,9 @@ internal fun MediaDetailOpened(
                 DetailFooterNav(
                     account = nav.account,
                     onHome = { onDismiss(); nav.onHome() },
+                    onTrending = { onDismiss(); nav.onTrending() },
                     onChats = { onDismiss(); nav.onChats() },
+                    showChats = nav.showChats,
                     onSearch = { onDismiss(); nav.onSearch() },
                     onSettings = { onDismiss(); nav.onSettings() },
                     onProfile = { onDismiss(); nav.onProfile() },

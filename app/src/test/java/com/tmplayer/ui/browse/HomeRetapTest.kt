@@ -50,8 +50,11 @@ class HomeRetapTest {
             downloadCount = 0,
             updateVersion = null,
             onHome = { wentHome.incrementAndGet() },
+            onTrending = {},
             onChats = {}, onSearch = {}, onSettings = {}, onFavourites = {},
             onDownloads = {}, onHistory = {}, onUpdate = {},
+            // The fixture keeps the Chats button shown, as the bar was before v1.0.38.
+            showChats = true,
         )
         rule.setContent {
             TMPlayerTheme {
