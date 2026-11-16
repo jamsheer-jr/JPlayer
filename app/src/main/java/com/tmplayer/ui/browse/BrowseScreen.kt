@@ -369,18 +369,25 @@ internal fun BrowseScreen(
             if (count > 0) chatId to count else null
         }.toMap()
     }
+    // Show Chats (owner, v1.0.38): off by default, so the Chats page, its button and
+    // every way on to it stay hidden until Settings turns it on.
+    val showChats by groupsSettings.showChats.collectAsState(initial = false)
     // The saved section is matched back against the live folder list, so the rail never highlights
     // a folder deleted elsewhere and the heading never keeps a stale name.
-    val tab = picked?.let { chosen ->
+    val pickedTab = picked?.let { chosen ->
         when (chosen) {
             is BrowseSection.Tab -> chosen
             is BrowseSection.Folder -> sections.filterIsInstance<BrowseSection.Folder>()
                 .firstOrNull { it.id == chosen.id }
                 ?: chosen.takeIf { folders.isEmpty() }
         }
+    }
     // Home is the first destination on every device: it leads with what is half watched, so it
     // is never a worse landing than Continue watching was, and it is never empty for long.
-    } ?: BrowseSection.of(BrowseTab.Home)
+    // Chats hidden (owner, v1.0.38): a Chats tab that reaches here anyway (a restore, a deep
+    // link) lands on Home instead. MainActivity guards the pick itself; this is the render
+    // level's own net.
+    val tab = pickedTab?.takeUnless { !showChats && it.onChatsPage } ?: BrowseSection.of(BrowseTab.Home)
     var query by remember { mutableStateOf("") }
     // What the viewer held OK on. Only ever one at a time, so two nullable slots cover both lists.
     var chatMenu by remember { mutableStateOf<ChatSummary?>(null) }
@@ -691,6 +698,18 @@ internal fun BrowseScreen(
         onPickTab(BrowseSection.of(BrowseTab.Chats))
         query = ""
     }
+    // A Live stream pressed, on Home's row or the Live Guide page: plays in the player
+    // itself, live ones as live. One pair of hands for both, so the two never drift.
+    val playStream: (com.tmplayer.data.StreamLink) -> Unit = { link ->
+        runCatching {
+            panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
+        }
+    }
+    val playStreamPair: (com.tmplayer.data.StreamLink, com.tmplayer.data.StreamLink) -> Unit = { first, second ->
+        runCatching {
+            panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
+        }
+    }
     val paneOf: @Composable (BrowseSection) -> Unit = { tab ->
         val showsContinue = tab.listsVideos && historyTab == HistoryTab.Continue
         val showsWatched = tab.listsVideos && historyTab == HistoryTab.Watched
@@ -761,11 +780,10 @@ internal fun BrowseScreen(
                                 onOpenDownloads = onOpenDownloads,
                                 // A stream from the built-in channel's posts plays in the player
                                 // itself, live ones as live (v1.0.10).
-                                onPlayStream = { link ->
-                                    runCatching {
-                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
-                                    }
-                                },
+                                onPlayStream = playStream,
+                                onPlayStreamPair = playStreamPair,
+                                // The Live Guide page, from the Live row's See all (item 15, v1.0.16).
+                                onOpenLiveGuide = { liveGuideOpen = true },
                                 // Starred chats get a row each under Recently added (2026-10-23), so
                                 // with none the hint says how to add them; only once the rows are
                                 // built, since it flashed up while they were still coming in.
@@ -829,7 +847,7 @@ internal fun BrowseScreen(
                         val tickedOrNull = if (selecting) tickedShown else null
                         if (showsContinue) {
                             if (continuing.isEmpty()) {
-                                EmptyTab(tab, query = "", history = HistoryTab.Continue, onGoToChats = goToChats)
+                                EmptyTab(tab, query = "", history = HistoryTab.Continue, onGoToChats = if (showChats) goToChats else null, globalSearch = searchGlobal)
                             } else {
                                 ContinueSection(
                                     records = continuing,
@@ -849,7 +867,7 @@ internal fun BrowseScreen(
                             }
                         } else if (showsWatchLater) {
                             if (watchLater.isEmpty()) {
-                                EmptyTab(tab, query = "", history = HistoryTab.WatchLater, onGoToChats = goToChats)
+                                EmptyTab(tab, query = "", history = HistoryTab.WatchLater, onGoToChats = if (showChats) goToChats else null, globalSearch = searchGlobal)
                             } else {
                                 ContinueSection(
                                     records = laterShown,
@@ -868,7 +886,7 @@ internal fun BrowseScreen(
                             }
                         } else {
                             if (watchedHistory.isEmpty()) {
-                                EmptyTab(tab, query = "", history = HistoryTab.Watched, onGoToChats = goToChats)
+                                EmptyTab(tab, query = "", history = HistoryTab.Watched, onGoToChats = if (showChats) goToChats else null, globalSearch = searchGlobal)
                             } else {
                                 Column(Modifier.fillMaxSize()) {
                                     StatsSummary(watchedHistory, continueWatching, insets.start, insets.end)
@@ -933,7 +951,8 @@ internal fun BrowseScreen(
                                 chatFilter,
                                 folderRead = (tab as? BrowseSection.Folder)?.let { data.folderRead(it.id) } ?: com.tmplayer.ui.browse.FolderRead.Loaded,
                                 onRetryFolders = onRetryFolders,
-                                onGoToChats = goToChats,
+                                onGoToChats = if (showChats) goToChats else null,
+                                globalSearch = searchGlobal,
                             )
                         } else {
                             // A first run's chat list says how to get a first video in (CP42).
@@ -971,17 +990,6 @@ internal fun BrowseScreen(
                                 paging = chatPaging,
                                 onMoreChats = onMoreChats,
                                 newVideoCounts = newVideoCounts,
-                                onPlayStream = { link ->
-                                    runCatching {
-                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
-                                    }
-                                },
-                                onPlayStreamPair = { first, second ->
-                                    runCatching {
-                                        panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
-                                    }
-                                },
-                                onOpenLiveGuide = { liveGuideOpen = true },
                             )
                         }
                     }
@@ -1038,7 +1046,12 @@ internal fun BrowseScreen(
                 footerNav = DetailFooterNav(
                     account = (state as? UiState.Content)?.value?.account ?: account,
                     onHome = { onPickTab(BrowseSection.of(BrowseTab.Home)) },
+                    onTrending = {
+                        com.tmplayer.ui.browse.CategoryOpenRequest.ask("catalog-trending")
+                        onPickTab(BrowseSection.of(BrowseTab.Home))
+                    },
                     onChats = { onPickTab(BrowseSection.of(BrowseTab.Chats)) },
+                    showChats = showChats,
                     onSearch = { touchChrome?.searchAsked = true },
                     onSettings = onOpenSettings,
                     onProfile = onOpenProfile,
@@ -1064,6 +1077,7 @@ internal fun BrowseScreen(
             },
             refreshingOf = { page -> page.isHome && homeRefreshing },
             tab = tab,
+            showChats = showChats,
             account = (state as? UiState.Content)?.value?.account ?: account,
             pane = pane,
             countOf = { section ->
@@ -1252,6 +1266,11 @@ internal fun BrowseScreen(
                     query = ""
                     tvNav.onChats()
                 },
+                onTrending = {
+                    tvSearchOpen = false
+                    query = ""
+                    tvNav.onTrending()
+                },
                 onSearch = { tvSearchOpen = true },
                 beforeProfile = {
                     tvSearchOpen = false
@@ -1407,16 +1426,8 @@ internal fun BrowseScreen(
         BackHandler { liveGuideOpen = false }
         LiveGuidePage(
             onBack = { liveGuideOpen = false },
-            onPlayStream = { link ->
-                runCatching {
-                    panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamIntent(panelContext, link))
-                }
-            },
-            onPlayStreamPair = { first, second ->
-                runCatching {
-                    panelContext.startActivity(com.tmplayer.player.PlayerActivity.streamPairIntent(panelContext, first, second))
-                }
-            },
+            onPlayStream = playStream,
+            onPlayStreamPair = playStreamPair,
         )
     }
 
@@ -2640,12 +2651,6 @@ private fun ChatSection(
     onMoreChats: () -> Unit = {},
     /** The main Chats list only: the owner's channel pinned over it (owner, 2026-11-06). */
     showPin: Boolean = false,
-    /** A Live stream pressed under the pin, on a phone: plays in the player, as Home's row does. */
-    onPlayStream: (com.tmplayer.data.StreamLink) -> Unit = {},
-    /** The Live Guide page, from the Live heading under the pin (item 15, v1.0.16). */
-    onOpenLiveGuide: () -> Unit = {},
-    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
-    onPlayStreamPair: ((com.tmplayer.data.StreamLink, com.tmplayer.data.StreamLink) -> Unit)? = null,
     /** New videos per chat (item 11e, v1.0.15), counted by the caller over the videos Home's
      * rows already hold; a chat with no entry shows no badge. */
     newVideoCounts: Map<Long, Int> = emptyMap(),
@@ -2799,13 +2804,6 @@ private fun ChatSection(
                     item(key = "j-movies-pin", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-pin") {
                         JMoviesPin(onJMoviesPin)
                     }
-                    // The channel's Live streams under the pin on the grid too (item 2,
-                    // v1.0.16): the phone's list had them and the television's grid did
-                    // not, so on a TV the channel stood with its name and no streams.
-                    // The phone list's own row, spanning the grid.
-                    item(key = "j-movies-live", span = { GridItemSpan(maxLineSpan) }, contentType = "j-movies-live") {
-                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
-                    }
                 }
                 gridItems(chats, key = { it.id }, contentType = { "chat" }) { chat ->
                     ChatRow(
@@ -2846,13 +2844,9 @@ private fun ChatSection(
                     item(key = "j-movies-pin", contentType = "j-movies-pin") {
                         JMoviesPin(onJMoviesPin, Modifier.padding(horizontal = insets.start, vertical = 8.dp))
                     }
-                    // The channel's Live streams themselves under the pin (owner, v1.0.14):
-                    // the one Live row (Home's copy went in v1.0.20, owner: Live stands
-                    // in Chats alone), the same loading, cards and rules, not a second
-                    // reading of the posts. Nothing stands here while there are no streams.
-                    item(key = "j-movies-live", contentType = "j-movies-live") {
-                        LiveStreamsRow(start = insets.start, end = insets.end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
-                    }
+                    // The Live row stood under the pin here until v1.0.38 (owner: Live
+                    // belongs on Home again, shown only while a stream is live); the pin
+                    // stays with the Chats page.
                 }
 
                 items(chats, key = { it.id }) { chat ->
@@ -3462,9 +3456,16 @@ private fun EmptyTab(
     /**
      * Back to every chat, with Telegram's filters cleared: the way on from a tab that fills from
      * the chats (Favourites, Unread, Archived, the History tabs), which on a television saves a
-     * trip through the rail. Null where the tab is already all of them.
+     * trip through the rail. Null where the tab is already all of them, or where Chats is hidden
+     * (owner, v1.0.38): no way on to a hidden page.
      */
     onGoToChats: (() -> Unit)? = null,
+    /**
+     * The Global Search switch (owner, v1.0.38): the empty search's button says
+     * "Search all chats" only with it on; off, the same search looks in the
+     * chosen chats, and the button says so.
+     */
+    globalSearch: Boolean,
 ) {
     val s = LocalStrings.current
     // Each empty tab says what to do about it, in its own words. A folder is the one section this
@@ -3495,9 +3496,10 @@ private fun EmptyTab(
     // tab's own icon would say less (an open folder, a ticked bubble for nothing unread).
     val icon = emptyTabIcon(tab, query, filter, history)
     when {
-        // Nothing in the list by that name: the same words across every chat, which also asks
-        // Telegram for a chat with that @username.
-        query.isNotBlank() -> BigEmpty(message, icon = icon, actionLabel = s.searchAllChats, onAction = { SearchRequest.ask(query) })
+        // Nothing in the list by that name: the same words across the search's scope
+        // (every chat with Global Search on, the chosen chats with it off), which also
+        // asks Telegram for a chat with that @username.
+        query.isNotBlank() -> BigEmpty(message, icon = icon, actionLabel = if (globalSearch) s.searchAllChats else s.searchYourChats, onAction = { SearchRequest.ask(query) })
         // A folder that could not be read is not an empty one: it says so, and reads again.
         tab is BrowseSection.Folder && folderRead == com.tmplayer.ui.browse.FolderRead.NotLoaded ->
             BigEmpty(message, icon = icon, actionLabel = s.commonTryAgain, onAction = onRetryFolders)

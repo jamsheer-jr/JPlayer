@@ -175,13 +175,15 @@ data class GlobalSearchState(
 ) {
     /**
      * There is nowhere to look: Global Search is off and the choice names no chats
-     * (never answered, or answered with an empty pick). The screens say so plainly,
-     * with the two ways out, rather than widening the search on their own.
+     * (never answered, answered with an empty pick, or answered by keeping every
+     * chat, which names no chats either: owner, v1.0.38, an unpicked chat's videos
+     * must never reach the results). The screens say so plainly, with the two ways
+     * out, rather than widening the search on their own.
      */
-    val scopeMissing: Boolean get() = !globalSearch && (!scopeAnswered || (scopePicked && scopeEmpty))
+    val scopeMissing: Boolean get() = !globalSearch && (!scopeAnswered || !scopePicked || scopeEmpty)
 
-    /** The scope line's "Videos in all chats" reading: the switch on, or an answered keep-everything choice. */
-    val scopeAll: Boolean get() = globalSearch || (scopeAnswered && !scopePicked)
+    /** The scope line's "Videos in all chats" reading: the switch on, and nothing else (owner, v1.0.38). */
+    val scopeAll: Boolean get() = globalSearch
     /** What the list shows: [groups] through the filters and the cam and short hiding, the kids lock already applied. */
     val shown: List<ResultGroup> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val base = GlobalSearch.filter(groups, filters, query)
@@ -470,18 +472,18 @@ class GlobalSearchViewModel(
 
     /**
      * The local half's pool, gated the way the Telegram ask is (owner, v1.0.20: with the
-     * switch off, searching in the chats still brought results from everywhere). The
-     * switch used to close only Telegram's ask, while this pool went on listing every
-     * video the device had ever listed, from any chat ever opened, so an off search
-     * still read as a global one. One rule for both halves: off, with a picked set of
-     * chats, nothing outside the pick is a result, this device's knowledge included;
-     * on, or no pick made, the pool is everything known, as before.
+     * switch off, searching in the chats still brought results from everywhere; v1.0.38:
+     * with the switch off and no pick made, the pool was everything known, so unjoined
+     * chats still reached the results). One rule for both halves: off, with a picked set
+     * of chats, nothing outside the pick is a result, this device's knowledge included;
+     * off, with no pick, there is nowhere to look, so the pool is empty and the scope
+     * notice is the only content; on, the pool is everything known, as before.
      */
     private suspend fun localPool(): List<MediaItem> {
         val now = _state.value
-        val added = if (!now.globalSearch && now.scopePicked) com.tmplayer.data.AddedChats.awaitReady() else null
-        val pool = known() + alsoKnown
-        return if (added == null) pool else pool.filter { it.chatId in added }
+        if (now.globalSearch) return known() + alsoKnown
+        val added = com.tmplayer.data.AddedChats.awaitReady()
+        return if (added == null) emptyList() else (known() + alsoKnown).filter { it.chatId in added }
     }
 
     private fun start(text: String, settle: Long, force: Boolean = false, preserve: Boolean = false) {
@@ -567,7 +569,13 @@ class GlobalSearchViewModel(
             scopeAnswered = now.scopeAnswered,
             scopeEmpty = now.scopeEmpty,
         )
+        // The kept pages are only replayed where there is somewhere to look: with Global
+        // Search off and no pick made, the scope is missing, and replaying pages Telegram
+        // answered when the scope was wider would put unpicked chats' videos back in the
+        // results (owner, v1.0.38). A re-run of the words on screen still carries what it
+        // shows ([keepShown]), which a scope change reaches on the next fresh search.
         val kept = cache?.peek<Answer>(keyOf(query, now.filters), PageQueries.SEARCH_STALE_MS)
+            ?.takeIf { now.globalSearch || now.scopePicked }
         if (kept != null) {
             serverQuery = kept.data.serverQuery
             cursor = kept.data.cursor

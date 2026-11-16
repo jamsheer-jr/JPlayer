@@ -216,6 +216,11 @@ internal fun BoxScope.SearchPalette(
     val favourites by state.settings.favorites.collectAsState(initial = emptySet())
     val recents by state.settings.recentSearches.collectAsState(initial = emptyList())
     val allowed by ChatGate.allowed.collectAsState()
+    // The picked chats, for the chat rows' scope (owner, v1.0.38): with Global Search
+    // off, the rows come from the pick alone, and with no pick there is nowhere to
+    // look. And whether the Chats page itself is shown, for the Go to list.
+    val addedChoice by com.tmplayer.data.AddedChats.choice.collectAsState()
+    val showChats by state.settings.showChats.collectAsState(initial = false)
     val watch = rememberSeriesWatch(state)
     val scope = rememberCoroutineScope()
     val toast = rememberToast()
@@ -281,10 +286,13 @@ internal fun BoxScope.SearchPalette(
             slow = true
         }
     }
-    val rows = remember(ui, chats, favourites, recents, allowed, allChats, query.text, byUsername, slow, offer) {
-        listOfNotNull(offer?.let { PaletteRow.Link(it) }) + buildRows(ui, chats, favourites, if (allowed != null) emptyList() else recents, allChats, search, byUsername, onSearchWord = { word ->
+    val rows = remember(ui, chats, favourites, recents, allowed, allChats, query.text, byUsername, slow, offer, addedChoice, showChats) {
+        listOfNotNull(offer?.let { PaletteRow.Link(it) }) + buildRows(ui, chats, favourites, if (allowed != null) emptyList() else recents, allChats, search, byUsername, pickedIds = addedChoice.ids, showChats = showChats, onSearchWord = { word ->
             state.paletteQuery = TextFieldValue(word, TextRange(word.length))
             search.submit(word)
+        }, onChooseChats = {
+            close()
+            com.tmplayer.ui.browse.AddChatsState.open = true
         }, slow = slow)
     }
 
@@ -457,7 +465,13 @@ private fun buildRows(
     allChats: Boolean,
     search: GlobalSearchViewModel,
     byUsername: ChatSummary?,
+    /** The picked chats' ids, or null where no pick was made (see [com.tmplayer.data.AddedChoice]). */
+    pickedIds: Set<Long>?,
+    /** Whether the Chats page is shown (Settings, Library; off by default, owner, v1.0.38). */
+    showChats: Boolean,
     onSearchWord: (String) -> Unit,
+    /** Opens the Add chats picker, from the nowhere-to-look notice. */
+    onChooseChats: () -> Unit,
     /** The first page has been on its way past [com.tmplayer.ui.components.SlowAnswer.AFTER_MS]. */
     slow: Boolean = false,
 ): List<PaletteRow> = buildList {
@@ -474,40 +488,55 @@ private fun buildRows(
             recentChats.forEach { add(PaletteRow.Chat(it)) }
         }
         add(PaletteRow.Heading(s.searchGoTo))
-        Place.entries.forEach { add(PaletteRow.GoTo(it)) }
+        Place.entries.filter { showChats || it != Place.Chats }.forEach { add(PaletteRow.GoTo(it)) }
         return@buildList
     }
-    val matching = com.tmplayer.ui.browse.withUsernameChat(GlobalSearch.localChats(chats, query.text, favourites), byUsername)
+    // The scope (owner, v1.0.38): with Global Search off, the chat rows come from the
+    // picked chats alone, the way the search's own halves do; with no pick there is
+    // nowhere to look, and the notice is the only content. A chat asked by @username
+    // is an explicit ask and stays, whatever the scope.
+    if (ui.scopeMissing) {
+        add(PaletteRow.Note(s.browseSearchScopeMissing))
+        add(PaletteRow.Action(s.pickerChooseChats) { onChooseChats() })
+    }
+    val scopedChats = when {
+        ui.globalSearch -> chats
+        ui.scopePicked -> chats.filter { it.id in pickedIds.orEmpty() }
+        else -> emptyList()
+    }
+    val matching = com.tmplayer.ui.browse.withUsernameChat(GlobalSearch.localChats(scopedChats, query.text, favourites), byUsername)
     if (matching.isNotEmpty()) {
         add(PaletteRow.Heading(s.searchChatsHeading))
         val shown = if (allChats) matching else matching.take(GlobalSearch.CHAT_PREVIEW)
         shown.forEach { add(PaletteRow.Chat(it)) }
         if (shown.size < matching.size) add(PaletteRow.MoreChats(matching.size))
     }
-    val videos = ui.shown
-    if (videos.isNotEmpty() || ui.searching) add(PaletteRow.Heading(s.searchVideosHeading))
-    // Offline too: the search runs again once back, and Retry asks sooner.
-    searchStatus(ui)?.let { add(PaletteRow.Note(it, retry = ui.error != null || ui.offline)) }
-    if (slow && ui.searching && videos.isEmpty()) add(PaletteRow.Note(com.tmplayer.ui.components.SlowAnswer.MESSAGE, retry = true))
-    when {
-        videos.isNotEmpty() -> videos.forEach { add(PaletteRow.Video(it)) }
-        ui.searching -> repeat(SKELETONS) { add(PaletteRow.Skeleton(it)) }
-        !ui.busy && ui.error == null && ui.floodWait == 0 -> {
-            val hidden = ui.hiddenBy
-            if (hidden.isEmpty()) {
-                add(PaletteRow.Note(s.searchNone(query.text)))
-                add(PaletteRow.Note(s.searchNoneDetail))
-            } else {
-                hidden.forEach { add(PaletteRow.Note(it.message(ui))) }
-            }
-            if (!ui.filters.isDefault) add(PaletteRow.Action(s.searchClearFilters) { search.clearFilters() })
-            AllChatsSearch.fallbackQuery(query.server)?.let { word ->
-                add(PaletteRow.Action(s.searchSearchFor(word)) { onSearchWord(word) })
+    if (!ui.scopeMissing) {
+        val videos = ui.shown
+        if (videos.isNotEmpty() || ui.searching) add(PaletteRow.Heading(s.searchVideosHeading))
+        // Offline too: the search runs again once back, and Retry asks sooner.
+        searchStatus(ui)?.let { add(PaletteRow.Note(it, retry = ui.error != null || ui.offline)) }
+        if (slow && ui.searching && videos.isEmpty()) add(PaletteRow.Note(com.tmplayer.ui.components.SlowAnswer.MESSAGE, retry = true))
+        when {
+            videos.isNotEmpty() -> videos.forEach { add(PaletteRow.Video(it)) }
+            ui.searching -> repeat(SKELETONS) { add(PaletteRow.Skeleton(it)) }
+            !ui.busy && ui.error == null && ui.floodWait == 0 -> {
+                val hidden = ui.hiddenBy
+                if (hidden.isEmpty()) {
+                    add(PaletteRow.Note(s.searchNone(query.text)))
+                    add(PaletteRow.Note(s.searchNoneDetail))
+                } else {
+                    hidden.forEach { add(PaletteRow.Note(it.message(ui))) }
+                }
+                if (!ui.filters.isDefault) add(PaletteRow.Action(s.searchClearFilters) { search.clearFilters() })
+                AllChatsSearch.fallbackQuery(query.server)?.let { word ->
+                    add(PaletteRow.Action(s.searchSearchFor(word)) { onSearchWord(word) })
+                }
             }
         }
+        if (ui.loadingMore) add(PaletteRow.Skeleton(SKELETONS))
     }
-    if (ui.loadingMore) add(PaletteRow.Skeleton(SKELETONS))
-    val places = Place.entries.filter { Fuzzy.score(it.label, query.text) > 0 }
+    val places = Place.entries.filter { (showChats || it != Place.Chats) && Fuzzy.score(it.label, query.text) > 0 }
     if (places.isNotEmpty()) {
         add(PaletteRow.Heading(s.searchGoTo))
         places.forEach { add(PaletteRow.GoTo(it)) }

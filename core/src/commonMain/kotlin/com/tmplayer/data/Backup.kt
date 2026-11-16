@@ -244,6 +244,7 @@ object Backups {
         // The channel streams already opened, by post (SeenStreams): Home marks the rest new.
         "seen_streams" to Kind.TEXT,
         "show_channels" to Kind.TEXT,
+        "show_chats" to Kind.BOOL,
         "show_remaining_time" to Kind.BOOL,
         "skip_silence" to Kind.BOOL,
         "sponsor_reminders" to Kind.BOOL,

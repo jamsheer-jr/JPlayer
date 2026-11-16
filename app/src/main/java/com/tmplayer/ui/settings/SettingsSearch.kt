@@ -181,6 +181,10 @@ fun settingsSearchEntries(s: Strings): List<SettingsSearchEntry> = buildList {
         "library.resume_sync", SettingsPage.Library, s.settingsResumeSync,
         s.settingsResumeSyncOn + " " + s.settingsResumeSyncOff,
     )
+    add(
+        "library.show_chats", SettingsPage.Library, s.settingsShowChats,
+        s.settingsShowChatsOn + " " + s.settingsShowChatsOff,
+    )
     add("library.add_chats", SettingsPage.Library, s.pickerRowTitle)
     add("library.clear_favourites", SettingsPage.Library, s.settingsClearFavourites)
     add("library.clear_history", SettingsPage.Library, s.browseClearHistory)
@@ -307,7 +311,7 @@ val settingsSearchAnchors: Set<String> = setOf(
     "gestures.haptics", "gestures.tap_plays", "gestures.double_tap", "gestures.double_tap_pause",
     "gestures.hold_speed", "gestures.seek", "gestures.brightness", "gestures.volume",
     "library.size_limits", "library.open_last_chat", "library.forget_last_chat",
-    "library.remember_searches", "library.global_search", "library.resume_sync", "library.add_chats",
+    "library.remember_searches", "library.global_search", "library.resume_sync", "library.show_chats", "library.add_chats",
     "library.clear_favourites", "library.clear_history",
     "library.metadata_toggle", "library.metadata_skip_times", "library.metadata_key",
     "library.metadata_omdb_key", "library.metadata_clear_cache",

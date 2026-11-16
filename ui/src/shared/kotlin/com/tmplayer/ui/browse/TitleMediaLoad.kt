@@ -123,7 +123,7 @@ object TitleMediaLoad {
         val (gate, gateKnown) = BrowsingGate.read()
         val query = SeriesShelf.episodeOf(item).title.trim()
         if (query.isBlank()) return
-        val scope = TitleScope.chats(item.chatId, gate, gateKnown, KnownMedia.all().map { it.chatId }.toSet())
+        val scope = TitleScope.chats(item.chatId, gate, gateKnown, KnownMedia.all().map { it.chatId }.toSet(), VideoSearchSource.globalSearch)
         // Only the chats this title has not been fully asked (owner, v1.0.30):
         // the scope grows as Home lists more chats (a category page's deepening
         // lists dozens behind the standing page), and each later open tops the
@@ -264,19 +264,21 @@ internal object BrowsingGate {
  * The browsing gate where it narrows. Where it narrows nothing and that is known to be
  * the viewer's own answer ([gateKnown]: they chose every chat, or the lock is off and
  * no choice narrows), the chats the app has listed stand for the visible ones, as
- * v1.0.14's item 39 settled. Where the gate is unread ([gateKnown] false), only the
- * title's own chat: an unread gate answers with the process default, which reads as
- * "no narrowing", and a load that trusted it asked every chat the pool knew, so a
- * viewer who had turned the global scope off still had titles loaded from chats they
- * never selected. The title's own chat always leads: it is the one surface the viewer
- * is actually looking at, whatever the scope says.
+ * v1.0.14's item 39 settled, but only with Global Search on (owner, v1.0.38): with it
+ * off, a known keep-everything answer names no chats to widen over, so the load asks
+ * the title's own chat alone, the way the search looks nowhere then. Where the gate is
+ * unread ([gateKnown] false), only the title's own chat: an unread gate answers with
+ * the process default, which reads as "no narrowing", and a load that trusted it asked
+ * every chat the pool knew, so a viewer who had turned the global scope off still had
+ * titles loaded from chats they never selected. The title's own chat always leads: it
+ * is the one surface the viewer is actually looking at, whatever the scope says.
  */
 internal object TitleScope {
     /** The chats to ask, the title's own first, the rest in id order. */
-    fun chats(ownChatId: Long, gate: Set<Long>?, gateKnown: Boolean, listedChatIds: Set<Long>): List<Long> {
+    fun chats(ownChatId: Long, gate: Set<Long>?, gateKnown: Boolean, listedChatIds: Set<Long>, globalSearch: Boolean): List<Long> {
         val rest = when {
             gate != null -> gate
-            gateKnown -> listedChatIds
+            gateKnown && globalSearch -> listedChatIds
             else -> emptySet()
         }
         return listOf(ownChatId) + (rest - ownChatId).sorted()

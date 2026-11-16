@@ -258,6 +258,7 @@
     "tab_saved": "Saved",
     "tab_saved_blurb": "The chat you send things to yourself in",
     "tab_saved_heading": "Saved Messages",
+    "tab_trending": "Trending",
     "tab_watch_later": "Watch later",
     "tab_watch_later_blurb": "Videos you've saved for later",
     "tab_watch_later_heading": "Watch later",
@@ -2367,7 +2368,8 @@
     "still_searching": "Still searching…",
     "suggestions": "From your starred chats",
     "undo": "Undo",
-    "videos_heading": "Videos"
+    "videos_heading": "Videos",
+    "your_chats": "Search your chats"
   },
   "series": {
     "all_watched": "All watched",
@@ -2823,6 +2825,9 @@
     "search_settings": "Search settings",
     "seek_gesture": "Swipe sideways to seek",
     "seek_gesture_detail": "Drag across the picture to travel through the video",
+    "show_chats": "Show Chats",
+    "show_chats_off": "The Chats page stays hidden. Home and search still use the chats you chose",
+    "show_chats_on": "The Chats page and its button in the bar are shown",
     "sign_out": "Sign out of Telegram",
     "sign_out_confirm": "Sign out",
     "sign_out_delete_downloads": "Also delete my downloads ({size})",

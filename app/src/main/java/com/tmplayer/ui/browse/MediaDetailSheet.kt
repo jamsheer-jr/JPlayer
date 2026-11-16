@@ -62,15 +62,18 @@ import kotlinx.coroutines.withContext
 
 /**
  * Where the detail page's own footer bar goes (owner, v1.0.33): the page is a window of its
- * own over the app's floating bar, so the bar's buttons (Home, Chats, Search, the profile
- * picture) can never stand on a movie's or a series' page. A host that has them (the browse
- * screens) hands them over and the page carries the same bar inside its window, at its foot.
- * A press leaves the page first, then goes where it says.
+ * own over the app's floating bar, so the bar's buttons (Home, Trending, Chats, Search, the
+ * profile picture) can never stand on a movie's or a series' page. A host that has them (the
+ * browse screens) hands them over and the page carries the same bar inside its window, at its
+ * foot. A press leaves the page first, then goes where it says.
  */
 internal class DetailFooterNav(
     val account: Account?,
     val onHome: () -> Unit,
+    val onTrending: () -> Unit,
     val onChats: () -> Unit,
+    /** Whether the Chats page and its button are shown (Settings, Library; off by default). */
+    val showChats: Boolean,
     val onSearch: () -> Unit,
     val onSettings: () -> Unit,
     val onProfile: () -> Unit,
@@ -765,7 +768,9 @@ private fun DetailScreen(
                     account = footerNav.account,
                     badged = false,
                     onHome = footerNav.onHome,
+                    onTrending = footerNav.onTrending,
                     onChats = footerNav.onChats,
+                    showChats = footerNav.showChats,
                     onSearch = footerNav.onSearch,
                     onSettings = footerNav.onSettings,
                     onProfile = footerNav.onProfile,

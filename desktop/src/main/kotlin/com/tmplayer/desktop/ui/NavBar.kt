@@ -172,7 +172,7 @@ fun NavFrame(
 }
 
 /** Which of the bar's buttons the page on screen lights, or null for none (a page behind the picture). */
-internal enum class NavPlace { Home, Chats, Search }
+internal enum class NavPlace { Home, Trending, Chats, Search }
 
 /** The bar's lit button for where the window is. */
 internal fun navPlaceOf(state: ShellState): NavPlace? = when {
@@ -205,6 +205,9 @@ private fun NavBar(
     val current = navPlaceOf(state)
     val reduced = rememberReducedMotion() || Motion.reduced
     val inFlight = rememberDownloadsInFlight()
+    // Whether the Chats page and its button are shown (Settings, Library; off by
+    // default, owner, v1.0.38): hidden, Trending takes the Chats slot.
+    val showChats by state.settings.showChats.collectAsState(initial = false)
     // Settings' "Icons only in the menu": the names go, and each place is a round icon button,
     // its name in the tooltip.
     // Drawn once the choice is read, so a compact bar never opens wide and shrinks.
@@ -230,8 +233,12 @@ private fun NavBar(
             com.tmplayer.ui.components.BrandBadge(Modifier.padding(start = 8.dp, end = 6.dp))
             Box(contentAlignment = Alignment.CenterStart) {
                 // One highlight that slides to the chosen place rather than blinking from one
-                // button to the next, so the bar shows where the page went.
-                val index = current?.ordinal
+                // button to the next, so the bar shows where the page went. Its place is in
+                // the bar as drawn, not the enum's own order: with Chats hidden (owner,
+                // v1.0.38) Search stands a step earlier than its ordinal says, and a place
+                // not drawn (an open chat, with Chats hidden) lights nothing.
+                val drawn = listOfNotNull(NavPlace.Home, NavPlace.Trending, NavPlace.Chats.takeIf { showChats }, NavPlace.Search)
+                val index = current?.let { drawn.indexOf(it).takeIf { at -> at >= 0 } }
                 val x by animateDpAsState(
                     targetValue = (cell.width + NAV_GAP) * (index ?: 0),
                     animationSpec = if (reduced || resized) snap() else spring(dampingRatio = 0.8f, stiffness = 500f),
@@ -254,9 +261,12 @@ private fun NavBar(
                 // beside it stay two shapes rather than running into one block.
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(NAV_GAP)) {
                     NavButton(TmIcons.Home, s.browseTabHome, "${COMMAND}1", current == NavPlace.Home) { state.go(Destination.Home) }
-                    NavButton(TmIcons.Chats, s.navChats, "${COMMAND}2", current == NavPlace.Chats) {
-                        val open = state.chatSection
-                        state.showChats(if (open.onChatsPage) open else BrowseSection.of(BrowseTab.Chats))
+                    NavButton(TmIcons.Trending, s.browseTabTrending, null, current == NavPlace.Trending) { state.openTrending() }
+                    if (showChats) {
+                        NavButton(TmIcons.Chats, s.navChats, "${COMMAND}2", current == NavPlace.Chats) {
+                            val open = state.chatSection
+                            state.showChats(if (open.onChatsPage) open else BrowseSection.of(BrowseTab.Chats))
+                        }
                     }
                     NavButton(TmIcons.Search, s.commonSearch, "${COMMAND}K", current == NavPlace.Search) { state.paletteOpen = !state.paletteOpen }
                     ProfileButton(

@@ -238,6 +238,10 @@ internal fun HomePane(
     onDetails: (MediaItem, String) -> Unit = onHoldMedia,
     /** A live or file stream link (an opened link that reads as one): plays in the player. */
     onPlayStream: (StreamLink) -> Unit = {},
+    /** Two live streams side by side (item 11c, v1.0.15); null leaves the offer out. */
+    onPlayStreamPair: ((StreamLink, StreamLink) -> Unit)? = null,
+    /** The Live Guide page, from the Live row's See all (item 15, v1.0.16). */
+    onOpenLiveGuide: () -> Unit = {},
     /** Home pressed again while on Home: Home reads itself fresh (owner, v1.0.15). */
     onRefreshHome: () -> Unit = {},
     /**
@@ -448,15 +452,24 @@ internal fun HomePane(
         pinKeys = if (bannerMode == "pinned") bannerPins.toSet() else emptySet(),
     )
     val carousel = carouselOn && recent != null && featured?.isEmpty() != true
-    // With no carousel the rows are the whole first screen; with one, its first picture tells
-    // HomeFirstPaint (through the carousel), so the loader lifts over a finished Home.
-    // Not at once: the starred chats' row can arrive a moment after the rest, bringing the carousel
-    // (and its picture) with it, and the loader lifting before that let Home jump down.
-    LaunchedEffect(carousel) {
-        if (carousel) return@LaunchedEffect
+    // The loader lifts when the rows settle (owner, v1.0.38), whether or not there is
+    // a carousel: the carousel's first picture used to tell HomeFirstPaint, so a slow
+    // picture held the loader over rows that were already drawn. The picture lands
+    // under its own placeholder now. Not at once: the starred chats' row can arrive
+    // a moment after the rest, bringing the carousel with it, and the loader lifting
+    // before that let Home jump down.
+    LaunchedEffect(rowsReady) {
+        if (!rowsReady) return@LaunchedEffect
         kotlinx.coroutines.delay(if (touch) NO_CAROUSEL_SETTLE_MS else NO_CAROUSEL_SETTLE_TV_MS)
         HomeFirstPaint.markReady()
     }
+    // The Live row's reading (owner, v1.0.38): Live stands on Home again, and the row
+    // is an item only while a stream is live, so an empty row never takes the rows'
+    // gap. The holder is hoisted here (the row takes it) so the item's standing is
+    // decided on the visible streams, the viewer's removals applied.
+    val live = rememberLiveStreams()
+    val liveHidden by remember(bannerSettings) { bannerSettings.hiddenStreams }.collectAsState(initial = emptySet())
+    val liveShown = HiddenStreams.visible(live.streams, liveHidden)
     // Recently added is a row of its own as well, under Continue watching (user, 2026-10-23),
     // unless Settings turned the row off and kept the carousel it feeds. Its "no chosen chats"
     // line shows either way, so the carousel's empty place is explained.
@@ -521,6 +534,11 @@ internal fun HomePane(
             else HomeRow.Catalog(key, com.tmplayer.data.HomeRows.languageName(code) ?: code, merged.take(com.tmplayer.data.HomeRows.LIMIT), all = merged)
         } else {
             allCatalog.firstOrNull { it.key == key }
+                // Trending (owner, v1.0.38): the bar's Trending button opens this page
+                // at once, before the shelf has stood, so an empty row stands in until
+                // the real one lands and the page fills behind it. Without it the
+                // sticky ask would pop the page open the moment the shelf arrived.
+                ?: if (key == "catalog-trending") HomeRow.Catalog("trending", "", emptyList(), all = emptyList()) else null
         }
     }
     // Held while its page stands (see rememberHeldRow): Back from a title opened
@@ -1008,11 +1026,19 @@ internal fun HomePane(
                         )
                     }
                 }
+                // The Live row (owner, v1.0.38): Live stands on Home again, after the
+                // carousel, and only while a stream is live ("undel mathram"), so no
+                // empty row or placeholder ever stands here. It stood here until
+                // v1.0.20 (owner then: Live belongs in Chats alone), and in Chats
+                // under the pin after that; the pin stays with the Chats page.
+                if (liveShown.isNotEmpty()) {
+                    item(key = LIVE_KEY, contentType = LIVE_KEY) {
+                        LiveStreamsRow(holder = live, start = start, end = end, onPlayStream = onPlayStream, onPlayStreamPair = onPlayStreamPair, onOpenGuide = onOpenLiveGuide)
+                    }
+                }
                 // The television's Share J Player pill stands here, between the
-                // carousel and the rows. The Live row stood here too until v1.0.20
-                // (owner: Live belongs in Chats alone, not on Home, its banner
-                // cards with it), and the channels' cards before it (v1.0.11,
-                // owner). A phone puts its Share pill beside Surprise me instead.
+                // carousel and the rows. The channels' cards stood here before it
+                // (v1.0.11, owner). A phone puts its Share pill beside Surprise me instead.
                 if (!touch) {
                     item(key = BUILT_IN_KEY, contentType = BUILT_IN_KEY) {
                         Row(Modifier.padding(start = start, end = end, top = 6.dp, bottom = 2.dp)) {
@@ -2627,10 +2653,10 @@ internal fun rememberLiveStreams(): LiveStreamsHolder {
  * way (the invite resolved, the account joined once per run where it is not a member,
  * the recent posts read fresh), the viewer's removals and seen marks applied, and the
  * cards as [StreamCard] draws them, with the hold menu (Save to Downloads for a file
- * link, Remove from Live). Home heads its built-in sections with it, and the Chats list
- * embeds it under the pinned channel entry on a phone (owner, v1.0.14), so the two are
- * the same row by construction, never a second reading of the posts. Nothing is drawn
- * while there is nothing to show.
+ * link, Remove from Live). It stands on Home (owner, v1.0.38), and the Live Guide page
+ * reads through a holder of the same kind, so the page is the row's own reading on a
+ * page of its own, never a second way of reading the posts. Nothing is drawn while
+ * there is nothing to show.
  *
  * The posts are read again whenever [LiveRefresh] asks (owner, v1.0.15): arriving at
  * Chats or Home, coming back to the app, a pull or the Home button pressed again. They
@@ -2639,6 +2665,8 @@ internal fun rememberLiveStreams(): LiveStreamsHolder {
  */
 @Composable
 internal fun LiveStreamsRow(
+    /** The holder to read through, hoisted by a caller that decides whether the row stands at all; null reads its own. */
+    holder: LiveStreamsHolder? = null,
     start: Dp,
     end: Dp,
     onPlayStream: (StreamLink) -> Unit,
@@ -2649,7 +2677,7 @@ internal fun LiveStreamsRow(
 ) {
     // The one read path, shared with the Live Guide page (item 15, v1.0.16): the
     // holder reads the posts, this row only draws them.
-    val live = rememberLiveStreams()
+    val live = holder ?: rememberLiveStreams()
     val streams = live.streams
     // The streams the viewer took out of this row (v1.0.11, owner): kept in Settings by the
     // post each one came from ([HiddenStreams]), so every later load leaves them out the same
@@ -3081,6 +3109,7 @@ private const val FEATURED_KEY = "featured"
 private const val SURPRISE_KEY = "surprise"
 private const val LANGUAGE_TILES_KEY = "language-tiles"
 private const val CHIPS_KEY = "chips"
+private const val LIVE_KEY = "live"
 private const val BUILT_IN_KEY = "built-in"
 
 /** How far Home moves down on a television when Down finds no row on screen below the remote. */

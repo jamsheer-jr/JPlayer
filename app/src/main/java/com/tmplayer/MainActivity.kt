@@ -707,6 +707,9 @@ private fun Root() {
     // The setup after sign in (CP67), armed by a sign in screen. False until the store answers,
     // which is right for everybody already signed in: they are never asked.
     val setupPending by settings.setupPending.collectAsStateWithLifecycle(initialValue = false)
+    // Show Chats (owner, v1.0.38): off by default, so the Chats page, its button and
+    // every way on to it stay hidden until Settings turns it on.
+    val showChats by settings.showChats.collectAsStateWithLifecycle(initialValue = false)
     // The favourites the kids lock lets through, as the Favourites tab lists them, so every count
     // of them (the badge, Clear all) says the same number.
     val storedFavorites by settings.favorites.collectAsStateWithLifecycle(initialValue = emptySet())
@@ -1194,7 +1197,11 @@ private fun Root() {
     // Saved as a string rather than as the value itself: a folder is not an enum constant, it is
     // whatever this account happens to have, so there is nothing for the default saver to write.
     var pickedTabKey by rememberSaveable { mutableStateOf("") }
-    val pickedTab = remember(pickedTabKey) { BrowseSection.decode(pickedTabKey) }
+    // Chats hidden (owner, v1.0.38): a saved Chats tab reads as no pick, so the browser
+    // lands on Home. The key itself is kept, so turning Chats back on returns to it.
+    val pickedTab = remember(pickedTabKey, showChats) {
+        BrowseSection.decode(pickedTabKey)?.takeUnless { !showChats && it.onChatsPage }
+    }
     // The Chats page's chip (a folder or one of Telegram's filters) last open, for the bar's Chats.
     var lastChatsKey by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(pickedTab) { if (pickedTab?.onChatsPage == true) lastChatsKey = pickedTabKey }
@@ -2074,6 +2081,12 @@ private fun Root() {
                 val back = BrowseSection.decode(lastChatsKey)
                 browseTo(back ?: BrowseSection.of(BrowseTab.Chats))
             },
+            onTrending = {
+                browseCameFromProfile = false
+                com.tmplayer.ui.browse.CategoryOpenRequest.ask("catalog-trending")
+                browseTo(BrowseSection.of(BrowseTab.Home))
+            },
+            showChats = showChats,
             onSearch = {
                 browseCameFromProfile = false
                 screen = Screen.Chats
@@ -2498,6 +2511,7 @@ private fun Root() {
                         inProfile = screen is Screen.Downloads,
                         searchOpen = false,
                         onHome = { stayOnBar(); touchNav.onHome() },
+                        onTrending = { stayOnBar(); touchNav.onTrending() },
                         onChats = { stayOnBar(); touchNav.onChats() },
                         onSearch = {
                             com.tmplayer.ui.browse.TvBarSignals.searchAsked.value = true

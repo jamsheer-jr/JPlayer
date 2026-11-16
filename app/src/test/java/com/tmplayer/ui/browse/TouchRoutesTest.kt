@@ -40,12 +40,18 @@ class TouchRoutesTest {
     @Test
     fun `the highlight follows the bar's order, the picture last`() {
         assertEquals(0, barHighlightIndex(TouchDestination.Home))
-        assertEquals(1, barHighlightIndex(TouchDestination.Chats))
+        assertEquals(1, barHighlightIndex(TouchDestination.Trending))
+        assertEquals(2, barHighlightIndex(TouchDestination.Chats))
         assertNull(barHighlightIndex(null))
-        // Home, Chats, Search and Settings, then the picture (Settings joined the bar in 1.0.12).
-        assertEquals(4, PROFILE_SLOT)
-        assertEquals(PROFILE_SLOT, barHighlightIndex(null, inProfile = true))
+        // Home, Trending, Chats, Search and Settings, then the picture (Settings joined the bar in 1.0.12, Trending in 1.0.38).
+        assertEquals(5, profileSlot(true))
+        assertEquals(profileSlot(true), barHighlightIndex(null, inProfile = true))
         assertEquals(0, barHighlightIndex(TouchDestination.Home, inProfile = true))
+        // With Chats hidden (owner, v1.0.38) the picture stands a step earlier, and Chats lights nothing.
+        assertEquals(4, profileSlot(false))
+        assertEquals(profileSlot(false), barHighlightIndex(null, inProfile = true, showChats = false))
+        assertNull(barHighlightIndex(TouchDestination.Chats, showChats = false))
+        assertEquals(1, barHighlightIndex(TouchDestination.Trending, showChats = false))
     }
 
     @Test

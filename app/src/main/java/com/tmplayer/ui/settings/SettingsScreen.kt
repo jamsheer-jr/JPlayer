@@ -333,6 +333,7 @@ fun SettingsScreen(
     // the chosen chats unless the viewer turns Global Search on here.
     val globalSearch by settings.globalSearch.collectAsStateWithLifecycle(initialValue = false)
     val resumeSync by settings.resumeSync.collectAsStateWithLifecycle(initialValue = false)
+    val showChats by settings.showChats.collectAsStateWithLifecycle(initialValue = false)
     val wifiOnly by settings.wifiOnlyDownloads.collectAsStateWithLifecycle(initialValue = false)
     val nightDownloads by settings.nightDownloads.collectAsStateWithLifecycle(initialValue = false)
     val nightStart by settings.nightDownloadStart.collectAsStateWithLifecycle(initialValue = NightWindow.DEFAULT_START)
@@ -1572,6 +1573,19 @@ fun SettingsScreen(
                                 if (on) com.tmplayer.data.ResumeSync.syncSoon(settings, afterMs = 0)
                             }
                         },
+                    )
+                }
+                // Show Chats (owner, v1.0.38): off by default, so the Chats page and its
+                // button stay hidden until this is turned on. Home and search still draw
+                // on the chats the viewer chose.
+                item {
+                    ToggleRow(
+                        title = s.settingsShowChats,
+                        modifier = Modifier.jumpTarget(searchTargets["library.show_chats"]),
+                        subtitle = if (showChats) s.settingsShowChatsOn else s.settingsShowChatsOff,
+                        icon = TmIcons.Chats,
+                        checked = showChats,
+                        onToggle = { scope.launch { settings.setShowChats(!showChats) } },
                     )
                 }
                 // The picker, always listed: the chats added decide what Chats, Home and search

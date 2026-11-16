@@ -114,6 +114,10 @@ fun ChatsPage(
     val s = LocalStrings.current
     val ui by model.state.collectAsState()
     val favourites by state.settings.favorites.collectAsState(initial = emptySet())
+    // The Global Search switch (owner, v1.0.38): the empty search's button says
+    // "Search all chats" only with it on; off, the same search looks in the
+    // chosen chats, and the button says so.
+    val chatsGlobalSearch by state.settings.globalSearch.collectAsState(initial = false)
     val folders by Td.folders.collectAsState()
     var query by rememberSaveable(favouritesOnly) { mutableStateOf("") }
     val toast = rememberToast()
@@ -215,10 +219,11 @@ fun ChatsPage(
                         section.isChats && filter != ChatFilter.All -> s.chatsSectionEmpty(filter.label)
                         else -> s.chatsSectionEmpty(section.label)
                     },
-                    // No chat by that name in the list: the same words across every chat, which
-                    // also asks Telegram for a chat with that @username.
+                    // No chat by that name in the list: the same words across the search's
+                    // scope (every chat with Global Search on, the chosen chats with it off),
+                    // which also asks Telegram for a chat with that @username.
                     actionLabel = when {
-                        query.isNotBlank() -> s.searchAllChats
+                        query.isNotBlank() -> if (chatsGlobalSearch) s.searchAllChats else s.searchYourChats
                         folderRead == com.tmplayer.ui.browse.FolderRead.Loading -> null
                         folderRead == com.tmplayer.ui.browse.FolderRead.NotLoaded -> s.commonTryAgain
                         // An empty filter or folder of the chats: back to all of them.

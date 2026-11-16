@@ -464,6 +464,24 @@ private fun Browse(state: ShellState, player: PlayerContent) {
             }.collect { known -> searchModel.alsoKnown = known.map { it.toMediaItem() } }
         }
         LaunchedEffect(telegramConnected) { if (telegramConnected) searchModel.reconnected() }
+        // Global Search (owner, v1.0.38): the switch from Settings (off by default) and the
+        // AddedChats answer, handed to the search as they change, the way the phone's
+        // browser hands them: without them the search's scope would never know the pick,
+        // and the title loads would narrow to the viewer's own chats with no way back.
+        val desktopSearchGlobal by state.settings.globalSearch.collectAsState(initial = false)
+        LaunchedEffect(desktopSearchGlobal) { searchModel.setGlobalSearch(desktopSearchGlobal) }
+        val desktopAddedChoice by com.tmplayer.data.AddedChats.choice.collectAsState()
+        LaunchedEffect(desktopAddedChoice) {
+            searchModel.setScopeChoice(
+                picked = desktopAddedChoice.mode == com.tmplayer.data.AddedMode.Picked,
+                answered = desktopAddedChoice.answered,
+                empty = desktopAddedChoice.mode == com.tmplayer.data.AddedMode.Picked && desktopAddedChoice.chats.isEmpty(),
+            )
+        }
+        // Show Chats (owner, v1.0.38): kept on the shell, so a move to the Chats page
+        // lands on Home while it is off (see ShellState.go).
+        val shellShowChats by state.settings.showChats.collectAsState(initial = false)
+        LaunchedEffect(shellShowChats) { state.showChats = shellShowChats }
         // Resume across devices, when turned on (ResumeSync): in and out once Telegram is reachable.
         LaunchedEffect(telegramConnected) { if (telegramConnected) com.tmplayer.data.ResumeSync.syncSoon(state.settings) }
         var searchSeries by remember { mutableStateOf<com.tmplayer.data.Series?>(null) }

@@ -85,6 +85,8 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun PhoneBrowse(
     tab: BrowseSection,
+    /** Whether the Chats page and its button are shown (Settings, Library; off by default, owner, v1.0.38). */
+    showChats: Boolean,
     account: Account?,
     pane: @Composable (BrowseSection) -> Unit,
     /**
@@ -230,12 +232,19 @@ internal fun PhoneBrowse(
     // The Chats half of the Home and Chats pager: the page itself, or the chip it was left on.
     val chatsSection = if (tab.onChatsPage) tab else chatsPageOf(lastChats, sections)
     // The pager while it is on screen, for the bar's highlight to follow a swipe.
+    // Only with Chats shown: with it hidden there is no second page to swipe to.
     val pagerRef = remember { mutableStateOf<PagerState?>(null) }
-    val barPosition: (() -> Float)? = if (swipePage(tab) != null) {
+    val barPosition: (() -> Float)? = if (showChats && swipePage(tab) != null) {
         remember(pagerRef, swipePage(tab)) {
             {
-                val pager = pagerRef.value
-                if (pager == null) (swipePage(tab) ?: 0).toFloat() else pager.currentPage + pager.currentPageOffsetFraction
+                // The highlight's slot, in buttons: Home is slot 0 and Chats slot 2, with
+                // Trending between them (owner, v1.0.38), so the pager's 0..1 is scaled
+                // to the bar's own numbering.
+                val at = run {
+                    val pager = pagerRef.value
+                    if (pager == null) (swipePage(tab) ?: 0).toFloat() else pager.currentPage + pager.currentPageOffsetFraction
+                }
+                at * TouchDestination.Chats.ordinal
             }
         }
     } else {
@@ -256,7 +265,12 @@ internal fun PhoneBrowse(
             downloadCount = downloadCount,
             updateVersion = updateVersion,
             onHome = { onPickTab(BrowseSection.of(BrowseTab.Home)) },
+            onTrending = {
+                CategoryOpenRequest.ask("catalog-trending")
+                onPickTab(BrowseSection.of(BrowseTab.Home))
+            },
             onChats = { onPickTab(chatsPageOf(lastChats, sections)) },
+            showChats = showChats,
             onSearch = openSearch,
             onSettings = onOpenSettings,
             onFavourites = { onPickTab(BrowseSection.of(BrowseTab.Favorites)) },
@@ -343,7 +357,7 @@ internal fun PhoneBrowse(
                     pane = pane,
                 )
             }
-            if (swipePage(page) != null) {
+            if (swipePage(page) != null && showChats) {
                 HomeChatsPager(
                     tab = tab,
                     chats = chatsSection,

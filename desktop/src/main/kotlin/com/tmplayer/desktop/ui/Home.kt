@@ -222,6 +222,11 @@ internal fun HomeRowsView(
     val s = LocalStrings.current
     var openSeries by remember { mutableStateOf<Series?>(null) }
     var openRow by remember { mutableStateOf<String?>(null) }
+    // A row asked for as a page of its own (the bar's Trending button, owner, v1.0.38):
+    // taken into the open row at once, and the request cleared.
+    LaunchedEffect(state.openRowRequest) {
+        state.openRowRequest?.let { openRow = it; state.openRowRequest = null }
+    }
     val titles = remember(chats) { chats.associate { it.id to it.title } }
     LaunchedEffect(titles) { state.noteChatTitles(chats) }
     // Held above the show and "See all" pages, so coming back from either finds the rows where
@@ -232,7 +237,13 @@ internal fun HomeRowsView(
         SeriesPage(state, shown, rememberSeriesWatch(state), onClose = { openSeries = null })
         return
     }
-    val paged = openRow?.let { key -> rows.firstOrNull { it.key == key } }
+    val paged = openRow?.let { key ->
+        rows.firstOrNull { it.key == key }
+            // Trending (owner, v1.0.38): the bar's Trending button opens this page at
+            // once, before the shelf has stood, so an empty row stands in until the
+            // real one lands and the page fills behind it, as the phone's does.
+            ?: if (key == "catalog-trending") HomeRow.Catalog("trending", "", emptyList(), all = emptyList()) else null
+    }
     if (paged != null) {
         RowPage(
             state = state,

@@ -5,12 +5,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * Whether Home has drawn its first whole screen since the app started: its rows, and the
- * carousel's first picture when it has a carousel. Until then the brand loader stays over the
- * window (MainActivity on Android, Shell on the desktop), so a cold start goes from the loader straight to a finished Home
- * rather than a skeleton filling in piece by piece and the rows jumping down when the carousel
- * lands (user, 2026-10-19). [HOLD_MAX_MS] bounds the wait, so a slow chat never keeps the loader
- * up; whatever is still on its way then arrives under its own placeholders.
+ * Whether Home has drawn its first whole screen since the app started: its rows settled.
+ * Until then the brand loader stays over the window (MainActivity on Android, Shell on the
+ * desktop), so a cold start goes from the loader straight to a finished Home rather than a
+ * skeleton filling in piece by piece and the rows jumping down when the carousel lands
+ * (user, 2026-10-19). The carousel's first picture used to be part of the wait; since
+ * v1.0.38 (owner) it lands under its own placeholder instead, so a slow picture never
+ * holds the loader over rows that are already drawn. [HOLD_MAX_MS] bounds the wait, so a
+ * slow chat never keeps the loader up; whatever is still on its way then arrives under
+ * its own placeholders.
  *
  * Set once per process: coming back to Home later never brings the loader back.
  */

@@ -44,6 +44,7 @@ private val HERO_TRAILER_AUTOPLAY = booleanPreferencesKey("hero_trailer_autoplay
 private val HIDE_RIP_TAGS = booleanPreferencesKey("hide_rip_tags")
 private val HIDE_CAM_COPIES = booleanPreferencesKey("hide_cam_copies")
 private val GLOBAL_SEARCH = booleanPreferencesKey("global_search")
+private val SHOW_CHATS = booleanPreferencesKey("show_chats")
 private val HIDE_SHORT_VIDEOS = booleanPreferencesKey("hide_short_videos")
 private val COMPACT_NAV = booleanPreferencesKey("compact_nav")
 private val DOWNMIX_STEREO = booleanPreferencesKey("downmix_stereo")
@@ -903,6 +904,19 @@ class SettingsStore(private val prefs: DataStore<Preferences>) : AllowedChatsSou
 
     suspend fun setGlobalSearch(value: Boolean) {
         prefs.edit { it[GLOBAL_SEARCH] = value }
+    }
+
+    /**
+     * Whether the Chats page and its button are shown (Settings, Library). OFF by
+     * default (owner, v1.0.38): off, the Chats page stays hidden and the bar shows
+     * Trending in its place, while Home and search still draw on the chats the
+     * viewer chose (see [AddedChats]). On, the Chats page and its button are back
+     * beside Trending.
+     */
+    val showChats: Flow<Boolean> = read { it[SHOW_CHATS] ?: false }
+
+    suspend fun setShowChats(value: Boolean) {
+        prefs.edit { it[SHOW_CHATS] = value }
     }
 
     /**

@@ -961,6 +961,15 @@ class HomeViewModel(
         if (!recentWanted) return
         fetches.ask("recent", fresh = fresh, minGapMs = minGapMs, before = if (fresh) ::untilIdle else null) {
             recentFailed = false
+            // Global Search off with no pick made (owner, v1.0.38): the account wide ask
+            // would read every chat, and the gate it is screened by narrows nothing with
+            // no pick, so nothing is asked at all. An empty answer, so Home stops waiting
+            // for it, as the failure path below answers; a later fresh ask runs again
+            // once the choice is made.
+            if (!VideoSearchSource.globalSearch && com.tmplayer.data.AddedChats.awaitReady() == null) {
+                if (_recent.value == null) _recent.value = emptyList()
+                return@ask HomeFetches.Outcome.Done
+            }
             val items = try {
                 kotlinx.coroutines.withTimeoutOrNull(ROW_TIMEOUT_MS) { source.recentMedia() }
                     ?: throw java.io.IOException("Recent row timed out")
@@ -1533,8 +1542,11 @@ fun rememberHomeRows(
         // the timing changes: which titles end up in Movies or Series once matching
         // completes, and the shelf order on either form factor, are the full build's.
         // A Home that already has rows skips this: its rows stay up through the settle
-        // delay above while the full build runs, as they always have.
-        if (value.isEmpty() && layout.catalogRows) {
+        // delay above while the full build runs, as they always have. With the catalog
+        // rows off in Settings (owner, v1.0.38) the early build runs just the same: the
+        // full build passes no title facts then either, so the early rows are the full
+        // rows, and Home settles on them at once instead of waiting out the build.
+        if (value.isEmpty()) {
             val early = withContext(homeBuild) {
                 HomeRows.build(
                     continueWatching, home, loaded, recent, partial = partial, watchLater = watchLater, fresh = fresh,
@@ -1708,7 +1720,7 @@ private fun PrefetchHomeArt(rows: List<HomeRow>, model: HomeViewModel) {
     }
 }
 
-/** How many titles one sweep round fetches extras for before it asks for a rebuild. */
+/** How many titles one sweep round fetches extras for. */
 private const val EXTRAS_SWEEP_PER_ROUND = 24
 
 /** Restarts an empty Home build waits out before it builds with what it has: see rememberHomeRows. */
@@ -1723,8 +1735,9 @@ private const val EMPTY_BUILD_MAX_SKIPS = 10
  * match asked the way the art prefetch asks, and where the match's extras are not
  * already stored, the provider's extras fetched and stored. A title is asked once
  * per run of the app, landed or not, rounds run until the standing titles are all
- * attempted, and a round that landed any asks the rows for one rebuild
- * ([HomeViewModel.extrasTick]).
+ * attempted, and a sweep that landed any asks the rows for one rebuild, once, at its
+ * end ([HomeViewModel.extrasTick]; owner, v1.0.38: a bump per round rebuilt Home once
+ * per round on a warm reopen).
  */
 @Composable
 private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
@@ -1757,6 +1770,7 @@ private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
         // not Telegram, so it no longer waits for Home's fetches; the round
         // cap and the few-at-once gate stay, and a title is still asked once
         // per run of the app.
+        var landedAny = false
         while (true) {
             val landed = java.util.concurrent.atomic.AtomicInteger(0)
             var tookAny = false
@@ -1781,9 +1795,13 @@ private fun SweepHomeExtras(rows: List<HomeRow>, model: HomeViewModel) {
                     }
                 }
             }
-            if (landed.get() > 0) model.extrasTick++
+            if (landed.get() > 0) landedAny = true
             if (!tookAny) break
         }
+        // One rebuild for the whole sweep, not one per round (owner, v1.0.38): a
+        // round's bump rebuilt the rows while the next round was still fetching,
+        // so a warm reopen rebuilt Home once per round instead of once.
+        if (landedAny) model.extrasTick++
     }
 }
 

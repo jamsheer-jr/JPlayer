@@ -86,7 +86,7 @@ object WholeSeries {
         // the shared one now ([BrowsingGate], owner, v1.0.32).
         // The chats asked are the title load's own decision ([TitleScope], v1.0.15).
         val (gate, gateKnown) = BrowsingGate.read()
-        val scope = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet())
+        val scope = TitleScope.chats(chatId, gate, gateKnown, com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet(), VideoSearchSource.globalSearch)
         // Every chat in the scope is asked together, the show's own among them
         // (owner, v1.0.32): the own chat's full search used to finish before any
         // other chat was asked at all, so a show whose own chat answered slowly

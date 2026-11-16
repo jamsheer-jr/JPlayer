@@ -898,9 +898,13 @@ private suspend fun personCreditAsk(entry: FilmographyEntry): MediaItem? {
  */
 private suspend fun personCreditAskInChats(entry: FilmographyEntry, title: String): MediaItem? {
     val (gate, gateKnown) = com.tmplayer.ui.browse.BrowsingGate.read()
+    // The widening branch reads the Global Search switch (owner, v1.0.38): with it
+    // off, a known gate that narrows nothing asks nothing here, the way the title
+    // load asks only its own chat then; the search ask above already follows the
+    // switch through the mirror.
     val scope = when {
         gate != null -> gate
-        gateKnown -> com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()
+        gateKnown && com.tmplayer.ui.browse.VideoSearchSource.globalSearch -> com.tmplayer.online.KnownMedia.all().map { it.chatId }.toSet()
         else -> return null
     }
     if (scope.isEmpty()) return null

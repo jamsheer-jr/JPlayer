@@ -38,6 +38,7 @@ shows through in the background. They are listed under Selected twins below.
 | `Menu` | Menu01 |  | Material Menu | The navigation drawer. |
 | `MoreVert` | MoreVertical |  | Material MoreVert, PlayerIcons.MoreVert | More actions. |
 | `Home` | Home03 |  | Material Home | Home. |
+| `Trending` | TrendingUp |  |  | Trending, what is popular now. |
 | `Search` | Search01 |  | Material Search | Search. |
 | `SearchRemove` | SearchRemove |  | TmIcons.Search | A search that found nothing. |
 | `FilterHorizontal` | FilterHorizontal |  |  | The search's filters. |
@@ -57,6 +58,7 @@ shows through in the background. They are listed under Selected twins below.
 | `WindowMinimize` | MinusSign |  | WindowGlyphs.Minimize | Minimise the window. |
 | `WindowMaximize` | Stop |  | WindowGlyphs.Maximize | Maximise the window. |
 | `WindowRestore` | Copy |  | WindowGlyphs.Restore | Restore a maximised window: one square behind another. |
+| `Copy` | Copy |  | TmIcons.Copy | Copy to the clipboard: one square behind another. |
 | `WindowClose` | Cancel01 |  | WindowGlyphs.Close | Close the window. |
 | `Add` | Add01 |  | Material Add | Add. |
 | `Remove` | MinusSign |  | TmIcons.Remove | Take one away, on a stepper. |
@@ -82,6 +84,7 @@ shows through in the background. They are listed under Selected twins below.
 | `BellOff` | NotificationOff01 |  | TmIcons.BellOff | Notifications off. |
 | `Unread` | MessageNotification01 |  | TmIcons.Dot | Unread chats. |
 | `Backspace` | Eraser01 | yes | TmIcons.Backspace | Delete the last digit on the PIN pad. |
+| `Visibility` | View |  | TmIcons.Visibility | Show what is hidden: a password in clear. |
 | `VisibilityOff` | ViewOffSlash |  | TmIcons.VisibilityOff | Controls out of sight. |
 | `Chats` | Message01 |  | TmIcons.List | The Chats section, every chat. |
 | `ChatsMany` | MessageMultiple01 |  |  | No chats to show. |
@@ -95,6 +98,7 @@ shows through in the background. They are listed under Selected twins below.
 | `Language` | Globe02 |  | TmIcons.Language | The language setting. |
 | `TextSize` | TextFont |  | TmIcons.TextSize | The interface size. |
 | `Theme` | Moon02 |  | TmIcons.Theme | The theme. |
+| `PureBlack` | Moon02 (filled) |  | TmIcons.PureBlack | Pure black, under the theme: the theme's moon, filled in. |
 | `Palette` | PaintBoard |  | TmIcons.Palette | Wallpaper colours. |
 | `Image` | Image01 |  | TmIcons.Image | Posters, thumbnails. |
 | `Frames` | Album02 |  | TmIcons.Frames | Preview frames over the scrub bar. |
@@ -142,6 +146,7 @@ shows through in the background. They are listed under Selected twins below.
 | `Chats` | Message01 | shape 1 (stroke) |
 | `Settings` | Settings01 | shape 2 (inside) |
 | `Search` | Search01 | nothing |
+| `Trending` | TrendingUp | nothing |
 | `StarOutline` | Star | nothing |
 | `Bookmark` | Bookmark02 | nothing |
 | `Folder` | Folder01 | nothing |
@@ -190,3 +195,6 @@ shows through in the background. They are listed under Selected twins below.
 
 - The phone player's big centre play and pause (`PlayPauseIcon.kt`) is drawn in code, because
   its two bars fold into the triangle as an animation; a filled glyph reads at that size.
+
+- The accent colour (`TmIcons.Accent`) is a drop of paint drawn by hand, in HAND in the
+  script: the set's drops are a different shape.

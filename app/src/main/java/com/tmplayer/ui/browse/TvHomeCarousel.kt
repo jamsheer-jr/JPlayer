@@ -336,7 +336,6 @@ private fun TvFeaturedArt(pick: FeaturedPick, chatTitle: (Long) -> String, start
             // every item of the top bar reads over it in every theme.
             topFadePx = { headerFade() * BAR_FADE_REACH },
             overhang = com.tmplayer.ui.components.EDGE_OVERHANG,
-            onPictured = HomeFirstPaint::markReady,
         )
         // Over Play and Details: the title's logo where TMDB has one (the name in type until then
         // and otherwise), the facts line and two lines of the overview, as the desktop's page.

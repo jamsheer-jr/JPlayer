@@ -321,7 +321,9 @@ internal fun LibraryRows(state: ShellState, chatList: List<com.tmplayer.data.Cha
     val openLast by settings.openLastChat.collectAsState(initial = false)
     val lastChatId by settings.lastChatId.collectAsState(initial = 0L)
     val rememberSearches by settings.rememberSearches.collectAsState(initial = true)
+    val globalSearch by settings.globalSearch.collectAsState(initial = false)
     val resumeSync by settings.resumeSync.collectAsState(initial = false)
+    val showChats by settings.showChats.collectAsState(initial = false)
     val newVideoAlerts by settings.newVideoAlerts.collectAsState(initial = false)
     val history by settings.continueWatching.collectAsState(initial = emptyList())
     // Only those the kids lock shows, as the Favourites section counts them.
@@ -395,6 +397,15 @@ internal fun LibraryRows(state: ShellState, chatList: List<com.tmplayer.data.Cha
         rememberSearches,
         icon = TmIcons.Search,
     ) { on -> scope.launch { settings.setRememberSearches(on) } }
+    // Global Search (owner, v1.0.16): off by default, so search stays inside the
+    // chats the viewer chose until this is turned on. The desktop had no row for
+    // it until v1.0.38, when the title loads started reading the switch.
+    Toggle(
+        s.settingsGlobalSearch,
+        if (globalSearch) s.settingsGlobalSearchOn else s.settingsGlobalSearchOff,
+        globalSearch,
+        icon = TmIcons.Search,
+    ) { on -> scope.launch { settings.setGlobalSearch(on) } }
     // Resume across devices: opt in, the row saying what it writes and where (ResumeSync).
     Toggle(
         s.settingsResumeSync,
@@ -408,6 +419,15 @@ internal fun LibraryRows(state: ShellState, chatList: List<com.tmplayer.data.Cha
             if (on) com.tmplayer.data.ResumeSync.syncSoon(settings, afterMs = 0)
         }
     }
+    // Show Chats (owner, v1.0.38): off by default, so the Chats page and its
+    // button stay hidden until this is turned on. Home and search still draw
+    // on the chats the viewer chose.
+    Toggle(
+        s.settingsShowChats,
+        if (showChats) s.settingsShowChatsOn else s.settingsShowChatsOff,
+        showChats,
+        icon = TmIcons.Chats,
+    ) { on -> scope.launch { settings.setShowChats(on) } }
     // The picker: the chats added decide what Chats, Home and search show (HX27). The one list of
     // which chats TMPlayer shows: a chat's "Remove from TMPlayer" unticks a chat here (2026-11-01).
     val added by com.tmplayer.data.AddedChats.choice.collectAsState()

@@ -121,22 +121,32 @@ import com.tmplayer.ui.theme.floatingBorder
 import com.tmplayer.ui.theme.rememberReducedMotion
 
 /**
- * Where the phone's floating bar can take the viewer, in the bar's order. Search comes after them,
- * a button that opens the search over the page rather than a page of its own, and the profile
- * picture last, which opens the Profile page ([ProfilePage]) with the viewer's own lists and
- * Settings.
+ * Where the phone's floating bar can take the viewer, in the bar's order. Trending stands
+ * between Home and Chats (owner, v1.0.38): with Chats hidden it takes the Chats slot, and
+ * with Chats shown both stand. Search comes after them, a button that opens the search
+ * over the page rather than a page of its own, and the profile picture last, which opens
+ * the Profile page ([ProfilePage]) with the viewer's own lists and Settings.
  */
-internal enum class TouchDestination { Home, Chats }
+internal enum class TouchDestination { Home, Trending, Chats }
 
-/** The profile picture's place on the bar: after every [TouchDestination], Search and Settings. */
-internal val PROFILE_SLOT = TouchDestination.entries.size + 2
+/**
+ * The profile picture's place on the bar: after every destination drawn, Search and
+ * Settings. Five with Chats shown, four with it hidden (owner, v1.0.38).
+ */
+internal fun profileSlot(showChats: Boolean): Int =
+    TouchDestination.entries.count { it != TouchDestination.Chats || showChats } + 2
 
 /**
  * Which of the bar's slots carries the sliding highlight: [current]'s button, or the picture on a
- * page behind it ([inProfile]: Favourites, History, Watch later, Downloads), or none.
+ * page behind it ([inProfile]: Favourites, History, Watch later, Downloads), or none. Chats, when
+ * hidden, has no button to light.
  */
-internal fun barHighlightIndex(current: TouchDestination?, inProfile: Boolean = false): Int? =
-    current?.ordinal ?: if (inProfile) PROFILE_SLOT else null
+internal fun barHighlightIndex(current: TouchDestination?, inProfile: Boolean = false, showChats: Boolean = true): Int? = when {
+    current == TouchDestination.Chats && !showChats -> null
+    current != null -> current.ordinal
+    inProfile -> profileSlot(showChats)
+    else -> null
+}
 
 /**
  * What the floating bar and the page behind the picture show and do, the same on every page
@@ -153,7 +163,11 @@ internal class TouchNav(
     val watchedCount: Int = 0,
     val updateVersion: String?,
     val onHome: () -> Unit,
+    /** Trending as a page of its own (owner, v1.0.38): Home, with its Trending shelf opened. */
+    val onTrending: () -> Unit,
     val onChats: () -> Unit,
+    /** Whether the Chats page and its button are shown (Settings, Library; off by default). */
+    val showChats: Boolean,
     val onSearch: () -> Unit,
     /** Settings, from the Profile page (the phone) and the television's account menu. */
     val onSettings: () -> Unit,
@@ -183,9 +197,10 @@ internal class TouchPageSpec(
     val hidden: Boolean = false,
     val actions: (@Composable RowScope.() -> Unit)? = null,
     /**
-     * Where the highlight stands while Home and Chats are swiped between: 0 on Home, 1 on Chats,
-     * and the fraction between them mid-swipe. Read as the bar is laid out, so a swipe moves the
-     * highlight without recomposing the bar. Null leaves the highlight on [current].
+     * Where the highlight stands while Home and Chats are swiped between, in the bar's own
+     * numbering: 0 on Home, the Chats button's slot on Chats, and the fraction between them
+     * mid-swipe. Read as the bar is laid out, so a swipe moves the highlight without
+     * recomposing the bar. Null leaves the highlight on [current].
      */
     val position: (() -> Float)? = null,
 )
@@ -235,9 +250,9 @@ internal fun TouchPage(spec: TouchPageSpec?) {
 }
 
 /**
- * The phone's floating bar, hosted once over every page: Home, Chats, Search and the viewer's
+ * The phone's floating bar, hosted once over every page: Home, Trending, Chats, Search and the viewer's
  * picture, with the Profile page of Favourites, Downloads, History, Watch later, Settings and
- * Update behind the picture.
+ * Update behind the picture. Chats stands only while Settings shows it (owner, v1.0.38).
  *
  * The bar floats, so it takes no room from the listing. It once slid away as the list was
  * pushed up and came back on the first pull down; the owner asked for it standing on every
@@ -367,7 +382,9 @@ internal fun TouchNavHost(
                             account = nav.account,
                             badged = nav.downloadCount > 0 || nav.updateVersion != null,
                             onHome = retap(TouchDestination.Home, nav.onHome),
+                            onTrending = retap(TouchDestination.Trending, nav.onTrending),
                             onChats = retap(TouchDestination.Chats, nav.onChats),
+                            showChats = nav.showChats,
                             onSearch = nav.onSearch,
                             onSettings = nav.onSettings,
                             onProfile = nav.onProfile,
@@ -647,6 +664,8 @@ internal fun rememberTouchExploration(): Boolean {
  * behind the picture (Favourites, History, Watch later, Downloads) the pill moves under the
  * picture, which wears an accent ring too. Search is the button the search field grows out of
  * ([searchShared]). Every press and the highlight are pills, round like the bar they sit in.
+ * Six buttons (Chats shown again, owner, v1.0.38) are wider than a phone at full width, so
+ * the buttons narrow to fit, the highlight and its step narrowing with them.
  *
  * [vertical] stands the same bar up as a rail down the start edge, for a wide window: the same
  * buttons in the same order, top to bottom, with the highlight sliding down rather than across.
@@ -659,7 +678,9 @@ internal fun FloatingBar(
     account: Account?,
     badged: Boolean,
     onHome: () -> Unit,
+    onTrending: () -> Unit,
     onChats: () -> Unit,
+    showChats: Boolean,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onProfile: () -> Unit,
@@ -685,7 +706,16 @@ internal fun FloatingBar(
     // with 6 dp around the highlight; the rail is as wide as the bar is tall plus its margins, so
     // it takes the bar's 32 dp corners rather than a full semicircle, which no button could follow.
     val barShape = if (vertical) RAIL_SHAPE else CircleShape
-    Box(outer, contentAlignment = Alignment.Center) {
+    BoxWithConstraints(outer, contentAlignment = Alignment.Center) {
+        // Six buttons at 64 dp are wider than a phone: the buttons narrow to fit the
+        // window, the highlight and its step narrowing with them. Five buttons keep
+        // the full width on a wide enough window. A rail's buttons never narrow:
+        // they stack, so width is never the constraint there.
+        val count = if (showChats) 6 else 5
+        val buttonWidth = if (vertical) BUTTON_WIDTH else minOf(
+            BUTTON_WIDTH,
+            ((maxWidth - 12.dp - BAR_SPACING * (count - 1)) / count).coerceAtLeast(BUTTON_MIN_WIDTH),
+        )
         Box(
             Modifier
                 .then(if (vertical) Modifier.width(RAIL_WIDTH) else Modifier.height(BAR_HEIGHT))
@@ -699,8 +729,8 @@ internal fun FloatingBar(
           Box(contentAlignment = if (vertical) Alignment.TopCenter else Alignment.CenterStart) {
             // One highlight under the chosen page, sliding to the next one rather than blinking
             // off under one button and on under another, so the bar shows where the page went.
-            val index = barHighlightIndex(current, inProfile)
-            val step = with(LocalDensity.current) { ((if (vertical) BUTTON_HEIGHT else BUTTON_WIDTH) + BAR_SPACING).toPx() }
+            val index = barHighlightIndex(current, inProfile, showChats)
+            val step = with(LocalDensity.current) { ((if (vertical) BUTTON_HEIGHT else buttonWidth) + BAR_SPACING).toPx() }
             // Where the highlight stands, in buttons from the start: sprung to the chosen one, or,
             // while Home and Chats are on screen, following the pager (sprung only the first time,
             // coming in from another page, then held to the finger).
@@ -731,7 +761,7 @@ internal fun FloatingBar(
                         val along = (slot.value * step).roundToInt()
                         if (vertical) IntOffset(0, along) else IntOffset(along, 0)
                     }
-                    .size(BUTTON_WIDTH, BUTTON_HEIGHT)
+                    .size(if (vertical) BUTTON_WIDTH else buttonWidth, BUTTON_HEIGHT)
                     .graphicsLayer {
                         alpha = shown
                         // Stretched a little along the way while it springs to another button and
@@ -751,11 +781,14 @@ internal fun FloatingBar(
                     .background(Tone.accent.copy(alpha = 0.16f)),
             )
             val buttons: @Composable () -> Unit = {
-                BarButton(TmIcons.Home, s.browseTabHome, current == TouchDestination.Home, onHome)
-                BarButton(TmIcons.Chats, s.browseTabChats, current == TouchDestination.Chats, onChats)
-                BarButton(TmIcons.Search, s.commonSearch, false, onSearch, role = Role.Button, modifier = searchShared)
-                BarButton(TmIcons.Settings, s.navSettings, false, onSettings)
-                ProfileButton(account, inProfile, badged, onProfile)
+                BarButton(TmIcons.Home, s.browseTabHome, current == TouchDestination.Home, onHome, width = buttonWidth)
+                BarButton(TmIcons.Trending, s.browseTabTrending, current == TouchDestination.Trending, onTrending, width = buttonWidth)
+                if (showChats) {
+                    BarButton(TmIcons.Chats, s.browseTabChats, current == TouchDestination.Chats, onChats, width = buttonWidth)
+                }
+                BarButton(TmIcons.Search, s.commonSearch, false, onSearch, role = Role.Button, modifier = searchShared, width = buttonWidth)
+                BarButton(TmIcons.Settings, s.navSettings, false, onSettings, width = buttonWidth)
+                ProfileButton(account, inProfile, badged, onProfile, width = buttonWidth)
             }
             if (vertical) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(BAR_SPACING)) { buttons() }
@@ -769,7 +802,7 @@ internal fun FloatingBar(
 
 /** The viewer's picture on the bar, which opens the Profile page of their own lists. */
 @Composable
-private fun ProfileButton(account: Account?, inProfile: Boolean, badged: Boolean, onProfile: () -> Unit) {
+private fun ProfileButton(account: Account?, inProfile: Boolean, badged: Boolean, onProfile: () -> Unit, width: Dp = BUTTON_WIDTH) {
     val s = LocalStrings.current
     val reduced = rememberReducedMotion() || Motion.reduced
     val profilePress = remember { MutableInteractionSource() }
@@ -777,7 +810,7 @@ private fun ProfileButton(account: Account?, inProfile: Boolean, badged: Boolean
     com.tmplayer.ui.components.IconTip(s.navProfile) {
         Column(
             Modifier
-                .size(BUTTON_WIDTH, BUTTON_HEIGHT)
+                .size(width, BUTTON_HEIGHT)
                 .pressScale(profilePress)
                 .clip(HIGHLIGHT_SHAPE)
                 .clickable(interactionSource = profilePress, indication = ripple(), role = Role.Button, onClick = onProfile)
@@ -843,11 +876,12 @@ private fun BarButton(
     onClick: () -> Unit,
     role: Role = Role.Tab,
     modifier: Modifier = Modifier,
+    width: Dp = BUTTON_WIDTH,
 ) {
     val press = remember { MutableInteractionSource() }
     Column(
         modifier
-            .size(BUTTON_WIDTH, BUTTON_HEIGHT)
+            .size(width, BUTTON_HEIGHT)
             .pressScale(press)
             .clip(HIGHLIGHT_SHAPE)
             .clickable(interactionSource = press, indication = ripple(), role = role, onClick = onClick)
@@ -898,6 +932,9 @@ internal val BAR_GAP = 8.dp
 /** One of the bar's buttons, its icon over its caption. */
 private val BUTTON_WIDTH = 64.dp
 private val BUTTON_HEIGHT = 52.dp
+
+/** The narrowest a button may go when the bar has six of them: a finger's width. */
+private val BUTTON_MIN_WIDTH = 48.dp
 
 /** The highlight under the chosen button, and the shape a press ripples in: a pill, as the bar is. */
 private val HIGHLIGHT_SHAPE = CircleShape

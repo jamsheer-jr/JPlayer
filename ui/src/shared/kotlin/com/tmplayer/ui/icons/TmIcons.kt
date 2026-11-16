@@ -89,6 +89,15 @@ object TmIcons {
         )
     }
 
+    /** Trending, what is popular now. Hugeicons TrendingUp. */
+    val Trending: ImageVector by lazy {
+        icon(
+            "Trending",
+            s("M3 17L7 13C7.88256 12.1174 8.32385 11.6762 8.86543 11.6274C8.95496 11.6193 9.04504 11.6193 9.13457 11.6274C9.67615 11.6762 10.1174 12.1174 11 13C11.8826 13.8826 12.3238 14.3238 12.8654 14.3726C12.955 14.3807 13.045 14.3807 13.1346 14.3726C13.6762 14.3238 14.1174 13.8826 15 13L20 8"),
+            s("M16 7.27657C16 7.27657 20.101 6.65426 20.7234 7.27661C21.3458 7.89896 20.7234 12 20.7234 12"),
+        )
+    }
+
     /** Search. Hugeicons Search01. */
     val Search: ImageVector by lazy {
         icon(
@@ -239,13 +248,19 @@ object TmIcons {
     /** Maximise the window. Hugeicons Stop. */
     val WindowMaximize: ImageVector by lazy { icon("WindowMaximize", s("M4 12C4 8.72077 4 7.08116 4.81382 5.91891C5.1149 5.48891 5.48891 5.1149 5.91891 4.81382C7.08116 4 8.72077 4 12 4C15.2792 4 16.9188 4 18.0811 4.81382C18.5111 5.1149 18.8851 5.48891 19.1862 5.91891C20 7.08116 20 8.72077 20 12C20 15.2792 20 16.9188 19.1862 18.0811C18.8851 18.5111 18.5111 18.8851 18.0811 19.1862C16.9188 20 15.2792 20 12 20C8.72077 20 7.08116 20 5.91891 19.1862C5.48891 18.8851 5.1149 18.5111 4.81382 18.0811C4 16.9188 4 15.2792 4 12Z")) }
 
-    /** Copy to the clipboard: the same two squares as [WindowRestore], which is Hugeicons Copy. */
-    val Copy: ImageVector get() = WindowRestore
-
     /** Restore a maximised window: one square behind another. Hugeicons Copy. */
     val WindowRestore: ImageVector by lazy {
         icon(
             "WindowRestore",
+            s("M7 11V9C7 5.70017 7 4.05025 8.02513 3.02513C9.05025 2 10.7002 2 14 2C17.2998 2 18.9497 2 19.9749 3.02513C21 4.05025 21 5.70017 21 9V11C21 14.2998 21 15.9497 19.9749 16.9749C18.9497 18 17.2998 18 14 18C10.7002 18 9.05025 18 8.02513 16.9749C7 15.9497 7 14.2998 7 11Z"),
+            s("M3 6V15C3 18.2998 3 19.9497 4.02513 20.9749C5.05025 22 6.70017 22 10 22H17"),
+        )
+    }
+
+    /** Copy to the clipboard: one square behind another. Hugeicons Copy. */
+    val Copy: ImageVector by lazy {
+        icon(
+            "Copy",
             s("M7 11V9C7 5.70017 7 4.05025 8.02513 3.02513C9.05025 2 10.7002 2 14 2C17.2998 2 18.9497 2 19.9749 3.02513C21 4.05025 21 5.70017 21 9V11C21 14.2998 21 15.9497 19.9749 16.9749C18.9497 18 17.2998 18 14 18C10.7002 18 9.05025 18 8.02513 16.9749C7 15.9497 7 14.2998 7 11Z"),
             s("M3 6V15C3 18.2998 3 19.9497 4.02513 20.9749C5.05025 22 6.70017 22 10 22H17"),
         )
@@ -587,17 +602,8 @@ object TmIcons {
     /** The theme. Hugeicons Moon02. */
     val Theme: ImageVector by lazy { icon("Theme", s("M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z")) }
 
-    /** Pure black, under the theme: the theme's moon, filled in. Hugeicons Moon02, solid. */
+    /** Pure black, under the theme: the theme's moon, filled in. Hugeicons Moon02, filled. */
     val PureBlack: ImageVector by lazy { icon("PureBlack", sf("M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z")) }
-
-    /** The accent colour: a drop of paint. */
-    val Accent: ImageVector by lazy {
-        icon(
-            "Accent",
-            s("M12 21.5C8.134 21.5 5 18.366 5 14.5C5 10.5 12 2.5 12 2.5C12 2.5 19 10.5 19 14.5C19 18.366 15.866 21.5 12 21.5Z"),
-            s("M15.5 14.5C15.5 16.433 13.933 18 12 18"),
-        )
-    }
 
     /** Wallpaper colours. Hugeicons PaintBoard. */
     val Palette: ImageVector by lazy {
@@ -721,16 +727,8 @@ object TmIcons {
 
     // Player
 
-    /**
-     * Hugeicons Play, moved 1.25 units right of its box's centre: a triangle's weight sits toward
-     * its flat side, so one centred by its box looks pushed left inside a round button or a pill
-     * (user, 2026-10-22, the cards' hover Play). Every play glyph uses this one path, so each
-     * button, badge and pill that holds it is centred by eye without its own nudge.
-     */
-    private const val PLAY_PATH = "M20.1406 12.846C19.7871 14.189 18.1167 15.138 14.7757 17.0361C11.546 18.8709 9.9312 19.7884 8.6298 19.4196C8.0918 19.2671 7.6016 18.9776 7.2062 18.5787C6.25 17.6139 6.25 15.7426 6.25 12C6.25 8.2574 6.25 6.3861 7.2062 5.42132C7.6016 5.02245 8.0918 4.73288 8.6298 4.58042C9.9312 4.21165 11.546 5.12907 14.7757 6.96393C18.1167 8.86197 19.7871 9.811 20.1406 11.154C20.2865 11.7084 20.2865 12.2916 20.1406 12.846Z"
-
     /** Play. Hugeicons Play. */
-    val Play: ImageVector by lazy { icon("Play", s(PLAY_PATH)) }
+    val Play: ImageVector by lazy { icon("Play", s("M20.1406 12.846C19.7871 14.189 18.1167 15.138 14.7757 17.0361C11.546 18.8709 9.9312 19.7884 8.6298 19.4196C8.0918 19.2671 7.6016 18.9776 7.2062 18.5787C6.25 17.6139 6.25 15.7426 6.25 12C6.25 8.2574 6.25 6.3861 7.2062 5.42132C7.6016 5.02245 8.0918 4.73288 8.6298 4.58042C9.9312 4.21165 11.546 5.12907 14.7757 6.96393C18.1167 8.86197 19.7871 9.811 20.1406 11.154C20.2865 11.7084 20.2865 12.2916 20.1406 12.846Z")) }
 
     /** Pause. Hugeicons Pause. */
     val Pause: ImageVector by lazy {
@@ -742,7 +740,7 @@ object TmIcons {
     }
 
     /** The player's big centre play, and play badges on artwork. Hugeicons Play, filled. */
-    val PlaySolid: ImageVector by lazy { icon("PlaySolid", sf(PLAY_PATH)) }
+    val PlaySolid: ImageVector by lazy { icon("PlaySolid", sf("M20.1406 12.846C19.7871 14.189 18.1167 15.138 14.7757 17.0361C11.546 18.8709 9.9312 19.7884 8.6298 19.4196C8.0918 19.2671 7.6016 18.9776 7.2062 18.5787C6.25 17.6139 6.25 15.7426 6.25 12C6.25 8.2574 6.25 6.3861 7.2062 5.42132C7.6016 5.02245 8.0918 4.73288 8.6298 4.58042C9.9312 4.21165 11.546 5.12907 14.7757 6.96393C18.1167 8.86197 19.7871 9.811 20.1406 11.154C20.2865 11.7084 20.2865 12.2916 20.1406 12.846Z")) }
 
     /** The player's big centre pause. Hugeicons Pause, filled. */
     val PauseSolid: ImageVector by lazy {
@@ -984,6 +982,17 @@ object TmIcons {
         )
     }
 
+    // Hand-drawn: no glyph in the set is this shape, so the paths live in the script.
+
+    /** The accent colour: a drop of paint. Drawn by hand. */
+    val Accent: ImageVector by lazy {
+        icon(
+            "Accent",
+            s("M12 21.5C8.134 21.5 5 18.366 5 14.5C5 10.5 12 2.5 12 2.5C12 2.5 19 10.5 19 14.5C19 18.366 15.866 21.5 12 21.5Z"),
+            s("M15.5 14.5C15.5 16.433 13.933 18 12 18"),
+        )
+    }
+
     // Selected twins: the free set has no filled style, so these are its outlines filled in
 
     /** [Home], selected: Hugeicons Home03 filled in, its detail cut out. */
@@ -1014,6 +1023,14 @@ object TmIcons {
     val SearchSelected: FilledIcon by lazy {
         FilledIcon(
             body = icon("SearchSelected", sf("M17 17L21 21"), sf("M19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19C15.4183 19 19 15.4183 19 11Z")),
+            cut = null,
+        )
+    }
+
+    /** [Trending], selected: Hugeicons TrendingUp filled in. */
+    val TrendingSelected: FilledIcon by lazy {
+        FilledIcon(
+            body = icon("TrendingSelected", sf("M3 17L7 13C7.88256 12.1174 8.32385 11.6762 8.86543 11.6274C8.95496 11.6193 9.04504 11.6193 9.13457 11.6274C9.67615 11.6762 10.1174 12.1174 11 13C11.8826 13.8826 12.3238 14.3238 12.8654 14.3726C12.955 14.3807 13.045 14.3807 13.1346 14.3726C13.6762 14.3238 14.1174 13.8826 15 13L20 8"), sf("M16 7.27657C16 7.27657 20.101 6.65426 20.7234 7.27661C21.3458 7.89896 20.7234 12 20.7234 12")),
             cut = null,
         )
     }
@@ -1053,7 +1070,7 @@ object TmIcons {
     /** [Play], selected: Hugeicons Play filled in. */
     val PlaySelected: FilledIcon by lazy {
         FilledIcon(
-            body = icon("PlaySelected", sf(PLAY_PATH)),
+            body = icon("PlaySelected", sf("M20.1406 12.846C19.7871 14.189 18.1167 15.138 14.7757 17.0361C11.546 18.8709 9.9312 19.7884 8.6298 19.4196C8.0918 19.2671 7.6016 18.9776 7.2062 18.5787C6.25 17.6139 6.25 15.7426 6.25 12C6.25 8.2574 6.25 6.3861 7.2062 5.42132C7.6016 5.02245 8.0918 4.73288 8.6298 4.58042C9.9312 4.21165 11.546 5.12907 14.7757 6.96393C18.1167 8.86197 19.7871 9.811 20.1406 11.154C20.2865 11.7084 20.2865 12.2916 20.1406 12.846Z")),
             cut = null,
         )
     }
@@ -1088,6 +1105,7 @@ object TmIcons {
         "Chats" -> ChatsSelected
         "Settings" -> SettingsSelected
         "Search" -> SearchSelected
+        "Trending" -> TrendingSelected
         "StarOutline" -> StarOutlineSelected
         "Bookmark" -> BookmarkSelected
         "Folder" -> FolderSelected

@@ -1,5 +1,8 @@
 package com.tmplayer.ui.browse
 
+import com.tmplayer.data.AddedChats
+import com.tmplayer.data.AddedChoice
+import com.tmplayer.data.AddedMode
 import com.tmplayer.data.AllChatsCursor
 import com.tmplayer.data.AllChatsPage
 import com.tmplayer.data.ChatGate
@@ -148,7 +151,8 @@ class GlobalSearchViewModelTest {
     @Test
     fun `what the app already knows shows before Telegram answers`() = runTest(dispatcher) {
         val local = video(40, "Harbour_Notes_2024.mkv")
-        val model = GlobalSearchViewModel(source, known = { listOf(local) }, work = dispatcher, settleMs = 1_000)
+        // The switch on, so the local half may look over the pool (owner, v1.0.38).
+        val model = GlobalSearchViewModel(source, known = { listOf(local) }, work = dispatcher, settleMs = 1_000, globalSearch = true)
         model.type("harbour notes")
         // Worked out off the main thread, but before the settle is over.
         dispatcher.scheduler.runCurrent()
@@ -192,7 +196,8 @@ class GlobalSearchViewModelTest {
             if (!online) throw VideoSearchSource.Offline()
             source.page(query, cursor, filters)
         }
-        val model = GlobalSearchViewModel(flaky, known = { listOf(video(50, "Harbour.Days.2018.mkv")) }, work = dispatcher, settleMs = 0)
+        // The switch on, so the local half may look over the pool (owner, v1.0.38).
+        val model = GlobalSearchViewModel(flaky, known = { listOf(video(50, "Harbour.Days.2018.mkv")) }, work = dispatcher, settleMs = 0, globalSearch = true)
         model.type("harbour")
         advanceUntilIdle()
         assertTrue(model.state.value.offline)
@@ -420,11 +425,30 @@ class GlobalSearchViewModelTest {
         assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = false).scopeMissing)
         assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = true, scopeEmpty = true).scopeMissing)
         assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = true, scopeEmpty = false).scopeMissing)
-        assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = false).scopeMissing)
+        // Owner, v1.0.38: with the switch off, a keep-everything answer is no pick at
+        // all, so the scope is missing there too, and nothing is account wide.
+        assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = false).scopeMissing)
         assertFalse(GlobalSearchState(globalSearch = true, scopeAnswered = false).scopeMissing)
         assertTrue(GlobalSearchState(globalSearch = true).scopeAll)
-        assertTrue(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = false).scopeAll)
+        assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = false).scopeAll)
         assertFalse(GlobalSearchState(globalSearch = false, scopeAnswered = true, scopePicked = true, scopeEmpty = false).scopeAll)
+    }
+
+    @Test
+    fun `with Global Search off and no chats picked, nothing local shows`() = runTest(dispatcher) {
+        // Owner, v1.0.38: the local half drew on the whole pool with no pick, so chats
+        // never joined showed in the results. Off with no pick, the pool is empty, and
+        // the nowhere-to-look notice is the only content.
+        AddedChats.set(AddedChoice(AddedMode.All, emptyList()))
+        val local = video(40, "Harbour_Notes_2024.mkv")
+        val model = GlobalSearchViewModel(source, known = { listOf(local) }, work = dispatcher, settleMs = 100)
+        model.setGlobalSearch(false)
+        model.setScopeChoice(picked = false, answered = true, empty = false)
+        model.type("harbour notes")
+        advanceUntilIdle()
+        assertTrue(model.state.value.scopeMissing)
+        assertTrue(model.state.value.groups.isEmpty())
+        assertTrue(model.state.value.shown.isEmpty())
     }
 
     @Test

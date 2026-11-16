@@ -20,7 +20,8 @@ why the package is fetched with `npm pack` rather than installed.
 
 Only the icons listed below are written, so the app carries the few dozen it draws rather than the
 six thousand in the set. To add one, find it on hugeicons.com (or by file name in dist/esm), add a
-line to ICONS or DRAWABLES and run the script again. Nothing it writes is edited by hand.
+line to ICONS or DRAWABLES and run the script again. Nothing it writes is edited by hand. One icon
+is drawn by hand (HAND): a drop of paint in a shape the set has no glyph for.
 
 Every stroke is 1.5 units on the 24 unit grid with round caps and joins, as the set is drawn (1.75
 in the Android drawables, see DRAWABLE_STROKE), and
@@ -59,6 +60,15 @@ class Icon:
     solid: bool = False  # outline filled in
 
 
+@dataclass
+class Hand:
+    """An icon drawn by hand, not from the set: its name, what it stands for, and its shapes
+    as the part calls TmIcons.kt writes (s/f/sf with the path data)."""
+    name: str
+    doc: str
+    parts: list[str]
+
+
 # Grouped by where they are mostly seen. The order is the order of the generated file.
 ICONS: list[tuple[str, list[Icon]]] = [
     ("Navigation and chrome", [
@@ -72,6 +82,7 @@ ICONS: list[tuple[str, list[Icon]]] = [
         Icon("Menu", "Menu01", "The navigation drawer.", "Material Menu"),
         Icon("MoreVert", "MoreVertical", "More actions.", "Material MoreVert, PlayerIcons.MoreVert"),
         Icon("Home", "Home03", "Home.", "Material Home"),
+        Icon("Trending", "TrendingUp", "Trending, what is popular now.", ""),
         Icon("Search", "Search01", "Search.", "Material Search"),
         Icon("SearchRemove", "SearchRemove", "A search that found nothing.", "TmIcons.Search"),
         Icon("FilterHorizontal", "FilterHorizontal", "The search's filters.", ""),
@@ -93,6 +104,7 @@ ICONS: list[tuple[str, list[Icon]]] = [
         Icon("WindowMinimize", "MinusSign", "Minimise the window.", "WindowGlyphs.Minimize"),
         Icon("WindowMaximize", "Stop", "Maximise the window.", "WindowGlyphs.Maximize"),
         Icon("WindowRestore", "Copy", "Restore a maximised window: one square behind another.", "WindowGlyphs.Restore"),
+        Icon("Copy", "Copy", "Copy to the clipboard: one square behind another.", "TmIcons.Copy"),
         Icon("WindowClose", "Cancel01", "Close the window.", "WindowGlyphs.Close"),
     ]),
     ("Actions and states", [
@@ -120,6 +132,7 @@ ICONS: list[tuple[str, list[Icon]]] = [
         Icon("BellOff", "NotificationOff01", "Notifications off.", "TmIcons.BellOff"),
         Icon("Unread", "MessageNotification01", "Unread chats.", "TmIcons.Dot"),
         Icon("Backspace", "Eraser01", "Delete the last digit on the PIN pad.", "TmIcons.Backspace", mirror=True),
+        Icon("Visibility", "View", "Show what is hidden: a password in clear.", "TmIcons.Visibility"),
         Icon("VisibilityOff", "ViewOffSlash", "Controls out of sight.", "TmIcons.VisibilityOff"),
     ]),
     ("People and chats", [
@@ -137,6 +150,7 @@ ICONS: list[tuple[str, list[Icon]]] = [
         Icon("Language", "Globe02", "The language setting.", "TmIcons.Language"),
         Icon("TextSize", "TextFont", "The interface size.", "TmIcons.TextSize"),
         Icon("Theme", "Moon02", "The theme.", "TmIcons.Theme"),
+        Icon("PureBlack", "Moon02", "Pure black, under the theme: the theme's moon, filled in.", "TmIcons.PureBlack", solid=True),
         Icon("Palette", "PaintBoard", "Wallpaper colours.", "TmIcons.Palette"),
         Icon("Image", "Image01", "Posters, thumbnails.", "TmIcons.Image"),
         Icon("Frames", "Album02", "Preview frames over the scrub bar.", "TmIcons.Frames"),
@@ -181,6 +195,27 @@ ICONS: list[tuple[str, list[Icon]]] = [
 ]
 
 
+# The icons drawn by hand, because the set has no glyph for them (see the class above).
+HAND: list[Hand] = [
+    Hand("Accent", "The accent colour: a drop of paint.", [
+        's("M12 21.5C8.134 21.5 5 18.366 5 14.5C5 10.5 12 2.5 12 2.5C12 2.5 19 10.5 19 14.5C19 18.366 15.866 21.5 12 21.5Z")',
+        's("M15.5 14.5C15.5 16.433 13.933 18 12 18")',
+    ]),
+]
+
+
+# A path that stands in for the set's own, where a glyph was nudged by eye: the source name, and
+# the replacement path data for its single shape. Compose only; the drawables keep the set's own
+# path (the notification's Resume glyph is read at status bar size, where the nudge does not show).
+NUDGED: dict[str, str] = {
+    # Hugeicons Play, moved 1.25 units right of its box's centre: a triangle's weight sits toward
+    # its flat side, so one centred by its box looks pushed left inside a round button or a pill
+    # (user, 2026-10-22, the cards' hover Play). Every play glyph uses this one path, so each
+    # button, badge and pill that holds it is centred by eye without its own nudge.
+    "Play": "M20.1406 12.846C19.7871 14.189 18.1167 15.138 14.7757 17.0361C11.546 18.8709 9.9312 19.7884 8.6298 19.4196C8.0918 19.2671 7.6016 18.9776 7.2062 18.5787C6.25 17.6139 6.25 15.7426 6.25 12C6.25 8.2574 6.25 6.3861 7.2062 5.42132C7.6016 5.02245 8.0918 4.73288 8.6298 4.58042C9.9312 4.21165 11.546 5.12907 14.7757 6.96393C18.1167 8.86197 19.7871 9.811 20.1406 11.154C20.2865 11.7084 20.2865 12.2916 20.1406 12.846Z",
+}
+
+
 @dataclass
 class Twin:
     outline: str  # the TmIcons property it is the selected state of
@@ -202,6 +237,7 @@ TWINS: list[Twin] = [
     Twin("Chats", "Message01", cut={0: "s"}),  # the two lines of text
     Twin("Settings", "Settings01", cut={1: "f"}),  # the hub
     Twin("Search", "Search01", cut={}),
+    Twin("Trending", "TrendingUp", cut={}),
     Twin("StarOutline", "Star", cut={}),
     Twin("Bookmark", "Bookmark02", cut={}),
     Twin("Folder", "Folder01", cut={}),
@@ -325,6 +361,18 @@ def load(package: Path, name: str, solid: bool = False) -> list[Shape]:
     return shapes
 
 
+def compose_shapes(package: Path, name: str, solid: bool = False) -> list[Shape]:
+    """The shapes kotlin() writes for [name]: the set's own, except where NUDGED stands in a
+    path moved by eye. The drawables keep the set's own path, so they call load() direct."""
+    shapes = load(package, name, solid)
+    if name in NUDGED:
+        if len(shapes) != 1:
+            raise SystemExit(f"{name} is nudged, and has {len(shapes)} shapes, not one")
+        first = shapes[0]
+        return [Shape(NUDGED[name], first.stroke, first.fill, first.even_odd, first.alpha, first.width)]
+    return shapes
+
+
 # ---------------------------------------------------------------------------------------------
 # Writing
 
@@ -366,7 +414,7 @@ def kotlin(package: Path, version: str) -> str:
         out.append("")
         out.append(f"    // {area}")
         for icon in icons:
-            shapes = load(package, icon.source, icon.solid)
+            shapes = compose_shapes(package, icon.source, icon.solid)
             out.append("")
             out.append(f"    /** {icon.doc} Hugeicons {icon.source}{', filled' if icon.solid else ''}. */")
             mirror = ", autoMirror = true" if icon.mirror else ""
@@ -382,6 +430,22 @@ def kotlin(package: Path, version: str) -> str:
                     out.append("            autoMirror = true,")
                 out.append("        )")
                 out.append("    }")
+    if HAND:
+        out.append("")
+        out.append("    // Hand-drawn: no glyph in the set is this shape, so the paths live in the script.")
+        for icon in HAND:
+            out.append("")
+            out.append(f"    /** {icon.doc} Drawn by hand. */")
+            if len(icon.parts) == 1:
+                out.append(f'    val {icon.name}: ImageVector by lazy {{ icon("{icon.name}", {icon.parts[0]}) }}')
+            else:
+                out.append(f"    val {icon.name}: ImageVector by lazy {{")
+                out.append("        icon(")
+                out.append(f'            "{icon.name}",')
+                for p in icon.parts:
+                    out.append(f"            {p},")
+                out.append("        )")
+                out.append("    }")
     out.append("")
     out.append("    // Selected twins: the free set has no filled style, so these are its outlines filled in")
     by_name = {i.name: i for _, icons in ICONS for i in icons}
@@ -390,7 +454,7 @@ def kotlin(package: Path, version: str) -> str:
             raise SystemExit(f"twin of {tw.outline}, which is not in ICONS")
         if by_name[tw.outline].source != tw.source:
             raise SystemExit(f"twin of {tw.outline} is drawn from {tw.source}, the outline from {by_name[tw.outline].source}")
-        shapes = load(package, tw.source)
+        shapes = compose_shapes(package, tw.source)
         body_ix = tw.body if tw.body is not None else [i for i in range(len(shapes)) if i not in tw.cut]
         body = [Shape(shapes[i].d, True, True, False, shapes[i].alpha) for i in body_ix]
         cut = [
@@ -569,6 +633,9 @@ def table(version: str) -> str:
         "",
         "- The phone player's big centre play and pause (`PlayPauseIcon.kt`) is drawn in code, because",
         "  its two bars fold into the triangle as an animation; a filled glyph reads at that size.",
+        "",
+        "- The accent colour (`TmIcons.Accent`) is a drop of paint drawn by hand, in HAND in the",
+        "  script: the set's drops are a different shape.",
         "",
     ]
     return "\n".join(out)

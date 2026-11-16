@@ -97,8 +97,8 @@ internal val TV_START: Dp = Tv.SafeH
 internal val TV_BAR_END: Dp = Tv.SafeH + Tv.FocusClearance
 
 
-/** The phone's two tabs, which the television's bar carries in the same order. */
-internal enum class TvBarTab { Home, Chats }
+/** The phone's tabs, which the television's bar carries in the same order. */
+internal enum class TvBarTab { Home, Trending, Chats }
 
 /** Asks from the bar that a page outside the browser (Downloads) cannot answer itself. */
 internal object TvBarSignals {
@@ -115,8 +115,9 @@ internal object TvBarSignals {
 /**
  * The bar: the account's picture at the start, which opens what the phone's picture opens
  * (Favourites, Downloads, History, Watch later, Settings, Refresh where the page has something to
- * fetch again ([onRefresh]), and Update when there is one); then Search, and the tabs Home and
- * Chats in the phone's order; and at the end the app's mark and name, which take no focus.
+ * fetch again ([onRefresh]), and Update when there is one); then Search, and the tabs Home,
+ * Trending and Chats in the phone's order, Chats only while Settings shows it (owner, v1.0.38);
+ * and at the end the app's mark and name, which take no focus.
  *
  * Nothing is behind it: every page but Home starts below it and is clipped at its foot, and Home's
  * carousel picture melts into the page at its top; once Home's rows scroll up under the bar, the
@@ -133,6 +134,7 @@ internal fun TvTopBar(
     inProfile: Boolean,
     searchOpen: Boolean,
     onHome: () -> Unit,
+    onTrending: () -> Unit,
     onChats: () -> Unit,
     onSearch: () -> Unit,
     /** Called before any item of the account's menu goes anywhere (closes the search, say). */
@@ -168,6 +170,7 @@ internal fun TvTopBar(
     val activeSimple = profiles.firstOrNull { it.id == activeProfileId }?.simple == true
     val ground = Tone.background
     val homeFocus = remember { FocusRequester() }
+    val trendingFocus = remember { FocusRequester() }
     val chatsFocus = remember { FocusRequester() }
     val searchFocus = remember { FocusRequester() }
     val profileFocus = remember { FocusRequester() }
@@ -229,7 +232,10 @@ internal fun TvTopBar(
             ) {
                 BarTab(s.commonSearch, TmIcons.Search, searchOpen, onSearch, Modifier.focusRequester(searchRequester).tvReturnPoint(searchRequester))
                 BarTab(s.browseTabHome, TmIcons.Home, current == TvBarTab.Home && !searchOpen, onHome, Modifier.focusRequester(focusOf(TvBarTab.Home, homeFocus)).tvReturnPoint(focusOf(TvBarTab.Home, homeFocus)))
-                BarTab(s.browseTabChats, TmIcons.Chats, current == TvBarTab.Chats && !searchOpen, onChats, Modifier.focusRequester(focusOf(TvBarTab.Chats, chatsFocus)).tvReturnPoint(focusOf(TvBarTab.Chats, chatsFocus)))
+                BarTab(s.browseTabTrending, TmIcons.Trending, current == TvBarTab.Trending && !searchOpen, onTrending, Modifier.focusRequester(focusOf(TvBarTab.Trending, trendingFocus)).tvReturnPoint(focusOf(TvBarTab.Trending, trendingFocus)))
+                if (nav.showChats) {
+                    BarTab(s.browseTabChats, TmIcons.Chats, current == TvBarTab.Chats && !searchOpen, onChats, Modifier.focusRequester(focusOf(TvBarTab.Chats, chatsFocus)).tvReturnPoint(focusOf(TvBarTab.Chats, chatsFocus)))
+                }
             }
             Spacer(Modifier.width(18.dp))
             // The app's own mark and its name, the way a television's home screen signs itself:

@@ -128,6 +128,24 @@ class ShellState(
     var destination by mutableStateOf(Destination.Home)
         private set
 
+    /**
+     * Whether the Chats page and its button are shown (Settings, Library; off by
+     * default, owner, v1.0.38). Kept by the shell from the setting; [go] reads it.
+     */
+    var showChats by mutableStateOf(false)
+
+    /**
+     * A Home row asked for as a page of its own (the bar's Trending button, owner,
+     * v1.0.38): the row's key, taken by HomeRowsView into its open row.
+     */
+    var openRowRequest by mutableStateOf<String?>(null)
+
+    /** Trending as a page of its own: Home, with its Trending shelf opened. */
+    fun openTrending() {
+        openRowRequest = "catalog-trending"
+        go(Destination.Home)
+    }
+
     /** The page drawn under Settings or Downloads: where they were reached from, Home if nowhere. */
     var underlay by mutableStateOf(Destination.Home)
         private set
@@ -372,14 +390,16 @@ class ShellState(
     fun chatOf(chatId: Long): ChatSummary? = knownChats[chatId]
 
     fun go(to: Destination) {
+        // Chats hidden (owner, v1.0.38): a move to the Chats page lands on Home instead.
+        val landing = if (to == Destination.Chats && !showChats) Destination.Home else to
         openChat = null
         chatToRefocus = null
         details.clear()
         detailUnderPlayer = false
-        if (to != Destination.Settings) settingsUnlocked = false
+        if (landing != Destination.Settings) settingsUnlocked = false
         // A panel opened from another panel (Settings to Downloads) keeps the page under both.
-        if (to.isModal && !destination.isModal) underlay = destination
-        destination = to
+        if (landing.isModal && !destination.isModal) underlay = destination
+        destination = landing
     }
 
     fun openChat(chat: ChatSummary) {
